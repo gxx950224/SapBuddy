@@ -1,0 +1,10 @@
+{
+  "name": "abap-code-pi-extensions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "PI Agent extensions for ABAP development (gxx-abap + sap-mcp-dev bridge)",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "undici": "^8.7.0"
+  }
+}

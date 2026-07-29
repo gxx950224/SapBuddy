@@ -1,0 +1,149 @@
+/**
+ * sap-mcp-dev MCP Bridge Extension
+ *
+ * PI Agent 没有内置 MCP 支持，本 extension 充当 MCP 客户端桥接器：
+ * 1. session_start 时连接 SAP MCP 服务器（streamable-http）
+ * 2. 发现 MCP 服务器暴露的所有工具
+ * 3. 以 mcp__sap-mcp-dev__<TOOL_NAME> 命名注册为 PI Agent 工具
+ * 4. 调用时透传参数给 MCP 服务器
+ *
+ * 代码审查时必须走 mcp__sap-mcp-dev__ABAP_DOWNLOAD（AGENTS.md 铁律），
+ * 不走 abap_cat。
+ */
+
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { Agent, fetch as undiciFetch } from "undici";
+
+// ============================================================
+// MCP 服务器配置
+// ============================================================
+
+const MCP_SERVER_URL =
+  "https://10.8.202.35:44300/sap/bc/zsx_intf_serv/zsx_mcp?sap-client=100";
+const MCP_API_KEY = "123456789";
+const MCP_SERVER_NAME = "sap-mcp-dev";
+
+// SAP 开发服务器使用自签名证书，允许自定义 fetch 忽略 TLS 验证
+const MCP_AGENT = new Agent({
+  connect: {
+    rejectUnauthorized: false,
+  },
+});
+
+function mcpFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return undiciFetch(input, { ...init, dispatcher: MCP_AGENT }) as Promise<Response>;
+}
+
+// ============================================================
+// Extension 入口
+// ============================================================
+
+export default function (pi: ExtensionAPI) {
+  let mcpClient: Client | null = null;
+  let connected = false;
+  let toolsRegistered = 0;
+
+  // ----------------------------------------------------------
+  // session_start：连接 MCP 服务器 + 动态注册工具
+  // ----------------------------------------------------------
+  pi.on("session_start", async (_event, ctx) => {
+    try {
+      const transport = new StreamableHTTPClientTransport(new URL(MCP_SERVER_URL), {
+        fetch: mcpFetch,
+        requestInit: {
+          headers: {
+            "X-API-Key": MCP_API_KEY,
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+          },
+        },
+      });
+
+      mcpClient = new Client(
+        { name: "pi-abap-extension", version: "1.0.0" },
+        { capabilities: {} },
+      );
+
+      // 连接（含 initialize 握手）
+      await mcpClient.connect(transport);
+      connected = true;
+
+      // 发现工具
+      const { tools } = await mcpClient.listTools();
+
+      for (const tool of tools) {
+        const piToolName = `mcp__${MCP_SERVER_NAME}__${tool.name}`;
+
+        // MCP inputSchema 是标准 JSON Schema，与 TypeBox 兼容，直接传入
+        const parameters = (tool.inputSchema && typeof tool.inputSchema === "object" && tool.inputSchema.type === "object")
+          ? tool.inputSchema
+          : { type: "object", properties: {}, additionalProperties: true };
+
+        pi.registerTool({
+          name: piToolName,
+          label: `[SAP MCP] ${tool.name}`,
+          description: tool.description || `MCP tool: ${tool.name}`,
+          parameters: parameters as any,
+          async execute(_toolCallId, params, signal) {
+            if (!mcpClient || !connected) {
+              throw new Error("[sap-mcp-dev] MCP 服务器未连接，无法执行工具调用");
+            }
+
+            try {
+              const result = await mcpClient.callTool(
+                { name: tool.name, arguments: params as Record<string, unknown> },
+                undefined,
+                { signal },
+              );
+
+              // 提取 text content
+              const contentArr = (result as any)?.content || [];
+              const textParts = contentArr
+                .filter((c: any) => c.type === "text")
+                .map((c: any) => c.text);
+              const text = textParts.length > 0
+                ? textParts.join("\n")
+                : JSON.stringify(result, null, 2);
+
+              return {
+                content: [{ type: "text" as const, text }],
+                details: result,
+              };
+            } catch (err: any) {
+              throw new Error(`[sap-mcp-dev] ${tool.name} 调用失败: ${err.message || String(err)}`);
+            }
+          },
+        });
+      }
+
+      toolsRegistered = tools.length;
+      const toolNames = tools.map((t) => t.name).join(", ");
+      ctx.ui.notify(`sap-mcp-dev 已连接，注册 ${toolsRegistered} 个 MCP 工具`, "info");
+      console.log(`[sap-mcp-dev] 已连接，注册 ${toolsRegistered} 个工具: ${toolNames}`);
+    } catch (err: any) {
+      connected = false;
+      const msg = err?.message || String(err);
+      ctx.ui.notify(`sap-mcp-dev 连接失败: ${msg}`, "warning");
+      console.error(`[sap-mcp-dev] 连接失败:`, msg);
+    }
+  });
+
+  // ----------------------------------------------------------
+  // session_shutdown：断开连接
+  // ----------------------------------------------------------
+  pi.on("session_shutdown", async () => {
+    if (mcpClient) {
+      try {
+        await mcpClient.close();
+      } catch {
+        // 忽略关闭错误
+      }
+      mcpClient = null;
+      connected = false;
+    }
+  });
+
+  console.log("[sap-mcp-dev] MCP 桥接 extension 已加载");
+}

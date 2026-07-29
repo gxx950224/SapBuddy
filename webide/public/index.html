@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AbapBuddy</title>
+<link rel="icon" href="logo.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<!-- 防闪烁：在首帧前应用已保存的主题 -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("abap-studio-theme");
+      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== 顶栏 ========== -->
+  <header id="topbar">
+    <div class="topbar-left">
+      <button id="left-toggle" class="icon-btn" title="折叠/展开对话管理"></button>
+      <div class="logo">
+        <img src="logo.svg" width="22" height="22" alt="AbapBuddy">
+        <span class="logo-text">AbapBuddy</span>
+      </div>
+    </div>
+
+    <div class="topbar-center">
+    </div>
+
+    <div class="topbar-right">
+      <button id="theme-toggle" class="icon-btn" title="切换浅色 / 深色主题">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"></circle>
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+        </svg>
+      </button>
+      <button id="right-toggle" class="icon-btn" title="折叠/展开 OUTPUT"></button>
+    </div>
+  </header>
+
+  <!-- ========== 主区域（三栏） ========== -->
+  <div id="main">
+
+    <!-- 左栏：对话管理 -->
+    <aside id="sidebar">
+      <div class="sidebar-top">
+        <div class="search-box">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
+          <input type="text" placeholder="搜索对话…" id="sidebar-search">
+        </div>
+        <button id="new-chat-btn" class="btn-new">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 2a.75.75 0 0 1 .75.75v4.5h4.5a.75.75 0 0 1 0 1.5h-4.5v4.5a.75.75 0 0 1-1.5 0v-4.5h-4.5a.75.75 0 0 1 0-1.5h4.5v-4.5A.75.75 0 0 1 8 2Z"/></svg>
+          新对话
+        </button>
+      </div>
+
+      <div class="panel-scroll">
+        <!-- 对话历史 -->
+        <div class="sidebar-section">
+          <div class="section-title">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"/></svg>
+            对话
+          </div>
+          <div class="section-body">
+            <div id="session-list"><div class="empty-hint">暂无历史对话</div></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- 左栏底部：设置 -->
+      <div class="sidebar-footer">
+        <button id="sidebar-settings" class="sidebar-settings-btn" title="设置">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"/><path d="M9.02 1.526a1 1 0 0 0-2.04 0l-.23 1.6a5.96 5.96 0 0 0-1.32.77l-1.49-.6a1 1 0 0 0-1.23 1.23l.6 1.49a5.96 5.96 0 0 0-.77 1.32l-1.6.23a1 1 0 0 0 0 2.04l1.6.23c.15.48.39.92.77 1.32l-.6 1.49a1 1 0 0 0 1.23 1.23l1.49-.6c.4.38.84.62 1.32.77l.23 1.6a1 1 0 0 0 2.04 0l.23-1.6a5.96 5.96 0 0 0 1.32-.77l1.49.6a1 1 0 0 0 1.23-1.23l-.6-1.49a5.96 5.96 0 0 0 .77-1.32l1.6-.23a1 1 0 0 0 0-2.04l-1.6-.23a5.96 5.96 0 0 0-.77-1.32l.6-1.49a1 1 0 0 0-1.23-1.23l-1.49.6a5.96 5.96 0 0 0-1.32-.77l-.23-1.6Z"/></svg>
+          <span>设置</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- 中栏：对话 -->
+    <section id="chat">
+      <div id="messages"></div>
+
+      <div id="input-area">
+        <div id="input-card">
+          <div id="input-toolbar">
+            <button class="toolbar-btn" id="toolbar-cmd" title="快捷指令">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M6.5 1.702a.75.75 0 0 1 .826.194l3.5 4a.75.75 0 0 1 0 .978l-3.5 4a.75.75 0 0 1-1.173-.934L9.194 6.5 5.653 2.736a.75.75 0 0 1 .847-1.034Z"/></svg>
+              指令
+            </button>
+            <span class="toolbar-spacer"></span>
+            <span class="toolbar-hint">Enter 发送 · Shift+Enter 换行</span>
+          </div>
+          <div id="input-wrap">
+            <textarea id="input" rows="2" placeholder="输入你的需求，或点击「指令」选择快捷任务…"></textarea>
+            <button id="think-btn" class="btn-think" title="思考等级：关（轻量模式）" data-level="off">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547Z"/></svg>
+              </button>
+            <button id="compress-btn" class="btn-compress" title="压缩上下文">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M4 0h8v2H4V0ZM4 4h8v2H4V4ZM2 8h12v2H2V8ZM2 12h12v2H2v-2Z"/></svg>
+            </button>
+            <button id="send-btn">发送</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右栏：OUTPUT 文件浏览器 -->
+    <aside id="right-panel">
+      <div class="panel-header">
+        <span class="panel-title">产物</span>
+        <button id="refresh-files" class="btn-icon" title="刷新">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.75.75 0 0 1 1.36-.66A6.5 6.5 0 1 1 8 1.5V.0a.75.75 0 0 1 .75.75A6.5 6.5 0 0 1 14.95 7.4.75.75 0 0 1 14.2 6.5H12.5a.75.75 0 0 1 0-1.5h1.8A5 5 0 0 0 8 3Z"/></svg>
+        </button>
+      </div>
+      <div class="panel-scroll">
+        <div id="file-list"><div class="empty-hint">暂无输出文件</div></div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ========== 底部状态栏 ========== -->
+  <footer id="statusbar">
+    <div class="statusbar-left">
+      <span class="status-item">
+        <span class="dot" id="sap-dot-bottom"></span>
+        <span id="sap-text-bottom">SAP 检测中…</span>
+      </span>
+      <span class="status-divider"></span>
+      <span class="status-item">
+        <span class="dot" id="agent-dot-bottom"></span>
+        <span id="agent-text-bottom">Agent</span>
+      </span>
+      <span class="status-divider"></span>
+      <span class="status-item session-id" id="chat-session-id" title="点击复制会话 ID">-</span>
+    </div>
+    <div class="statusbar-right">
+      <span class="status-item">模型: <span id="st-model">-</span></span>
+      <span class="status-divider"></span>
+      <span class="status-item">状态: <span id="st-streaming">空闲</span></span>
+    </div>
+  </footer>
+</div>
+
+<!-- 文件预览弹层 -->
+<div id="preview-overlay">
+  <div id="preview-dialog">
+    <div id="preview-header">
+      <span id="preview-title">文件预览</span>
+      <span class="spacer"></span>
+      <div class="preview-actions">
+        <a id="preview-open-external" href="#" target="_blank" rel="noopener" title="在浏览器打开" style="display:none">
+          <button class="btn-sm btn-icon-text">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M6 2h8v8h-2V5.5L7.5 10 6 8.5l4.5-4.5H6V2zM2 4h4v2H4v6h8v-2h2v4H2V4z"/></svg>
+            <span>在浏览器打开</span>
+          </button>
+        </a>
+        <a id="preview-download" href="#" download title="下载">
+          <button class="btn-sm btn-icon-text">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1v8.2l2.6-2.6 1.4 1.4L8 12.8 4 9l1.4-1.4L8 9.2V1h2zM2 13h12v2H2v-2z"/></svg>
+            <span>下载</span>
+          </button>
+        </a>
+        <button id="preview-close" class="btn-sm btn-icon-text btn-close" title="关闭 (Esc)">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M4 3l4.5 4.5L13 3l1 1-4.5 4.5L14 13l-1 1-4.5-4.5L4 14l-1-1 4.5-4.5L3 4l1-1z"/></svg>
+          <span>关闭</span>
+        </button>
+      </div>
+    </div>
+    <div id="preview-body">加载中…</div>
+    <iframe id="preview-frame" title="网页预览" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"></iframe>
+  </div>
+</div>
+
+<!-- 设置弹窗 -->
+<div id="settings-overlay">
+  <div id="settings-dialog">
+    <div id="settings-header">
+      <span id="settings-title">设置</span>
+      <button id="settings-close" class="btn-icon" title="关闭 (Esc)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 3l4.5 4.5L13 3l1 1-4.5 4.5L14 13l-1 1-4.5-4.5L4 14l-1-1 4.5-4.5L3 4l1-1z"/></svg>
+      </button>
+    </div>
+    <div id="settings-body">
+      <div id="settings-tabs">
+        <button class="settings-tab active" data-tab="llm">大模型</button>
+        <button class="settings-tab" data-tab="sap">SAP连接</button>
+        <button class="settings-tab" data-tab="mcp">MCP</button>
+        <button class="settings-tab" data-tab="memory">记忆</button>
+        <button class="settings-tab" data-tab="skills">技能</button>
+        <button class="settings-tab" data-tab="prompts">提示词</button>
+        <button class="settings-tab" data-tab="about">关于</button>
+      </div>
+      <div id="settings-panels">
+        <div class="settings-panel active" data-panel="llm">
+          <div class="settings-section">
+            <h4>大模型配置</h4>
+            <p class="settings-desc">配置对话与代码生成所使用的大模型 API。</p>
+            <label class="settings-field">
+              <span>提供商</span>
+              <select id="llm-provider">
+                <!-- 选项由 app.js 依据国产模型清单动态填充 -->
+              </select>
+            </label>
+            <label class="settings-field">
+              <span>模型名称</span>
+              <div class="model-input-wrap">
+                <select id="llm-model-select" class="model-select"></select>
+                <input id="llm-model-custom" class="model-custom" type="text" placeholder="输入自定义模型名" style="display:none" />
+              </div>
+            </label>
+            <label class="settings-field key-field">
+              <span>API Key</span>
+              <div class="key-input-wrap">
+                <input id="llm-key" type="password" placeholder="未配置，请输入 API Key" />
+                <button type="button" id="llm-key-toggle" class="btn-icon" title="显示/隐藏 Key">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
+                </button>
+              </div>
+            </label>
+            <label class="settings-field">
+              <span>上下文大小</span>
+              <input id="llm-context-tokens" type="number" min="10000" max="1000000" step="10000" placeholder="200000" />
+              <span class="field-hint">Token 上限（默认 200K），超出时自动压缩历史对话</span>
+            </label>
+          </div>
+        </div>
+        <div class="settings-panel" data-panel="sap">
+          <div class="settings-section">
+            <h4>SAP 连接配置</h4>
+            <p class="settings-desc">配置 gxx-abap CLI 连接 SAP 系统所需的参数，保存到项目 .gxx-abap\config.json。通过环境变量 GXX_ABAP_CONFIG 也可指向其他路径。</p>
+            <label class="settings-field">
+              <span>主机地址</span>
+              <input id="sap-host" type="text" placeholder="10.x.x.x 或 sap.example.com" />
+            </label>
+            <label class="settings-field">
+              <span>端口</span>
+              <input id="sap-port" type="text" placeholder="44300" />
+              <span class="field-hint">默认 44300（HTTPS）</span>
+            </label>
+            <label class="settings-field">
+              <span>协议</span>
+              <select id="sap-protocol">
+                <option value="https">HTTPS</option>
+                <option value="http">HTTP</option>
+              </select>
+            </label>
+            <label class="settings-field">
+              <span>用户名</span>
+              <input id="sap-user" type="text" placeholder="DEVELOPER" />
+            </label>
+            <label class="settings-field key-field">
+              <span>密码</span>
+              <div class="key-input-wrap">
+                <input id="sap-password" type="password" placeholder="未配置，请输入 SAP 密码" />
+                <button type="button" id="sap-password-toggle" class="btn-icon" title="显示/隐藏密码">
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
+                </button>
+              </div>
+            </label>
+            <label class="settings-field">
+              <span>Client</span>
+              <input id="sap-client" type="text" placeholder="100" />
+              <span class="field-hint">SAP 客户端编号，默认 100</span>
+            </label>
+            <div class="settings-actions">
+              <button id="sap-save" class="btn-sm btn-primary">保存</button>
+              <span id="sap-status" class="settings-status"></span>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>连接状态</h4>
+            <p class="settings-desc">当前 SAP 系统的连接状态与测试结果。</p>
+            <div id="sap-state" class="settings-state">加载中…</div>
+          </div>
+        </div>
+        <div class="settings-panel" data-panel="mcp">
+          <div class="settings-section">
+            <h4>MCP 服务器配置</h4>
+            <p class="settings-desc">采用市场通用 MCP 配置格式（对象）。键为服务器名称，值含 <code>type</code>（sse / streamable-http）、<code>url</code>、<code>headers</code>（可选）。</p>
+            <textarea id="mcp-config" class="mcp-config" spellcheck="false" placeholder='{&#10;  "服务器名": {&#10;    "type": "streamable-http",&#10;    "url": "https://host:port/mcp",&#10;    "headers": {&#10;      "Authorization": "Bearer ..."&#10;    }&#10;  }&#10;}'></textarea>
+            <div class="mcp-config-error" id="mcp-config-error"></div>
+            <div class="mcp-actions">
+              <button id="mcp-format" class="btn-sm">格式化</button>
+              <button id="mcp-save" class="btn-sm btn-primary">保存并生效</button>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h4>已连接的 MCP 服务</h4>
+            <p class="settings-desc">点击服务可展开查看其提供的工具；状态每隔数秒自动刷新。</p>
+            <div id="mcp-servers"><div class="empty-hint">暂无 MCP 服务</div></div>
+          </div>
+        </div>
+        <div class="settings-panel" data-panel="memory">
+          <div class="settings-section">
+            <h4>避坑指南 - Memory.md</h4>
+            <p class="settings-desc">ABAP 开发过程中积累的踩坑记录。修改后即时生效，无需重启服务。</p>
+            <div class="editor-toolbar">
+              <span class="editor-file-path" id="memory-path">Memory.md</span>
+              <div class="editor-toolbar-actions">
+                <span class="mode-toggle"><button class="mode-toggle-btn" data-mode="edit" data-editor="memory-editor" data-preview="memory-preview">编辑</button><button class="mode-toggle-btn active" data-mode="preview" data-editor="memory-editor" data-preview="memory-preview">预览</button></span>
+                <button id="memory-open-location" class="btn-sm" title="打开文件所在位置">📂 打开位置</button>
+                <button id="memory-save" class="btn-sm btn-primary">保存</button>
+              </div>
+            </div>
+            <textarea id="memory-editor" class="code-editor" spellcheck="false"></textarea>
+            <div id="memory-preview" class="md-preview" style="display:none"></div>
+            <div class="editor-status" id="memory-status"></div>
+          </div>
+        </div>
+        <div class="settings-panel" data-panel="skills">
+          <div class="settings-section skill-layout">
+            <div class="skill-tree-panel" id="skill-tree-panel">
+              <h4>
+                <span>Skills 目录</span>
+                <button class="skill-tree-collapse-btn" id="skill-tree-collapse" title="折叠/展开目录树">◀</button>
+              </h4>
+              <div id="skill-tree" class="skill-tree">
+                <div class="empty-hint">加载中…</div>
+              </div>
+            </div>
+            <div class="skill-editor-panel">
+              <div id="skill-editor-empty" class="skill-editor-empty">
+                <p>请从左侧选择一个文件进行编辑</p>
+              </div>
+              <div id="skill-editor-area" style="display:none">
+                <div class="editor-toolbar">
+                  <span class="editor-file-path" id="skill-file-path"></span>
+                  <div class="editor-toolbar-actions">
+                    <span class="mode-toggle"><button class="mode-toggle-btn" data-mode="edit" data-editor="skill-editor" data-preview="skill-preview">编辑</button><button class="mode-toggle-btn active" data-mode="preview" data-editor="skill-editor" data-preview="skill-preview">预览</button></span>
+                    <button id="skill-open-location" class="btn-sm" title="打开文件所在位置">📂 打开位置</button>
+                    <button id="skill-save" class="btn-sm btn-primary">保存</button>
+                  </div>
+                </div>
+                <textarea id="skill-editor" class="code-editor" spellcheck="false"></textarea>
+                <div id="skill-preview" class="md-preview" style="display:none"></div>
+                <div class="editor-status" id="skill-status"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="settings-panel" data-panel="prompts">
+          <div class="settings-section">
+            <h4>提示词配置</h4>
+            <p class="settings-desc">编辑 Agent 与系统的核心提示词文件。修改后需<b>重启 AbapBuddy 服务</b>才能生效。</p>
+            <div class="prompt-subtabs">
+              <button class="prompt-subtab active" data-prompt="AGENTS.md">Agent 提示词</button>
+              <button class="prompt-subtab" data-prompt="SYSTEM.md">系统提示词</button>
+            </div>
+            <div class="editor-toolbar">
+              <span class="editor-file-path" id="prompt-file-path">AGENTS.md</span>
+              <div class="editor-toolbar-actions">
+                <span class="mode-toggle"><button class="mode-toggle-btn" data-mode="edit" data-editor="prompt-editor" data-preview="prompt-preview">编辑</button><button class="mode-toggle-btn active" data-mode="preview" data-editor="prompt-editor" data-preview="prompt-preview">预览</button></span>
+                <button id="prompt-open-location" class="btn-sm" title="打开文件所在位置">📂 打开位置</button>
+                <button id="prompt-save" class="btn-sm btn-primary">保存</button>
+              </div>
+            </div>
+            <textarea id="prompt-editor" class="code-editor" spellcheck="false"></textarea>
+            <div id="prompt-preview" class="md-preview" style="display:none"></div>
+            <div class="editor-status" id="prompt-status"></div>
+            <div class="restart-hint" id="prompt-restart" style="display:none">⚠️ 提示词已修改，<b>请重启 AbapBuddy</b> 以使其生效。</div>
+          </div>
+        </div>
+        <div class="settings-panel" data-panel="about">
+          <div class="settings-section">
+            <h4>关于 AbapBuddy</h4>
+            <p class="settings-desc">当前版本与更新检查。</p>
+            <div class="about-info">
+              <div class="about-row"><span>当前版本</span><span id="about-version">-</span></div>
+              <div class="about-row"><span>更新状态</span><span id="about-update-status">未检查</span></div>
+            </div>
+            <div class="settings-actions" style="margin-top:12px">
+              <button id="about-check-update" class="btn-primary" style="padding:8px 20px;font-size:14px">检查更新</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="settings-footer">
+      <button id="settings-cancel" class="btn-sm">取消</button>
+      <button id="settings-save" class="btn-sm btn-primary">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 快捷指令弹出菜单 -->
+<div id="cmd-menu-overlay">
+  <div id="cmd-menu">
+    <div class="cmd-menu-header">快捷任务</div>
+    <div class="cmd-menu-list">
+      <button class="cmd-menu-item" data-cmd="/abap-report ">报表开发</button>
+      <button class="cmd-menu-item" data-cmd="/abap-function ">函数开发</button>
+      <button class="cmd-menu-item" data-fill="审查代码 ">审查代码</button>
+      <button class="cmd-menu-item" data-fill="查看最近的 DUMP 并分析原因">DUMP 分析</button>
+      <button class="cmd-menu-item" data-fill="解释程序 ">程序详解</button>
+    </div>
+  </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div id="confirm-overlay">
+  <div id="confirm-dialog">
+    <div id="confirm-header">
+      <svg id="confirm-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/></svg>
+      <span id="confirm-title">删除对话</span>
+    </div>
+    <div id="confirm-message"></div>
+    <div id="confirm-actions">
+      <button class="btn-sm" id="confirm-cancel">取消</button>
+      <button class="btn-sm" id="confirm-ok">删除</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/state.js"></script>
+<script src="js/markdown.js"></script>
+<script src="js/messages.js"></script>
+<script src="js/tool-cards.js"></script>
+<script src="js/events.js"></script>
+<script src="js/chat.js"></script>
+<script src="js/sessions.js"></script>
+<script src="js/context.js"></script>
+<script src="js/status.js"></script>
+<script src="js/files.js"></script>
+<script src="js/settings.js"></script>
+<script src="js/theme.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

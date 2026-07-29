@@ -1,0 +1,33 @@
+# API Key（重要：不要提交你的 Key）
+.pi/auth.json
+
+# SAP 连接配置（含密码）
+.gxx-abap/
+
+# 对话历史
+.pi/sessions/
+
+# node_modules
+node_modules/
+
+# 代码生成产物
+output/
+
+# Electron 打包产物
+package/release/
+package/node_modules/
+
+# 日志文件
+webide/server.log
+
+# 临时文件
+*.log
+.DS_Store
+Thumbs.db
+
+# Windows 误创建的空设备文件
+nul
+NUL
+
+node/
+upload_oss.credentials

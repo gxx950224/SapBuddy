@@ -1,0 +1,1734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GXX ABAP — SAP ABAP ADT 命令行工具</title>
+<meta name="description" content="SAP ABAP ADT 命令行工具，从终端操作 SAP ABAP 开发系统。17 条命令，支持 JSON 输出。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%232563eb'/><text x='50' y='42' font-family='monospace' font-size='22' font-weight='bold' fill='%23ffffff' text-anchor='middle'>GXX</text><text x='50' y='72' font-family='monospace' font-size='22' font-weight='bold' fill='%23ffffff' text-anchor='middle'>ABAP</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== Reset & Base ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg-primary: #fafafa;
+  --bg-secondary: #f5f5f5;
+  --bg-card: #ffffff;
+  --bg-code: #f8f8f8;
+  --bg-hover: #f0f0f0;
+  --blue: #2563eb;
+  --blue-light: #3b82f6;
+  --blue-dim: #1d4ed8;
+  --blue-glow: rgba(37, 99, 235, 0.08);
+  --white: #ffffff;
+  --text-primary: #1a1a1a;
+  --text-secondary: #525252;
+  --text-dim: #737373;
+  --border: #e5e5e5;
+  --border-light: #e8e8e8;
+  --green: #059669;
+  --orange: #d97706;
+  --red: #dc2626;
+  --sidebar-w: 280px;
+  --header-h: 0px;
+}
+html { scroll-behavior: smooth; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  padding-bottom: 50px;
+}
+a { color: var(--blue); text-decoration: none; transition: color 0.2s; }
+a:hover { color: var(--blue-light); }
+
+/* ===== Top Nav ===== */
+.topnav { display: none; }
+
+
+/* ===== Home View ===== */
+#home-view {
+  min-height: calc(100vh - 50px);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 32px 24px 24px;
+  position: relative;
+}
+#home-view::before { display: none; }
+.home-logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: clamp(36px, 8vw, 80px);
+  font-weight: 700;
+  letter-spacing: -2px;
+  line-height: 1;
+  margin-bottom: 8px;
+  position: relative; z-index: 1;
+}
+.home-logo .gxx { color: var(--blue); text-shadow: none; }
+.home-logo .abap { color: #333; }
+.home-tagline {
+  font-size: clamp(14px, 1.8vw, 18px);
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+  text-align: center;
+  position: relative; z-index: 1;
+}
+.install-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 14px 20px;
+  display: flex; align-items: center; gap: 12px;
+  max-width: 520px; width: 100%;
+  position: relative; z-index: 1;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.install-box .prompt { color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 14px; user-select: none; }
+.install-box .cmd-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 14px; color: var(--text-primary);
+  flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.install-box .cmd-text .npm { color: var(--orange); }
+.install-box .cmd-text .pkg { color: var(--blue-light); }
+.copy-btn {
+  background: var(--blue); color: var(--white);
+  border: none; border-radius: 8px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+  font-family: 'Inter', sans-serif;
+  display: flex; align-items: center; gap: 6px;
+  white-space: nowrap;
+}
+.copy-btn:hover { background: var(--blue-light); transform: translateY(-1px); }
+.copy-btn.copied { background: var(--green); color: #0a0a0a; }
+.copy-btn svg { width: 14px; height: 14px; }
+
+.home-actions {
+  margin-top: 28px;
+  display: flex; gap: 16px;
+  position: relative; z-index: 1;
+}
+.btn-primary {
+  background: var(--blue); color: var(--white);
+  padding: 10px 28px; border-radius: 10px;
+  font-size: 14px; font-weight: 600;
+  border: none; cursor: pointer; transition: all 0.2s;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-primary:hover { background: var(--blue-light); transform: translateY(-1px); }
+/* btn-secondary removed */
+
+/* feature cards removed */
+
+/* ===== Docs View ===== */
+#docs-view { display: none; }
+#docs-view.show { display: flex; flex-direction: column; height: calc(100vh - 50px); overflow: hidden; }
+
+.docs-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Sidebar */
+.docs-sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-secondary);
+}
+.docs-sidebar::-webkit-scrollbar { width: 4px; }
+.docs-sidebar::-webkit-scrollbar-track { background: transparent; }
+.docs-sidebar::-webkit-scrollbar-thumb { background: #2563eb; border-radius: 4px; }
+.docs-sidebar { scrollbar-color: #2563eb transparent; scrollbar-width: thin; }
+
+.sidebar-section { margin-bottom: 8px; }
+.sidebar-section-title {
+  font-size: 14px; font-weight: 800; color: var(--text-primary);
+  text-transform: uppercase; letter-spacing: 1px;
+  padding: 12px 16px 6px;
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+  transition: all 0.2s;
+}
+.sidebar-section-title:hover { color: var(--text-primary); }
+.sidebar-section-title::after {
+  content: '';
+  width: 14px; height: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-size: contain; background-repeat: no-repeat;
+  transition: transform 0.2s;
+}
+.sidebar-section.collapsed .sidebar-section-title::after {
+  transform: rotate(-90deg);
+}
+.sidebar-section.collapsed .sidebar-link {
+  display: none;
+}
+.sidebar-link {
+  display: block;
+  padding: 8px 16px 8px 16px;
+  font-size: 14px; color: var(--text-secondary);
+  cursor: pointer; transition: all 0.15s;
+  border-left: 2px solid transparent;
+}
+.sidebar-link:hover { color: var(--text-primary); background: var(--bg-hover); }
+.sidebar-link.active { color: var(--blue); border-left-color: var(--blue); background: var(--blue-glow); }
+.sidebar-link.sub { padding-left: 28px; font-size: 13px; }
+.sidebar-link .badge {
+  display: inline-block; font-size: 10px; font-weight: 600;
+  background: var(--border-light); color: var(--text-dim);
+  padding: 1px 6px; border-radius: 4px; margin-left: 6px;
+}
+
+/* Sidebar Collapse */
+.docs-sidebar.collapsed { width: 0; overflow: hidden; border-right: none; padding: 0; }
+.docs-layout.collapsed .docs-sidebar { width: 0; overflow: hidden; border-right: none; padding: 0; }
+
+/* Docs Header */
+.docs-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--border);
+  background: var(--bg-card); flex-shrink: 0; z-index: 100;
+}
+.docs-header-left { display: flex; align-items: center; gap: 12px; }
+.docs-header-logo {
+  font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 16px;
+  cursor: pointer; user-select: none; display: flex; align-items: center; gap: 2px;
+}
+.docs-header-logo .gxx { color: var(--blue); }
+.docs-header-logo .abap { color: #333; }
+.sidebar-toggle {
+  background: none; border: none; color: var(--text-secondary); font-size: 20px;
+  cursor: pointer; padding: 4px 8px; border-radius: 6px; transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+}
+.sidebar-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* Content */
+.docs-content {
+  flex: 1; padding: 32px 24px 80px;
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+}
+.docs-content::-webkit-scrollbar { width: 8px; }
+.docs-content::-webkit-scrollbar-track { background: transparent; }
+.docs-content::-webkit-scrollbar-thumb { background: #2563eb; border-radius: 4px; }
+.docs-content::-webkit-scrollbar-thumb:hover { background: #1d4ed8; }
+.docs-content { scrollbar-color: #2563eb transparent; scrollbar-width: thin; }
+
+.doc-section { display: none; }
+.doc-section.show { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.doc-section h1 {
+  font-size: 32px; font-weight: 700; color: var(--text-primary);
+  margin-bottom: 8px; padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.doc-section h2 {
+  font-size: 22px; font-weight: 600; color: var(--text-primary);
+  margin-top: 40px; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.doc-section h2 .cmd-name {
+  font-family: 'JetBrains Mono', monospace;
+  background: var(--blue-glow); color: var(--blue);
+  padding: 2px 12px; border-radius: 6px; font-size: 20px;
+}
+.doc-section h3 {
+  font-size: 16px; font-weight: 600; color: var(--text-primary);
+  margin-top: 24px; margin-bottom: 8px;
+}
+.doc-section p { color: var(--text-secondary); margin-bottom: 12px; font-size: 15px; }
+.doc-section ul, .doc-section ol { color: var(--text-secondary); margin-bottom: 12px; padding-left: 20px; font-size: 15px; }
+.doc-section li { margin-bottom: 4px; }
+
+/* Code Block */
+.code-block {
+  background: var(--bg-code);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 12px 0 20px;
+  overflow: hidden;
+  position: relative;
+}
+.code-block-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px; color: var(--text-dim);
+  font-family: 'JetBrains Mono', monospace;
+}
+.code-block-header .copy-code {
+  cursor: pointer; color: var(--text-dim); transition: color 0.2s;
+  display: flex; align-items: center; gap: 4px;
+}
+.code-block-header .copy-code:hover { color: var(--blue); }
+.code-block pre {
+  padding: 16px 20px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13.5px; line-height: 1.6;
+}
+.code-block pre::-webkit-scrollbar { height: 4px; }
+.code-block pre::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+
+/* Syntax highlight */
+.tk-cmd { color: var(--blue-light); }
+.tk-flag { color: var(--orange); }
+.tk-str { color: var(--green); }
+.tk-cmt { color: var(--text-dim); font-style: italic; }
+.tk-prompt { color: var(--green); }
+.tk-key { color: #c586c0; }
+.tk-val { color: #ce9178; }
+.tk-num { color: #2d8a4e; }
+.tk-punc { color: var(--text-secondary); }
+
+/* Param Table */
+.param-table {
+  width: 100%; border-collapse: collapse;
+  margin: 12px 0 20px; font-size: 14px;
+  border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden;
+}
+.param-table th {
+  background: var(--bg-card); color: var(--text-primary);
+  font-weight: 600; text-align: left;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.param-table td {
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+.param-table tr:last-child td { border-bottom: none; }
+.param-table td:first-child {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--blue-light); font-size: 13px; white-space: nowrap;
+}
+.param-table td:nth-child(2) {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+}
+.param-table td:nth-child(2) .req { color: var(--red); }
+.param-table td:nth-child(2) .opt { color: var(--text-dim); }
+
+/* Overview table */
+.overview-table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 14px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.overview-table th { background: var(--bg-card); color: var(--text-primary); font-weight: 600; text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.overview-table td { padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+.overview-table tr:last-child td { border-bottom: none; }
+.overview-table td:nth-child(2) { font-family: 'JetBrains Mono', monospace; color: var(--text-secondary); font-size: 13px; white-space: nowrap; }
+.overview-table td:nth-child(3) { font-size: 14px; }
+.overview-table .cmd-chip { font-family: 'JetBrains Mono', monospace; font-size: 12px; background: var(--bg-code); border: 1px solid var(--border-light); color: var(--blue-light); padding: 3px 10px; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+.overview-table .cmd-chip:hover { background: var(--blue-glow); border-color: var(--blue); }
+
+/* Overview cards */
+.overview-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px; margin-top: 24px;
+}
+.overview-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 20px; transition: all 0.3s;
+}
+.overview-card:hover { border-color: var(--blue-dim); }
+.overview-card .cat-name {
+  font-size: 15px; font-weight: 600; color: var(--text-primary);
+  margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.overview-card .cat-icon { font-size: 18px; }
+.overview-card .cmd-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.overview-card .cmd-chip {
+  font-family: 'JetBrains Mono', monospace; font-size: 12px;
+  background: var(--bg-code); border: 1px solid var(--border-light);
+  color: var(--blue-light); padding: 3px 10px; border-radius: 6px;
+  cursor: pointer; transition: all 0.2s;
+}
+.overview-card .cmd-chip:hover { background: var(--blue-glow); border-color: var(--blue); }
+.overview-card .cat-desc { font-size: 13px; color: var(--text-dim); margin-top: 8px; }
+
+/* JSON return block */
+.json-return {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-left: 3px solid var(--blue);
+  border-radius: 0 8px 8px 0;
+  padding: 12px 16px; margin: 12px 0 20px;
+  font-size: 13px;
+}
+.json-return .label {
+  font-size: 12px; font-weight: 600; color: var(--blue);
+  margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.json-return code {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-secondary);
+}
+
+/* Callout */
+.callout {
+  background: rgba(74, 134, 232, 0.08);
+  border: 1px solid rgba(74, 134, 232, 0.2);
+  border-radius: 8px;
+  padding: 12px 16px; margin: 12px 0;
+  font-size: 14px; color: var(--text-secondary);
+}
+.callout strong { color: var(--blue-light); }
+
+/* Footer */
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #9ca3af;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--bg-primary);
+  z-index: 200;
+}
+.footer a { color: #9ca3af; }
+.footer a:hover { color: var(--blue); }
+
+/* Mobile */
+.mobile-menu-btn { display: none; background: none; border: none; color: var(--text-primary); font-size: 22px; cursor: pointer; }
+@media (max-width: 900px) {
+  .docs-sidebar {
+    position: fixed; left: -280px; top: 0;
+    height: calc(100vh - 50px);
+    z-index: 999; transition: left 0.3s;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.1);
+  }
+  .docs-sidebar.open { left: 0; }
+  .mobile-menu-btn { display: block; }
+  .docs-content { padding: 24px 20px 60px; }
+}
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.3);
+  z-index: 998;
+}
+.docs-sidebar.open ~ .sidebar-overlay { display: block; }
+@media (max-width: 600px) {
+  .install-box { flex-direction: column; align-items: stretch; gap: 12px; }
+  .install-box .cmd-text { white-space: normal; }
+  .copy-btn { justify-content: center; }
+}
+
+/* Scroll active tracking */
+.cmd-anchor { scroll-margin-top: 80px; }
+
+/* ============================================================
+   白底 · 全息流光主题（Hologram Light）
+============================================================ */
+@property --holo-angle { syntax:'<angle>'; initial-value:0deg; inherits:false; }
+:root {
+  --blue: #7c3aed;
+  --blue-light: #8b5cf6;
+  --blue-dim: #6d28d9;
+  --blue-glow: rgba(124,58,237,.08);
+  --bg-primary: #ffffff;
+  --bg-secondary: #faf9fc;
+  --bg-card: #ffffff;
+  --bg-code: #faf8fe;
+  --bg-hover: #f4f1fb;
+  --border: #ede9f6;
+  --border-light: #f1edf9;
+  --text-primary: #1b1b2a;
+  --text-secondary: #54546a;
+  --text-dim: #8585a0;
+  --holo-grad: linear-gradient(90deg,#ff0080,#ff8c00,#ffee00,#00d18f,#00cfff,#8000ff,#ff0080);
+}
+@keyframes holo-flow { to { background-position: 300% 0; } }
+@keyframes holo-rotate { to { --holo-angle: 360deg; } }
+@keyframes shine-sweep { 0% { left:-80%; } 60%,100% { left:130%; } }
+@keyframes aurora-drift { to { transform: translateX(-50%) translate(60px,40px) scale(1.18); } }
+
+/* 全息渐变流动文字 */
+.holo-text {
+  background: var(--holo-grad); background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: holo-flow 8s linear infinite;
+}
+
+/* ===== Home：全息 Hero ===== */
+#home-view { position: relative; overflow: hidden; }
+.holo-aurora {
+  position: absolute; top: -200px; left: 50%; transform: translateX(-50%);
+  width: 920px; height: 620px; z-index: 0; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(128,0,255,.12), rgba(0,207,255,.09), rgba(255,0,128,.06), transparent);
+  filter: blur(32px); animation: aurora-drift 13s ease-in-out infinite alternate;
+}
+.home-logo .gxx { color: #1b1b2a; }
+.home-logo .abap {
+  background: var(--holo-grad); background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: holo-flow 8s linear infinite;
+}
+/* 安装框：彩虹流光边框 */
+.install-wrap { position: relative; z-index: 1; max-width: 560px; width: 100%; }
+.holo-border {
+  border-radius: 16px; padding: 2.5px;
+  background: conic-gradient(from var(--holo-angle), #ff0080,#ff8c00,#ffee00,#00d18f,#00cfff,#8000ff,#ff0080);
+  animation: holo-rotate 4.5s linear infinite;
+  box-shadow: 0 12px 32px rgba(128,0,255,.16);
+}
+.holo-border .install-box { background: #ffffff; border: none; border-radius: 13.5px; margin: 0; max-width: none; box-shadow: none; }
+/* 主按钮：全息渐变流动 */
+.btn-primary {
+  background: linear-gradient(90deg,#8000ff,#00cfff,#8000ff); background-size: 200% 100%;
+  animation: holo-flow 6s linear infinite;
+  border: none; color: #fff; box-shadow: 0 10px 26px rgba(128,0,255,.28);
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 14px 34px rgba(128,0,255,.38); }
+/* ===== Docs：全息点缀 ===== */
+.doc-section h1 { position: relative; border-bottom: 1px solid var(--border); }
+.doc-section h1::after {
+  content: ''; position: absolute; left: 0; bottom: -1px; height: 3px; width: 130px;
+  background: linear-gradient(90deg,#8000ff,#00cfff,transparent); border-radius: 2px;
+}
+.doc-section h1 .cmd-name, .doc-section h2 .cmd-name {
+  background: linear-gradient(90deg,#8000ff,#00cfff); color: #fff;
+  padding: 3px 14px; border-radius: 8px; box-shadow: 0 4px 14px rgba(128,0,255,.22);
+}
+.doc-section h2 { display: flex; align-items: center; gap: 10px; }
+.doc-section h2::before { content: ''; width: 4px; height: 22px; border-radius: 2px; background: linear-gradient(180deg,#8000ff,#00cfff); flex-shrink: 0; }
+/* 命令 chip：彩虹 hover */
+.cmd-chip:hover, .overview-card .cmd-chip:hover, .overview-table .cmd-chip:hover {
+  background: linear-gradient(90deg, rgba(128,0,255,.10), rgba(0,207,255,.10));
+  border-color: #8000ff; color: #6d28d9;
+}
+/* 侧边栏 active：彩虹渐变 */
+.sidebar-link.active {
+  color: #6d28d9; border-left-color: #8000ff;
+  background: linear-gradient(90deg, rgba(128,0,255,.08), rgba(0,207,255,.05));
+}
+/* 复制按钮：全息渐变 */
+.copy-btn { background: linear-gradient(90deg,#8000ff,#00cfff); border: none; }
+.copy-btn:hover { background: linear-gradient(90deg,#6d28d9,#00a8dd); }
+.copy-btn.copied { background: var(--green); }
+/* 代码块：hover 紫光描边 */
+.code-block { transition: box-shadow .3s; }
+.code-block:hover { box-shadow: 0 0 0 1.5px rgba(128,0,255,.35), 0 8px 24px rgba(128,0,255,.08); }
+/* JSON 返回 / callout / 链接 / 滚动条 */
+.json-return { border-left-color: #8000ff; }
+.json-return .label { color: #7c3aed; }
+.callout { background: rgba(124,58,237,.05); border-color: rgba(124,58,237,.16); }
+.callout strong { color: #7c3aed; }
+a { color: #6d28d9; }
+a:hover { color: #8b5cf6; }
+.docs-sidebar::-webkit-scrollbar-thumb, .docs-content::-webkit-scrollbar-thumb { background: linear-gradient(180deg,#8000ff,#00cfff); }
+.footer { background: #ffffff; }
+</style>
+</head>
+<body>
+
+<!-- ===== Home View ===== -->
+<div id="home-view">
+  <div class="holo-aurora"></div>
+  <div class="home-logo">
+    <span class="gxx">GXX</span><span class="abap">ABAP</span>
+  </div>
+  <p class="home-tagline">SAP ABAP ADT 命令行工具 — 从终端操作 SAP ABAP 开发系统</p>
+
+  <div class="install-wrap">
+    <div class="holo-border">
+      <div class="install-box">
+        <span class="prompt">$</span>
+        <span class="cmd-text"><span class="npm">npm</span> install -g <span class="pkg">gxx-abap</span></span>
+        <button class="copy-btn" onclick="copyInstall(this)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+          复制
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="home-actions">
+    <button class="btn-primary" onclick="showDocs('quickstart')">
+      查看文档
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- ===== Docs View ===== -->
+<div id="docs-view">
+  <div class="docs-header">
+    <div class="docs-header-left">
+      <button class="sidebar-toggle" onclick="toggleSidebar()" title="收起/展开侧边栏">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="docs-header-logo" onclick="showHome()">
+        <span class="gxx">GXX</span><span class="abap">ABAP</span>
+      </div>
+    </div>
+  </div>
+  <div class="docs-layout" id="docs-layout">
+    <!-- Sidebar -->
+    <aside class="docs-sidebar" id="sidebar">
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">开始</div>
+        <div class="sidebar-link" data-target="quickstart" onclick="showDocs('quickstart')">快速开始</div>
+        <div class="sidebar-link" data-target="overview" onclick="showDocs('overview')">命令总览</div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">命令大全</div>
+        <div class="sidebar-link" data-target="cmd-config" onclick="showDocs('cmd-config')">config</div>
+        <div class="sidebar-link" data-target="cmd-ping" onclick="showDocs('cmd-ping')">ping</div>
+        <div class="sidebar-link" data-target="cmd-status" onclick="showDocs('cmd-status')">status</div>
+        <div class="sidebar-link" data-target="cmd-clear" onclick="showDocs('cmd-clear')">clear</div>
+        <div class="sidebar-link" data-target="cmd-ls" onclick="showDocs('cmd-ls')">ls</div>
+        <div class="sidebar-link" data-target="cmd-cat" onclick="showDocs('cmd-cat')">cat</div>
+        <div class="sidebar-link" data-target="cmd-create" onclick="showDocs('cmd-create')">create</div>
+        <div class="sidebar-link" data-target="cmd-put" onclick="showDocs('cmd-put')">put</div>
+        <div class="sidebar-link" data-target="cmd-unlock" onclick="showDocs('cmd-unlock')">unlock</div>
+        <div class="sidebar-link" data-target="cmd-activate" onclick="showDocs('cmd-activate')">activate</div>
+        <div class="sidebar-link" data-target="cmd-transport" onclick="showDocs('cmd-transport')">transport</div>
+                <div class="sidebar-link" data-target="cmd-meta" onclick="showDocs('cmd-meta')">meta</div>
+        <div class="sidebar-link" data-target="cmd-refs" onclick="showDocs('cmd-refs')">refs</div>
+        <div class="sidebar-link" data-target="cmd-dump" onclick="showDocs('cmd-dump')">dump</div>
+        <div class="sidebar-link" data-target="cmd-message" onclick="showDocs('cmd-message')">message</div>
+        <div class="sidebar-link" data-target="cmd-texts" onclick="showDocs('cmd-texts')">texts</div>
+        <div class="sidebar-link" data-target="cmd-system" onclick="showDocs('cmd-system')">system</div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">参考</div>
+        <div class="sidebar-link" data-target="ref-json" onclick="showDocs('ref-json')">json</div>
+        <div class="sidebar-link" data-target="ref-version" onclick="showDocs('ref-version')">version</div>
+        <div class="sidebar-link" data-target="ref-help" onclick="showDocs('ref-help')">help</div>
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-title" onclick="toggleSection(this)">Skills</div>
+        <div class="sidebar-link" data-target="skill-gxx-abap" onclick="showDocs('skill-gxx-abap')">gxx-abap</div>
+      </div>
+    </aside>
+
+    <!-- Mobile overlay -->
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
+    <!-- Content -->
+    <main class="docs-content" id="docs-content">
+
+      <!-- ===== 快速开始 ===== -->
+      <section class="doc-section" id="quickstart">
+        <h1>快速开始</h1>
+        <div style="background:#fef2f2;border:1px solid #ef4444;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#991b1b;font-size:13px;">
+          <strong>⚠️ 版本说明：</strong>本 CLI 基于 <strong>SAP S/4HANA 757</strong> 版本开发，不同 SAP 版本的 ADT 接口可能存在差异，可能导致部分命令不可用或返回结果不同。
+        </div>
+        <h2>安装</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">npm</span> install -g <span class="tk-str">gxx-abap</span></pre>
+        </div>
+        <div class="callout">
+          <strong>提示：</strong>安装后如果提示 <code>'gxx-abap' 不是内部命令</code>，执行以下命令后重开 CMD：
+          <div class="code-block" style="margin-top: 8px;">
+            <div class="code-block-header"><span>cmd</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+            <pre><span class="tk-prompt">&gt;</span> <span class="tk-cmd">setx</span> <span class="tk-str">Path</span> <span class="tk-str">"%Path%;%APPDATA%npm"</span></pre>
+          </div>
+        </div>
+        <h2>配置连接</h2>
+        <p>连接信息保存在 <code>~/.gxx-abap/config.json</code>，配置一次后持久化保存。</p>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--host</span> <span class="tk-str">&lt;host&gt;</span> <span class="tk-flag">-u</span> <span class="tk-str">BC01</span> <span class="tk-flag">-p</span> <span class="tk-str">xxx</span> <span class="tk-flag">-c</span> <span class="tk-num">100</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--show</span></pre>
+        </div>
+        <h2>典型工作流</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-cmt"># 搜索对象</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ls</span> <span class="tk-str">Z*</span>
+
+<span class="tk-cmt"># 查看源码</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">zppr090</span>
+
+<span class="tk-cmt"># 创建新对象</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">create</span> <span class="tk-str">YTEST</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span>
+
+<span class="tk-cmt"># 写入源码</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">put</span> <span class="tk-str">YTEST</span> <span class="tk-str">mycode.abap</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span>
+
+<span class="tk-cmt"># 激活</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">activate</span> <span class="tk-str">YTEST</span></pre>
+        </div>
+      </section>
+
+      <!-- ===== 命令总览 ===== -->
+      <section class="doc-section" id="overview">
+        <h1>命令总览</h1>
+        <p>gxx-abap 提供 17 条命令，覆盖 SAP ABAP 开发全流程。所有命令均支持 <code>--json</code> 参数输出标准 JSON 格式。</p>
+
+        <table class="overview-table">
+          <thead><tr><th>命令</th><th>子命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-config')">config</span></td><td>--show, --host, -u, -p, -c</td><td>配置 SAP 连接信息</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-ping')">ping</span></td><td>--json</td><td>测试与 SAP 系统的连接</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-status')">status</span></td><td>--json</td><td>查看当前连接状态</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-clear')">clear</span></td><td>—</td><td>清除所有配置信息</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-ls')">ls</span></td><td>--json</td><td>搜索 ABAP 对象</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-cat')">cat</span></td><td>-t, --json</td><td>查看对象源码</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-create')">create</span></td><td>-t, --json</td><td>创建 ABAP 对象</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-put')">put</span></td><td>--transport, -t, --json</td><td>写入源码</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-activate')">activate</span></td><td>--json</td><td>激活对象</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-transport')">transport</span></td><td>--json</td><td>传输请求列表与对象关联查询</td></tr>
+                        <tr><td><span class="cmd-chip" onclick="showDocs('cmd-meta')">meta</span></td><td>--field, --json</td><td>查看表结构字段定义</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-refs')">refs</span></td><td>-t, --json</td><td>Where-Used 引用查询</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-dump')">dump</span></td><td>-t, --json</td><td>短转储（ST22）查询</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-message')">message</span></td><td>-t, --json</td><td>消息类消息号查询</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-texts')">texts</span></td><td>-t, --json</td><td>文本元素查询</td></tr>
+            <tr><td><span class="cmd-chip" onclick="showDocs('cmd-system')">system</span></td><td>--json</td><td>系统信息查询</td></tr>
+          </tbody>
+        </table>
+
+      </section>
+
+      <!-- ===== 连接管理分类 ===== -->
+      <section class="doc-section" id="cat-connect">
+        <h1>连接管理</h1>
+        <p>配置 SAP 系统连接、测试连通性、查看状态与清除配置。连接信息持久化到 <code>~/.gxx-abap/config.json</code>。</p>
+        <table class="param-table">
+          <thead><tr><th>命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>config</td><td>配置系统连接信息</td></tr>
+            <tr><td>ping</td><td>测试与 SAP 系统的连接</td></tr>
+            <tr><td>status</td><td>查看当前连接状态</td></tr>
+            <tr><td>clear</td><td>清除所有配置信息</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== config ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-config">
+        <h1><span class="cmd-name">config</span></h1>
+        <p>配置 SAP 连接信息，持久化到 <code>~/.gxx-abap/config.json</code>。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--host</span> <span class="tk-str">&lt;host&gt;</span> <span class="tk-flag">-u</span> <span class="tk-str">&lt;user&gt;</span> <span class="tk-flag">-p</span> <span class="tk-str">&lt;password&gt;</span> <span class="tk-flag">-c</span> <span class="tk-str">&lt;client&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--show</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>--host &lt;host&gt;</td><td><span class="req">首次</span></td><td>SAP 系统主机名或 IP</td></tr>
+            <tr><td>-u, --user &lt;user&gt;</td><td><span class="req">首次</span></td><td>用户名</td></tr>
+            <tr><td>-p, --password &lt;password&gt;</td><td><span class="req">首次</span></td><td>密码</td></tr>
+            <tr><td>-c, --client &lt;client&gt;</td><td><span class="opt">否</span></td><td>Client，默认 100</td></tr>
+            <tr><td>--port &lt;port&gt;</td><td><span class="opt">否</span></td><td>端口，默认 44300</td></tr>
+            <tr><td>--http</td><td><span class="opt">否</span></td><td>使用 HTTP（默认 HTTPS）</td></tr>
+            <tr><td>--show</td><td><span class="opt">—</span></td><td>查看当前配置（密码显示为 ******）</td></tr>
+            <tr><td>--json</td><td><span class="opt">—</span></td><td>JSON 输出</td></tr>
+          </tbody>
+        </table>
+        <h3>示例</h3>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-cmt"># 配置连接</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--host</span> <span class="tk-str">&lt;host&gt;</span> <span class="tk-flag">-u</span> <span class="tk-str">BC01</span> <span class="tk-flag">-p</span> <span class="tk-str">&lt;密码&gt;</span> <span class="tk-flag">-c</span> <span class="tk-num">100</span>
+
+<span class="tk-cmt"># 查看当前配置</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--show</span>
+
+<span class="tk-cmt"># JSON 输出</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--show</span> <span class="tk-flag">--json</span></pre>
+        </div>
+      </section>
+
+      <!-- ===== ping ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-ping">
+        <h1><span class="cmd-name">ping</span></h1>
+        <p>测试与 SAP 系统的连接。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ping</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ping</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <div class="json-return">
+          <div class="label">JSON 返回</div>
+          <code>{ status, sid, basisVersion, host, port, user }</code>
+        </div>
+      </section>
+
+      <!-- ===== status ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-status">
+        <h1><span class="cmd-name">status</span></h1>
+        <p>查看当前连接状态。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">status</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">status</span> <span class="tk-flag">--json</span></pre>
+        </div>
+      </section>
+
+      <!-- ===== clear ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-clear">
+        <h1><span class="cmd-name">clear</span></h1>
+        <p>清除所有配置信息（删除 <code>~/.gxx-abap/config.json</code>）。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">clear</span></pre>
+        </div>
+        <div class="callout">
+          <strong>注意：</strong>此操作不可逆，会删除所有已保存的连接配置。
+        </div>
+      </section>
+
+      <!-- ===== 对象操作分类 ===== -->
+      <section class="doc-section" id="cat-object">
+        <h1>对象操作</h1>
+        <p>搜索、查看、创建、写入和激活 ABAP 对象，支持程序、类、接口、表、函数等多种类型。</p>
+        <table class="param-table">
+          <thead><tr><th>命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>ls</td><td>搜索 ABAP 对象</td></tr>
+            <tr><td>cat</td><td>查看对象源码</td></tr>
+            <tr><td>create</td><td>创建 ABAP 对象</td></tr>
+            <tr><td>put</td><td>写入源码</td></tr>
+            <tr><td>activate</td><td>激活对象</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== ls ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-ls">
+        <h1><span class="cmd-name">ls</span></h1>
+        <p>搜索 ABAP 对象。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ls</span> <span class="tk-str">&lt;pattern&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ls</span> <span class="tk-str">Z*</span>                   <span class="tk-cmt"># 搜索所有 Z 开头对象</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ls</span> <span class="tk-str">ZPPR090</span>              <span class="tk-cmt"># 精确搜索</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ls</span> <span class="tk-str">Z*</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;pattern&gt;</td><td><span class="req">是</span></td><td>对象名称，支持 <code>*</code> 通配符</td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回</div>
+          <code>{ search, count, objects: [{ name, type }] }</code>
+        </div>
+        <div class="callout">
+          <strong>type 映射：</strong><code>PROG/P</code> 程序、<code>CLAS/OC</code> 类、<code>INTF/OI</code> 接口、<code>TABL/DT</code> 表、<code>FUGR/FF</code> 函数模块、<code>DDLS/DF</code> CDS 视图
+        </div>
+      </section>
+
+      <!-- ===== cat ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-cat">
+        <h1><span class="cmd-name">cat</span></h1>
+        <p>查看对象源码。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">&lt;对象名&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">zppr090</span>                          <span class="tk-cmt"># 自动识别为程序</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">zcl_hello</span> <span class="tk-flag">-t</span> <span class="tk-str">class</span>               <span class="tk-cmt"># 指定为类</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">ekko</span> <span class="tk-flag">-t</span> <span class="tk-str">table</span>                    <span class="tk-cmt"># 表（必须手动指定）</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">zppr090</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span> <span class="tk-flag">--json</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">cat</span> <span class="tk-str">ZTEST</span> <span class="tk-flag">-t</span> <span class="tk-str">fm</span>                        <span class="tk-cmt"># 函数模块（自动发现函数组）</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;path&gt;</td><td><span class="req">是</span></td><td>对象名</td></tr>
+            <tr><td>-t, --type &lt;type&gt;</td><td><span class="opt">否</span></td><td>类型，不传则自动识别</td></tr>
+          </tbody>
+        </table>
+        <div class="callout">
+          <strong>-t 可选值：</strong><code>class</code> <code>program</code> <code>interface</code> <code>table</code> <code>fm</code>
+        </div>
+        <h3>自动识别规则</h3>
+        <ul>
+          <li><code>CL_*</code> / <code>ZCL_*</code> → <code>class</code></li>
+          <li><code>IF_*</code> / <code>ZIF_*</code> → <code>interface</code></li>
+          <li>其他 → <code>program</code></li>
+        </ul>
+      </section>
+
+      <!-- ===== create ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-create">
+        <h1><span class="cmd-name">create</span></h1>
+        <p>创建 ABAP 对象。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">create</span> <span class="tk-str">&lt;name&gt;</span> <span class="tk-flag">-t</span> <span class="tk-str">&lt;type&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">create</span> <span class="tk-str">YTEST</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">create</span> <span class="tk-str">ZCL_HELLO</span> <span class="tk-flag">-t</span> <span class="tk-str">class</span> <span class="tk-flag">--description</span> <span class="tk-str">"Hello World"</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">create</span> <span class="tk-str">ZIF_MY_INTF</span> <span class="tk-flag">-t</span> <span class="tk-str">interface</span> <span class="tk-flag">--package</span> <span class="tk-str">ZAI</span> <span class="tk-flag">--transport</span> <span class="tk-str">DS4K939701</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;name&gt;</td><td><span class="req">是</span></td><td>对象名称（自动转大写）</td></tr>
+            <tr><td>-t, --type &lt;type&gt;</td><td><span class="req">是</span></td><td><code>class</code> <code>program</code> <code>interface</code></td></tr>
+            <tr><td>--description &lt;desc&gt;</td><td><span class="opt">否</span></td><td>对象描述</td></tr>
+            <tr><td>--package &lt;pkg&gt;</td><td><span class="opt">否</span></td><td>包名，默认 <code>$TMP</code></td></tr>
+            <tr><td>--transport &lt;tr&gt;</td><td><span class="opt">否</span></td><td>传输任务号（非请求号，SE10 展开可见）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== put ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-put">
+        <h1><span class="cmd-name">put</span></h1>
+        <p>写入源码（锁定 → 写入 → 解锁，写入后自动调用解锁接口清理残留锁）。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">put</span> <span class="tk-str">&lt;对象名&gt;</span> <span class="tk-str">&lt;文件路径&gt;</span> <span class="tk-flag">-t</span> <span class="tk-str">&lt;type&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">cat</span> <span class="tk-str">mycode.abap</span> | <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">put</span> <span class="tk-str">ztest</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span>    <span class="tk-cmt"># 管道传入</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">put</span> <span class="tk-str">ztest</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span> <span class="tk-flag">--force-unlock</span>       <span class="tk-cmt"># 强制解锁后写入</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">put</span> <span class="tk-str">ZTEST</span> <span class="tk-flag">-t</span> <span class="tk-str">fm</span>                        <span class="tk-cmt"># 函数模块（自动发现函数组）</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;path&gt;</td><td><span class="req">是</span></td><td>对象名</td></tr>
+            <tr><td>[file]</td><td><span class="opt">否</span></td><td>源码文件路径，不传则从 stdin 读取</td></tr>
+            <tr><td>-t, --type &lt;type&gt;</td><td><span class="opt">否</span></td><td><code>class</code> <code>program</code> <code>interface</code> <code>fm</code></td></tr>
+            <tr><td>--force-unlock</td><td><span class="opt">否</span></td><td>写入前先强制解除残留锁</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== unlock ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-unlock">
+        <h1><span class="cmd-name">unlock</span></h1>
+        <p>调用 AI_PUT_UNLOCK 接口释放对象锁（SE80/SE37 编辑残留锁）。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">unlock</span> <span class="tk-str">&lt;对象名&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">unlock</span> <span class="tk-str">ZPPR090</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">unlock</span> <span class="tk-str">ZZZ_TEST_API3</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;name&gt;</td><td><span class="req">是</span></td><td>对象名</td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回</div>
+          <code>{ STATUS, MSGTXT }</code>
+        </div>
+      </section>
+
+      <!-- ===== activate ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-activate">
+        <h1><span class="cmd-name">activate</span></h1>
+        <p>激活对象（含语法检查，激活失败时返回具体错误行号和消息）。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">activate</span> <span class="tk-str">&lt;对象名&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">activate</span> <span class="tk-str">zcl_hello</span> <span class="tk-flag">-t</span> <span class="tk-str">class</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">activate</span> <span class="tk-str">zppr090</span> <span class="tk-flag">-t</span> <span class="tk-str">program</span> <span class="tk-flag">--json</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">activate</span> <span class="tk-str">ZTEST</span> <span class="tk-flag">-t</span> <span class="tk-str">fm</span>                   <span class="tk-cmt"># 函数模块（自动发现函数组）</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;path&gt;</td><td><span class="req">是</span></td><td>对象名</td></tr>
+            <tr><td>-t, --type &lt;type&gt;</td><td><span class="opt">否</span></td><td><code>class</code> <code>program</code> <code>interface</code> <code>fm</code></td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回</div>
+          <code>{ success, checkExecuted, activationExecuted, errors: [{ type, line, text }] }</code>
+        </div>
+      </section>
+
+      <!-- ===== transport ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-transport">
+        <h1><span class="cmd-name">transport</span></h1>
+        <p>管理传输请求。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">transport</span> <span class="tk-cmd">list</span>               <span class="tk-cmt"># 列出当前用户的传输请求</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">transport</span> <span class="tk-cmd">object</span> <span class="tk-str">&lt;对象名&gt;</span>    <span class="tk-cmt"># 查看对象关联的传输请求</span></pre>
+        </div>
+        <h3>子命令</h3>
+        <table class="param-table">
+          <thead><tr><th>子命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>list</td><td>列表（请求号、状态、负责人、描述）</td></tr>
+            <tr><td>object &lt;对象名&gt;</td><td>查询对象绑定的传输请求号及状态</td></tr>
+          </tbody>
+        </table>
+        <h3>示例</h3>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">transport</span> <span class="tk-cmd">list</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">transport</span> <span class="tk-cmd">object</span> <span class="tk-str">ZPPR090</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">transport</span> <span class="tk-cmd">list</span> <span class="tk-flag">--json</span></pre>
+        </div>
+      </section>
+
+      <!-- ===== 对象查询分类 ===== -->
+      <section class="doc-section" id="cat-query">
+        <h1>对象查询</h1>
+        <p>查询表结构、对象引用关系和短转储信息。</p>
+        <table class="param-table">
+          <thead><tr><th>命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>meta</td><td>查看表结构、结构字段或数据元素属性</td></tr>
+            <tr><td>refs</td><td>Where-Used 引用查询</td></tr>
+            <tr><td>dump</td><td>查看短转储（ST22 DUMP）</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== meta ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-meta">
+        <h1><span class="cmd-name">meta</span></h1>
+        <p>查看表结构、结构字段或数据元素属性。表/结构支持 <code>include</code> 自动递归展开。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">meta</span> <span class="tk-str">&lt;名称&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">meta</span> <span class="tk-str">ekko</span>                 <span class="tk-cmt"># 表 — 字段列表（含类型、长度、描述）</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">meta</span> <span class="tk-str">ZAIS_GET_EKPO</span>        <span class="tk-cmt"># 结构 — 字段列表</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">meta</span> <span class="tk-str">ZE_SCHEMA</span>            <span class="tk-cmt"># 数据元素 — 类型、域、标签</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">meta</span> <span class="tk-str">ekko</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;name&gt;</td><td><span class="req">是</span></td><td>表名、结构名或数据元素名</td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回（表/结构）</div>
+          <code>{ table, fields: [{ field, dataElement, type, length, decimals, description }] }</code>
+        </div>
+        <div class="json-return">
+          <div class="label">JSON 返回（数据元素）</div>
+          <code>{ name, description, dataType, typeName, length, shortLabel }</code>
+        </div>
+      </section>
+
+      <!-- ===== refs ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-refs">
+        <h1><span class="cmd-name">refs</span></h1>
+        <p>Where-Used 引用查询，查找引用了指定对象的所有程序、类、函数等。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">refs</span> <span class="tk-str">&lt;对象名&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">refs</span> <span class="tk-str">ZBCT_INTF_MCP</span> <span class="tk-flag">-t</span> <span class="tk-str">table</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">refs</span> <span class="tk-str">ZDOWNLOAD_ABAP</span> <span class="tk-flag">--json</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">refs</span> <span class="tk-str">ZTEST</span> <span class="tk-flag">-t</span> <span class="tk-str">fm</span>                       <span class="tk-cmt"># 函数模块（自动发现函数组）</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;name&gt;</td><td><span class="req">是</span></td><td>对象名</td></tr>
+            <tr><td>-t, --type &lt;type&gt;</td><td><span class="opt">否</span></td><td><code>program</code> <code>class</code> <code>table</code> <code>interface</code> <code>function</code> <code>fm</code></td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回</div>
+          <code>{ object, type, count, references: [{ name, type, description, uri }] }</code>
+        </div>
+        <div class="callout">
+          <strong>类型映射：</strong><code>PROG/P</code> 程序、<code>PROG/I</code> Include、<code>CLAS/OC</code> 类、<code>FUGR/FF</code> 函数模块、<code>TABL/DT</code> 表
+        </div>
+      </section>
+
+      <!-- ===== dump ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-dump">
+        <h1><span class="cmd-name">dump</span></h1>
+        <p>查看短转储（ST22 DUMP）。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">dump</span>                         <span class="tk-cmt"># 列出所有 DUMP</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">dump</span> <span class="tk-str">&lt;ID&gt;</span>                    <span class="tk-cmt"># 查看指定 DUMP 详情</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">dump</span> <span class="tk-flag">--from</span> <span class="tk-num">20250701</span>         <span class="tk-cmt"># 指定起始时间过滤</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">dump</span> <span class="tk-str">&lt;ID&gt;</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>[id]</td><td><span class="opt">否</span></td><td>DUMP ID（14位时间戳），不传则列出所有</td></tr>
+            <tr><td>--from &lt;time&gt;</td><td><span class="opt">否</span></td><td>起始时间 <code>YYYYMMDDHHMMSS</code></td></tr>
+          </tbody>
+        </table>
+        <h3>JSON 返回字段（详情）</h3>
+        <table class="param-table">
+          <thead><tr><th>字段</th><th>类型</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>dumpId</td><td>string</td><td>DUMP ID</td></tr>
+            <tr><td>error</td><td>string</td><td>错误类型（如 ASSIGN_TYPE_CONFLICT）</td></tr>
+            <tr><td>program</td><td>string</td><td>出错程序名</td></tr>
+            <tr><td>author</td><td>string</td><td>用户</td></tr>
+            <tr><td>datetime</td><td>string</td><td>发生时间（ISO 8601）</td></tr>
+            <tr><td>termination</td><td>object</td><td>{ uri, line } — 出错源码位置</td></tr>
+            <tr><td>chapters</td><td>object</td><td>按分类分组的章节</td></tr>
+            <tr><td>chapterList</td><td>array</td><td>扁平列表 [{ title, category, line }]</td></tr>
+            <tr><td>content</td><td>string</td><td>原始正文</td></tr>
+            <tr><td>cleanedContent</td><td>string</td><td>清洗后正文（去边框、空格、空行）</td></tr>
+            <tr><td>sections</td><td>array</td><td>结构化解析 [{ title, body }]，63 章节</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== 开发辅助分类 ===== -->
+      <section class="doc-section" id="cat-aux">
+        <h1>开发辅助</h1>
+        <p>消息类查询、文本元素管理和系统信息查看。</p>
+        <table class="param-table">
+          <thead><tr><th>命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>message</td><td>查看消息类的消息文本</td></tr>
+            <tr><td>texts</td><td>查看或修改文本元素</td></tr>
+            <tr><td>system</td><td>查看系统信息</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ===== message ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-message">
+        <h1><span class="cmd-name">message</span></h1>
+        <p>查看消息类的消息文本。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">message</span> <span class="tk-str">&lt;消息类名&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">message</span> <span class="tk-num">00</span>                <span class="tk-cmt"># 系统消息类（897 条）</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">message</span> <span class="tk-str">ZPP_MSG001</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;name&gt;</td><td><span class="req">是</span></td><td>消息类名（如 <code>00</code>、<code>ZPP_MSG001</code>）</td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回</div>
+          <code>{ name, count, messages: [{ number, text }] }</code>
+        </div>
+      </section>
+
+      <!-- ===== texts ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-texts">
+        <h1><span class="cmd-name">texts</span></h1>
+        <p>查看或修改文本元素（选择文本、文本符号、标题）。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-cmt"># 查看</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">texts</span> <span class="tk-str">&lt;对象名&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">texts</span> <span class="tk-str">ZDOWNLOAD_ABAP</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">texts</span> <span class="tk-str">zcl_hello</span> <span class="tk-flag">-t</span> <span class="tk-str">class</span> <span class="tk-flag">--json</span>
+
+<span class="tk-cmt"># 写入</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">texts</span> <span class="tk-str">&lt;对象名&gt;</span> <span class="tk-flag">--set</span> <span class="tk-str">selections</span> <span class="tk-flag">--file</span> <span class="tk-str">&lt;路径&gt;</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">echo</span> <span class="tk-str">"P_NAME  =项目名"</span> | <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">texts</span> <span class="tk-str">YTEST</span> <span class="tk-flag">--set</span> <span class="tk-str">selections</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">texts</span> <span class="tk-str">YTEST</span> <span class="tk-flag">--set</span> <span class="tk-str">selections</span> <span class="tk-flag">--file</span> <span class="tk-str">sel.txt</span> <span class="tk-flag">--force-unlock</span></pre>
+        </div>
+        <h3>参数</h3>
+        <table class="param-table">
+          <thead><tr><th>参数</th><th>必填</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>&lt;name&gt;</td><td><span class="req">是</span></td><td>对象名</td></tr>
+            <tr><td>-t, --type &lt;type&gt;</td><td><span class="opt">否</span></td><td><code>program</code> <code>class</code> <code>function</code></td></tr>
+            <tr><td>--json</td><td><span class="opt">—</span></td><td>JSON 输出（查看模式）</td></tr>
+            <tr><td>--set &lt;sub&gt;</td><td><span class="req">写入</span></td><td>子对象：<code>selections</code> <code>symbols</code> <code>headings</code></td></tr>
+            <tr><td>--file &lt;path&gt;</td><td><span class="opt">写入</span></td><td>文件路径，不传则从 stdin 读取</td></tr>
+            <tr><td>--force-unlock</td><td><span class="opt">写入</span></td><td>写入前强制解除 GUI 残留锁</td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回（查看）</div>
+          <code>{ name, selections: [{ key, text }], symbols: [...], headings: [...] }</code>
+        </div>
+        <div class="callout">
+          <strong>写入文件格式：</strong>每行 <code>KEY  =VALUE</code>（KEY 和 <code>=</code> 间用空格补齐对齐）
+        </div>
+        <div class="callout">
+          <strong>symbols 写入文件格式：</strong>首行 <code>@MaxLength:N</code>（N=最大文本字节数），后续行 <code>KEY=VALUE</code>（单等号无空格）。
+          <div class="code-block" style="margin-top:8px">
+            <div class="code-block-header"><span>txt</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+            <pre>@MaxLength:12
+001=公司代码
+002=公司名称</pre>
+          </div>
+          <strong>注意：</strong>symbols 只支持<strong>更新</strong>已存在的文本符号，不支持新建（DS 512）。新建需通过 SE80。<code>selections</code> 和 <code>headings</code> 无此限制。
+        </div>
+      </section>
+
+      <!-- ===== system ===== -->
+      <section class="doc-section cmd-anchor" id="cmd-system">
+        <h1><span class="cmd-name">system</span></h1>
+        <p>查看系统信息。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">system</span> <span class="tk-cmd">info</span>               <span class="tk-cmt"># 基本信息</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">system</span> <span class="tk-cmd">components</span>         <span class="tk-cmt"># 已安装组件</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">system</span> <span class="tk-cmd">components</span> <span class="tk-flag">--json</span></pre>
+        </div>
+        <h3>子命令</h3>
+        <table class="param-table">
+          <thead><tr><th>子命令</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>info</td><td>SID、SAP_BASIS 版本、Kernel 版本、服务器名</td></tr>
+            <tr><td>components</td><td>已安装 SAP 组件（ID、Release、Patch、SP Level、描述）</td></tr>
+          </tbody>
+        </table>
+        <div class="json-return">
+          <div class="label">JSON 返回（info）</div>
+          <code>{ sid, basisVersion, kernel, serverName }</code>
+        </div>
+        <div class="json-return">
+          <div class="label">JSON 返回（components）</div>
+          <code>{ count, components: [{ id, release, patch, spLevel, description }] }</code>
+        </div>
+      </section>
+
+      <!-- ===== JSON 输出参考 ===== -->
+      <section class="doc-section" id="ref-json">
+        <h1>JSON 输出</h1>
+        <p>所有命令均支持 <code>--json</code> 参数，输出标准 JSON 格式，方便脚本和 AI Agent 调用。</p>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-cmt"># 用 jq 提取表结构第一个字段</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">meta</span> <span class="tk-str">ekko</span> <span class="tk-flag">--json</span> | <span class="tk-cmd">jq</span> .fields[<span class="tk-num">0</span>]
+
+<span class="tk-cmt"># 提取 DUMP 出错位置</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">dump</span> <span class="tk-num">20260716</span>... <span class="tk-flag">--json</span> | <span class="tk-cmd">jq</span> .termination</pre>
+        </div>
+      </section>
+
+      <!-- ===== --version ===== -->
+      <section class="doc-section" id="ref-version">
+        <h1><span class="cmd-name">version</span></h1>
+        <p>查看当前安装的 gxx-abap 版本号。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-flag">--version</span></pre>
+        </div>
+        <h2>输出示例</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>输出</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre>1.0.18</pre>
+        </div>
+        <div class="callout">
+          <strong>提示：</strong>也可使用简写 <code>-V</code>，效果相同。
+        </div>
+      </section>
+
+      <!-- ===== --help ===== -->
+      <section class="doc-section" id="ref-help">
+        <h1><span class="cmd-name">help</span></h1>
+        <p>查看所有可用命令及简要说明。在任意子命令后追加 <code>--help</code> 可查看该命令的详细帮助。</p>
+        <h2>用法</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>bash</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><span class="tk-cmt"># 查看全局帮助</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-flag">--help</span>
+
+<span class="tk-cmt"># 查看某个命令的详细帮助</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">config</span> <span class="tk-flag">--help</span>
+<span class="tk-prompt">$</span> <span class="tk-cmd">gxx-abap</span> <span class="tk-cmd">ls</span> <span class="tk-flag">--help</span></pre>
+        </div>
+        <div class="callout">
+          <strong>提示：</strong>也可使用简写 <code>-h</code>，效果相同。
+        </div>
+      </section>
+
+      <!-- ===== Skill: gxx-abap ===== -->
+      <section class="doc-section" id="skill-gxx-abap">
+        <h1>gxx-abap Skill</h1>
+        <a href="https://raw.githubusercontent.com/gxx950224/gxx-abap/refs/heads/main/skills/gxx-abap.zip" download style="display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:500;margin-bottom:20px;">⬇ 下载 gxx-abap.zip</a>
+        <p>gxx-abap 项目内置了 Agent Skill，供 AI Agent 自动调用 gxx-abap CLI 操作 SAP ABAP 开发系统。</p>
+
+        <h2>文件结构</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>text</span></div>
+          <pre>skills/gxx-abap/
+├── SKILL.md                  # Agent 操作指南
+└── references/
+    └── commands.md           # 17 条命令完整参考</pre>
+        </div>
+
+        <h2>SKILL.md</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>markdown</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><code>---
+name: gxx-abap
+description: This skill should be used when the user needs to operate a SAP ABAP development system from the terminal via the ABAP Development Tools (ADT) CLI — the `gxx-abap` command. It covers listing/searching objects, reading or writing source code, activating, syntax-checking, managing transports, inspecting table/structure metadata, where-used references, short dumps, message classes, and text elements. Trigger on requests to create, edit, activate, check, or inspect ABAP objects (programs, classes, interfaces, function modules, tables, CDS views) or to query ABAP system/transport/dump information.
+category: software-development
+agent_created: true
+---
+
+# gxx-abap — Agent 操作指南
+
+通过 `gxx-abap` 命令行工具（SAP ABAP Development Tools CLI）从终端操作 SAP ABAP 开发系统。所有命令均支持 `--json` 输出，Agent 使用时应**始终加 `--json`**，解析输出做决策，再将关键信息格式化呈现给用户。
+
+## 何时使用本 skill
+
+- 用户要求创建 / 修改 / 激活 / 检查 / 查看 ABAP 对象（程序、类、接口、函数组与函数模块、表、CDS 视图）
+- 用户要求搜索对象（`ls`）、查看源码（`cat`）、查表字段与结构（`meta`）、Where-Used 引用（`refs`）、短转储（`dump`）、消息类（`message`）、文本元素（`texts`）
+- 用户要求管理传输请求（`transport`）、查看系统信息（`system`）、排查程序 DUMP
+
+## 核心规则（必须遵守）
+
+1. **始终用 `--json`** — 所有命令都加 `--json`，解析输出做决策，不要把原始 JSON 直接展示给用户。
+2. **创建对象先搜索** — 用 `ls` 确认对象不存在再 `create`，不要用 `create` 创建已存在的对象。
+3. **写入源码标准流程** — `ls` 检查 → `create` → 写本地文件 → `put` 写入 SAP → `activate` 激活 → 看错误修正后重试。
+4. **修改已有对象流程** — `cat` 读源码 → 修改 → `put` 写入 → `activate` 激活。
+5. **排查故障用 `dump`** — 程序 DUMP 后用 `gxx-abap dump` 查详情，从 `termination.line` 定位出错行。
+6. **文本元素格式** — 首行 `@MaxLength:N`（最大文本字节数），后续行 `KEY=VALUE`（单等号）。selections/headings 无 MaxLength 头。symbols 只支持更新已存在条目，不能新建（DS 512）。
+7. **传输号是任务号不是请求号** — `transport list` 返回值是请求号；`create --transport` 需要的是其下的**任务号**（在 SE10 展开节点确认）。
+8. **查看表字段用 `meta` 不用 `cat`** — `meta` 直接返回结构化字段列表；`cat -t table` 只返回表头定义源码，不直接。
+9. **`put` 自动解锁** — 写入后在 finally 块自动调用解锁接口，不用手动调解锁；残留锁可用 `--force-unlock`。
+10. **涉及修改写入的命令必须向用户确认** — 特别是 `create`、`put`、`texts --set`、`activate`，执行前展示变更概要并获得明确许可。
+
+## 禁忌清单
+
+- ❌ 不要用 `create` 创建已存在的对象 —— 先 `ls` 检查。
+- ❌ 不要在未获用户确认时执行 `put` —— 向用户展示变更概要并等待确认。
+- ❌ 不要把请求号当任务号用 —— `transport list` 返回值是请求号，`create --transport` 需要的是其下的任务号。
+- ❌ 不要把 `--json` 原始输出直接展示给用户 —— 提取关键信息后格式化呈现。
+- ❌ 不要对 `$TMP` 包中的对象分配正式传输号 —— `$TMP` 对象不需要也不会被传输。
+- ❌ 不要在一条命令里混用 `--json` 和交互式参数 —— 需要密码时建议用预先配置好的连接。
+- ❌ 查看表字段不要用 `cat -t table` —— 用 `meta` 直接获取结构化字段列表。
+
+## 标准工作流
+
+### 新建对象
+```
+ls &lt;pattern&gt; --json          # 确认不存在
+create &lt;name&gt; -t &lt;type&gt; --description &lt;desc&gt; --package &lt;pkg&gt; --transport &lt;task&gt; --json
+# 写本地源码文件
+put &lt;name&gt; &lt;file&gt; -t &lt;type&gt; --json
+activate &lt;name&gt; -t &lt;type&gt; --json
+check &lt;name&gt; -t &lt;type&gt; --json   # 若有错误，修正后重试
+```
+
+### 修改已有对象
+```
+cat &lt;name&gt; -t &lt;type&gt; --json   # 读取源码
+# 修改本地副本
+put &lt;name&gt; &lt;file&gt; -t &lt;type&gt; --json
+activate &lt;name&gt; -t &lt;type&gt; --json
+```
+
+### 故障排查（程序 DUMP）
+```
+dump --json                       # 列表，定位目标 dump
+dump &lt;14位时间戳ID&gt; --json        # 详情，看 termination.line
+```
+
+## 确认要求
+
+涉及修改写入的命令（`create`、`put`、`texts --set`、`activate`）执行前，必须向用户展示变更概要（对象名、类型、包、传输任务号、改动点），并获得明确许可后再执行。对外操作同样遵循此原则。
+
+## 命令参考
+
+完整的 17 条命令清单、参数说明与 JSON 输出结构见 `references/commands.md`。需要具体命令的详细参数、示例或返回字段时，读取该文件。
+
+环境信息：
+
+- CLI 工具：`gxx-abap`（全局安装）
+- 类型映射：`PROG/P`=程序，`CLAS/OC`=类，`INTF/OI`=接口，`FUGR/F`=函数组（注意 `ls` 搜不到），`FUGR/FF`=函数模块，`TABL/DT`=表，`DDLS/DF`=CDS 视图
+- 自动识别规则：`CL_*`/`ZCL_*`→class，`IF_*`/`ZIF_*`→interface，`SAPL*`/短名→function，其他→program
+- **函数模块 (fm)**：用 `-t fm`，函数组名自动搜索发现（也可手动 `--group`）。创建只能通过 SE37，CLI 仅支持读写源码与激活。接口签名（`*"` 注释块）不能 PUT 写入
+</code></pre>
+        </div>
+
+        <h2>commands.md</h2>
+        <div class="code-block">
+          <div class="code-block-header"><span>markdown</span><span class="copy-code" onclick="copyCode(this)">复制</span></div>
+          <pre><code># gxx-abap 命令完整参考
+
+`gxx-abap` 是 SAP ABAP Development Tools（ADT）CLI，从终端操作 ABAP 开发系统。所有命令均支持 `--json`。下文按类别列出全部命令的参数、示例与返回结构。
+
+## 连接管理
+
+### ping — 测试连接
+```bash
+gxx-abap ping --json
+# 返回: { status, sid, basisVersion, host, port, user }
+```
+
+### status — 连接状态
+```bash
+gxx-abap status --json
+```
+
+---
+
+## 对象操作
+
+### ls — 搜索 ABAP 对象
+```bash
+gxx-abap ls &lt;pattern&gt; --json
+gxx-abap ls "Z*" --json
+gxx-abap ls "ZPPR090" --json
+# 返回: { search, count, objects: [{ name, type }] }
+```
+`*` 通配符。类型映射：`PROG/P`=程序，`CLAS/OC`=类，`INTF/OI`=接口，`FUGR/FF`=函数模块，`TABL/DT`=表，`DDLS/DF`=CDS 视图。（注：`ls` 搜不到 FUGR/F 函数组）
+
+### cat — 查看对象源码
+```bash
+gxx-abap cat &lt;对象名&gt; --json
+gxx-abap cat zcl_hello -t class --json
+# 返回: { path, type, source }
+```
+| 参数 | 说明 |
+|------|------|
+| `&lt;path&gt;` | 对象名 |
+| `-t, --type &lt;type&gt;` | `class` `program` `interface` `table` `function` |
+
+**自动识别规则**：`CL_*`/`ZCL_*`→class，`IF_*`/`ZIF_*`→interface，`SAPL*`/短名→function，其他→program。
+
+### create — 创建 ABAP 对象
+```bash
+gxx-abap create &lt;name&gt; -t &lt;type&gt; --description &lt;desc&gt; --json
+gxx-abap create ZCL_TEST -t class --description "测试类" --package ZAI --transport DS4K939701 --json
+```
+| 参数 | 说明 |
+|------|------|
+| `&lt;name&gt;` | 对象名，自动转大写 |
+| `-t, --type &lt;type&gt;` | **必填**：`class` `program` `interface` `function` |
+| `--description` | 描述 |
+| `--package` | 包名，默认 `$TMP` |
+| `--transport` | 传输**任务号**（非请求号） |
+
+### put — 写入源码（锁定→写入→解锁）
+```bash
+gxx-abap put &lt;对象名&gt; &lt;文件路径&gt; -t &lt;type&gt; --json
+cat code.abap | gxx-abap put ztest -t program --json
+# 强制解锁后写入（清除残留锁）
+gxx-abap put ztest -t program --force-unlock
+gxx-abap put ZTEST -t fm -g ZZZ_TEST_API3            # 函数模块 --json
+gxx-abap put ztest -t program --transport DS4K939701  # 指定传输号写入
+```
+| 参数 | 说明 |
+|------|------|
+| `&lt;path&gt;` | 对象名 |
+| `[file]` | 源码文件，不传从 stdin 读取 |
+| `-t, --type &lt;type&gt;` | `class` `program` `interface` `fm` |
+| `--transport &lt;tr&gt;` | 传输请求号（不指定则自动检测） |
+| `--force-unlock` | 写入前强制解锁 |
+
+写入后在 `finally` 块自动调用 `/sap/bc/zsx_intf_serv/zsx_oa?INTFID=AI_PUT_UNLOCK` 解锁。
+
+### unlock — 释放对象锁
+```bash
+gxx-abap unlock &lt;对象名&gt; --json
+gxx-abap unlock ZPPR090 --json
+# 返回: { STATUS, MSGTXT }
+```
+调用 AI_PUT_UNLOCK 接口释放 SE80/SE37 编辑残留锁。
+
+---
+
+### activate### activate — 激活对象（含语法检查）
+```bash
+gxx-abap activate &lt;对象名&gt; -t &lt;type&gt; --json
+# 返回: { success, checkExecuted, activationExecuted, errors: [{ type, line, text }] }
+```
+`type` 可为 `E`=错误，`W`=警告。激活失败时返回具体行号和消息。
+
+---
+
+## 传输管理
+
+### transport — 管理传输请求
+```bash
+gxx-abap transport list --json       # 列出当前用户的传输请求
+gxx-abap transport object &lt;对象名&gt; --json  # 查看对象关联的传输请求
+```
+
+---
+
+## 代码检查
+
+### meta — 查看表结构/结构字段/数据元素
+```bash
+gxx-abap meta &lt;名称&gt; --json
+gxx-abap meta MARC --field PMATN --json
+# 表/结构返回: { table, fields: [{ field, dataElement, type, length, decimals, description }] }
+# 数据元素返回: { name, description, dataType, typeName, length, shortLabel }
+```
+自动判断表、结构还是数据元素。支持 include 展开。`--field` 可按字段名过滤，避免大表全量输出截断。
+
+### refs — Where-Used 引用查询
+```bash
+gxx-abap refs &lt;对象名&gt; -t &lt;type&gt; --json
+# 返回: { object, type, count, references: [{ name, type, description, uri }] }
+```
+
+### dump — 短转储查看
+```bash
+gxx-abap dump --json                                # 列表
+gxx-abap dump &lt;14位时间戳ID&gt; --json                  # 详情
+gxx-abap dump --from 20250701 --json                 # 按时间过滤
+```
+详情返回：`{ dumpId, error, exception, program, author, datetime, termination: { uri, line }, chapters, chapterList, content, cleanedContent, sections }`。
+
+---
+
+## 开发辅助
+
+### message — 查看消息类
+```bash
+gxx-abap message &lt;消息类名&gt; --json
+# 返回: { name, count, messages: [{ number, text }] }
+```
+
+### texts — 查看/修改文本元素
+```bash
+# 查看
+gxx-abap texts &lt;对象名&gt; -t &lt;type&gt; --json
+# 返回: { name, type, selections: [{ key, text }], symbols: [...], headings: [...] }
+
+# 写入
+gxx-abap texts &lt;对象名&gt; --set &lt;sub&gt; --file &lt;路径&gt;
+echo "KEY  =VALUE" | gxx-abap texts ZTEST --set selections
+```
+| 参数 | 说明 |
+|------|------|
+| `-t, --type` | `program` `class` `function` |
+| `--set &lt;sub&gt;` | 写入子对象：`selections` `symbols` `headings` |
+| `--file` | 文件路径 |
+| `--force-unlock` | 写入前强制解锁 |
+
+写入文件格式：首行 `@MaxLength:N`（N=最大文本字节数），后续行 `KEY=VALUE`。
+
+```
+@MaxLength:12
+001=公司代码
+002=公司名称
+```
+
+&gt; 注意：symbols 只支持**更新**已存在的文本符号，不支持新建。新建需通过 SE80。
+
+---
+
+## 系统信息
+
+### system — 系统信息
+```bash
+gxx-abap system info --json             # { sid, basisVersion, kernel, serverName }
+gxx-abap system components --json       # { count, components: [{ id, release, patch, ... }] }
+```
+</code></pre>
+        </div>
+      </section>
+
+<!-- ===== Footer ===== -->
+<footer class="footer">
+  <div>Copyright &copy; 2026 GXX ABAP. All Rights Reserved.</div>
+  <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">闽ICP备2025109692号</a>
+</footer>
+
+<script>
+// ===== View switching =====
+var _skipPushState = false;
+
+function showHome() {
+  document.getElementById('home-view').style.display = 'flex';
+  document.getElementById('docs-view').classList.remove('show');
+  window.scrollTo(0, 0);
+  updateNavActive(null);
+  if (!_skipPushState) {
+    history.pushState({ view: 'home' }, '', '#');
+  }
+}
+
+function goHome() { showHome(); }
+
+function showDocs(target) {
+  document.getElementById('home-view').style.display = 'none';
+  document.getElementById('docs-view').classList.add('show');
+
+  // Hide all sections
+  document.querySelectorAll('.doc-section').forEach(s => s.classList.remove('show'));
+
+  // Show target section
+  const section = document.getElementById(target);
+  if (section) {
+    section.classList.add('show');
+  }
+
+  // Update sidebar active
+  updateNavActive(target);
+
+  // Close mobile sidebar
+  document.getElementById('sidebar').classList.remove('open');
+
+  // Scroll to top of content
+  document.getElementById('docs-content').scrollTop = 0;
+
+  if (!_skipPushState) {
+    history.pushState({ view: 'docs', target: target }, '', '#/' + target);
+  }
+}
+
+// Browser back/forward support
+window.addEventListener('popstate', function(e) {
+  _skipPushState = true;
+  if (e.state) {
+    if (e.state.view === 'home') {
+      showHome();
+    } else if (e.state.view === 'docs') {
+      showDocs(e.state.target);
+    }
+  } else {
+    showHome();
+  }
+  _skipPushState = false;
+});
+
+// Set initial state + deep-link support (open a docs section directly via #/<target>)
+(function() {
+  var h = window.location.hash;
+  if (h && h.indexOf('#/') === 0 && h.length > 2) {
+    var t = h.substring(2);
+    if (document.getElementById(t)) { showDocs(t); return; }
+  }
+  history.replaceState({ view: 'home' }, '', '#');
+})();
+
+function updateNavActive(target) {
+  document.querySelectorAll('.sidebar-link').forEach(link => {
+    if (link.dataset.target === target) {
+      link.classList.add('active');
+      // Auto-expand the parent section if collapsed
+      const section = link.closest('.sidebar-section');
+      if (section && section.classList.contains('collapsed')) {
+        section.classList.remove('collapsed');
+      }
+    } else {
+      link.classList.remove('active');
+    }
+  });
+}
+
+// ===== Copy install command =====
+function copyInstall(btn) {
+  const text = 'npm install -g gxx-abap';
+  navigator.clipboard.writeText(text).then(() => {
+    const original = btn.innerHTML;
+    btn.classList.add('copied');
+    if (btn.classList.contains('copy-btn')) {
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg> 已复制';
+    } else {
+      btn.textContent = '已复制';
+    }
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = original;
+    }, 2000);
+  }).catch(() => {
+    // Fallback
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    btn.classList.add('copied');
+    btn.textContent = '已复制';
+    setTimeout(() => { btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+// ===== Copy code block =====
+function copyCode(el) {
+  const codeBlock = el.closest('.code-block');
+  const pre = codeBlock.querySelector('pre');
+  const text = pre.innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    el.textContent = '已复制';
+    setTimeout(() => { el.textContent = '复制'; }, 2000);
+  }).catch(() => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    el.textContent = '已复制';
+    setTimeout(() => { el.textContent = '复制'; }, 2000);
+  });
+}
+
+// ===== Sidebar toggle =====
+function toggleSection(titleEl) {
+  titleEl.parentElement.classList.toggle('collapsed');
+}
+
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const layout = document.getElementById('docs-layout');
+  if (window.innerWidth <= 900) {
+    sidebar.classList.toggle('open');
+  } else {
+    sidebar.classList.toggle('collapsed');
+    layout.classList.toggle('collapsed');
+  }
+}
+
+// Close mobile sidebar when clicking a nav link or outside
+function closeMobileSidebar() {
+  if (window.innerWidth <= 900) {
+    document.getElementById('sidebar').classList.remove('open');
+  }
+}
+
+// Attach close handler to all sidebar links
+function attachSidebarLinkHandlers() {
+  document.querySelectorAll('.sidebar-link').forEach(function(link) {
+    link.addEventListener('click', closeMobileSidebar);
+  });
+}
+
+// Run on page load
+document.addEventListener('DOMContentLoaded', attachSidebarLinkHandlers);
+</script>
+
+</body>
+</html>

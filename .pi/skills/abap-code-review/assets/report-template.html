@@ -1,0 +1,142 @@
+<!-- ABAP Code Review Report Template (固化模板)
+     用法：复制到工作区，替换所有 {{TOKEN}} 占位符，保持现有 CSS 不变。
+     严重度配色：高/需核实=红橙，中=琥珀，低=蓝，亮点=绿。
+     结构：顶部元信息常驻；下方为「多页签」切换（4 个页签），纯原生 JS、无外部依赖。
+     页签：
+       一、程序功能与结构概览 —— 内含「代码逻辑详细解析」子节（{{LOGIC_SECTION}}）
+       二、审查发现汇总        —— {{SUMMARY_SECTION}}
+       三、问题详解            —— 含 重点问题详解 {{DETAIL_ITEMS}} / 中危 {{MEDIUM_ITEMS}} / 低危 {{LOW_ITEMS}}
+       四、亮点与结论          —— 含 亮点 {{POSITIVES}} / 结论与修复优先级 {{CONCLUSION_SECTION}}
+     {{OVERVIEW_SECTION}} 为概览段落+列表；{{LOGIC_SECTION}} 为逻辑叙述+（ALV 报表时）字段取数逻辑表；
+     非 ALV 程序（函数/接口类）时 {{LOGIC_SECTION}} 仅含文字解析、不含取数表。 -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ABAP 代码审查报告 · {{PROGRAM_NAME}}</title>
+<style>
+  :root{
+    --bg:#ffffff; --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb;
+    --brand:#b45309; --brand2:#d97706;
+    --crit:#dc2626; --high:#ea580c; --med:#d97706; --low:#2563eb; --ok:#059669;
+    --chip:#f3f4f6;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+       color:var(--ink); background:var(--bg); margin:0; line-height:1.65; font-size:14px}
+  .wrap{max-width:1020px; margin:0 auto; padding:40px 36px 64px}
+  header{border-bottom:3px solid var(--brand); padding-bottom:18px; margin-bottom:8px}
+  h1{font-size:24px; margin:0 0 6px; color:var(--ink)}
+  .sub{color:var(--muted); font-size:13px}
+  h2{font-size:18px; margin:34px 0 12px; padding-left:10px; border-left:4px solid var(--brand); color:var(--ink)}
+  h3{font-size:15px; margin:22px 0 8px; color:var(--brand)}
+  table{border-collapse:collapse; width:100%; margin:10px 0; font-size:13px}
+  th,td{border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top}
+  th{background:#f9fafb; font-weight:600}
+  .meta td{width:50%}
+  .meta td:first-child{background:#f9fafb; font-weight:600; width:160px}
+  .sev{display:inline-block; padding:2px 9px; border-radius:11px; font-size:12px; font-weight:700; color:#fff; white-space:nowrap}
+  .s-crit{background:var(--crit)} .s-high{background:var(--high)} .s-med{background:var(--med)} .s-low{background:var(--low)} .s-ok{background:var(--ok)}
+  code{background:#f3f4f6; padding:1px 5px; border-radius:4px; font-family:"SFMono-Regular",Consolas,monospace; font-size:12.5px; color:#b45309}
+  pre{background:#0f172a; color:#e2e8f0; padding:14px 16px; border-radius:8px; overflow:auto; font-size:12.5px; line-height:1.55; font-family:Consolas,monospace}
+  pre .c{color:#94a3b8} pre .k{color:#fca5a5} pre .s{color:#fcd34d}
+  .callout{border:1px solid var(--line); border-left:4px solid var(--brand); background:#fffbeb; padding:12px 16px; border-radius:6px; margin:12px 0}
+  .grid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:14px 0}
+  .stat{background:#f9fafb; border:1px solid var(--line); border-radius:8px; padding:14px; text-align:center}
+  .stat .n{font-size:26px; font-weight:800; display:block}
+  .stat .l{font-size:12px; color:var(--muted)}
+  ul{margin:8px 0; padding-left:22px} li{margin:5px 0}
+  .foot{margin-top:40px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:12px}
+  .pos{background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; padding:14px 18px}
+
+  /* ---- 页签导航 ---- */
+  .tabs{display:flex; flex-wrap:wrap; gap:4px; border-bottom:2px solid var(--line); margin:22px 0 0; padding-bottom:0}
+  .tab-btn{appearance:none; border:none; background:transparent; cursor:pointer; font:inherit; font-size:13px;
+           color:var(--muted); padding:9px 13px; margin-bottom:-2px; border-bottom:3px solid transparent;
+           border-radius:7px 7px 0 0; white-space:nowrap; transition:background .15s,color .15s}
+  .tab-btn:hover{color:var(--ink); background:#f9fafb}
+  .tab-btn.active{color:var(--brand); font-weight:700; border-bottom-color:var(--brand); background:#fffbeb}
+  .tab-panel{display:none; padding-top:8px; animation:fade .2s ease}
+  .tab-panel.active{display:block}
+  @keyframes fade{from{opacity:.35} to{opacity:1}}
+  @media (max-width:680px){ .grid{grid-template-columns:repeat(2,1fr)} .tab-btn{font-size:12px; padding:8px 10px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>ABAP 代码审查报告</h1>
+  <div class="sub">程序 <strong>{{PROGRAM_NAME}}</strong> · {{PROGRAM_SUB}}</div>
+</header>
+
+<table class="meta">
+  <tr><td>程序名称</td><td>{{PROGRAM_NAME}}</td></tr>
+  <tr><td>审查对象</td><td>{{REVIEW_OBJ}}</td></tr>
+  <tr><td>审查人</td><td>{{REVIEWER}}</td></tr>
+  <tr><td>审查日期</td><td>{{REVIEW_DATE}}</td></tr>
+  <tr><td>审查方式</td><td>{{REVIEW_METHOD}}</td></tr>
+  <tr><td>总体结论</td><td>{{VERDICT_CHIP}} {{VERDICT_TEXT}}</td></tr>
+</table>
+
+<!-- ===================== 多页签区域（4 页签） ===================== -->
+<div class="tabs" role="tablist">
+  <button class="tab-btn active" role="tab" onclick="showTab('tab-overview',this)">一、程序功能与结构概览</button>
+  <button class="tab-btn" role="tab" onclick="showTab('tab-summary',this)">二、审查发现汇总</button>
+  <button class="tab-btn" role="tab" onclick="showTab('tab-issues',this)">三、问题详解</button>
+  <button class="tab-btn" role="tab" onclick="showTab('tab-concl',this)">四、亮点与结论</button>
+</div>
+
+<!-- 一、程序功能与结构概览（内含代码逻辑详细解析） -->
+<section class="tab-panel active" id="tab-overview" role="tabpanel">
+{{OVERVIEW_SECTION}}
+  <h2>代码逻辑详细解析</h2>
+{{LOGIC_SECTION}}
+</section>
+
+<!-- 二、审查发现汇总 -->
+<section class="tab-panel" id="tab-summary" role="tabpanel">
+{{SUMMARY_SECTION}}
+</section>
+
+<!-- 三、问题详解（重点 + 中危 + 低危） -->
+<section class="tab-panel" id="tab-issues" role="tabpanel">
+  <h2>重点问题详解（高危 / 需核实）</h2>
+{{DETAIL_ITEMS}}
+  <h2>中危问题</h2>
+{{MEDIUM_ITEMS}}
+  <h2>低危与改进建议</h2>
+{{LOW_ITEMS}}
+</section>
+
+<!-- 四、亮点与结论（亮点 + 结论与修复优先级） -->
+<section class="tab-panel" id="tab-concl" role="tabpanel">
+  <h2>亮点（值得保留）</h2>
+{{POSITIVES}}
+  <h2>结论与修复优先级</h2>
+{{CONCLUSION_SECTION}}
+</section>
+
+<div class="foot">
+  报告由 {{REVIEWER}} 生成 · {{REVIEW_METHOD}} · 涉及对象：{{REVIEW_OBJ}}
+</div>
+
+</div>
+
+<script>
+  function showTab(id, btn){
+    var panels = document.querySelectorAll('.tab-panel');
+    var btns = document.querySelectorAll('.tab-btn');
+    for(var i=0;i<panels.length;i++){ panels[i].classList.remove('active'); }
+    for(var j=0;j<btns.length;j++){ btns[j].classList.remove('active'); }
+    var el = document.getElementById(id);
+    if(el){ el.classList.add('active'); }
+    if(btn){ btn.classList.add('active'); }
+  }
+</script>
+<div style="text-align:center; color:var(--muted); font-size:12px; margin-top:40px; border-top:1px solid var(--line); padding-top:16px">
+  Generated by AbapBuddy
+</div>
+</body>
+</html>

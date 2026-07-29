@@ -1,0 +1,136 @@
+{
+  "providers": {
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-chat"
+        },
+        {
+          "id": "deepseek-reasoner"
+        },
+        {
+          "id": "deepseek-v3"
+        }
+      ]
+    },
+    "qwen": {
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "qwen-plus"
+        },
+        {
+          "id": "qwen-max"
+        },
+        {
+          "id": "qwen-max-latest"
+        },
+        {
+          "id": "qwen2.5-coder-32b-instruct"
+        },
+        {
+          "id": "qwen3-coder-plus"
+        }
+      ]
+    },
+    "moonshot": {
+      "baseUrl": "https://api.moonshot.cn/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "moonshot-v1-8k"
+        },
+        {
+          "id": "moonshot-v1-32k"
+        },
+        {
+          "id": "kimi-k2"
+        }
+      ]
+    },
+    "zhipu": {
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "glm-4-plus"
+        },
+        {
+          "id": "glm-4-flash"
+        },
+        {
+          "id": "glm-4-air"
+        },
+        {
+          "id": "glm-4.5"
+        }
+      ]
+    },
+    "doubao": {
+      "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "doubao-seed-1.6"
+        },
+        {
+          "id": "doubao-seed-1.6-250615"
+        },
+        {
+          "id": "doubao-pro-32k"
+        }
+      ]
+    },
+    "minimax": {
+      "baseUrl": "https://api.minimax.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "MiniMax-M2.7"
+        },
+        {
+          "id": "abab6.5s-chat"
+        },
+        {
+          "id": "MiniMax-Text-01"
+        }
+      ]
+    },
+    "hunyuan": {
+      "baseUrl": "https://api.hunyuan.cloud.tencent.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "hunyuan-turbo"
+        },
+        {
+          "id": "hunyuan-pro"
+        },
+        {
+          "id": "hunyuan-standard"
+        }
+      ]
+    },
+    "ernie": {
+      "baseUrl": "https://qianfan.baidubce.com/v2",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "ernie-4.5"
+        },
+        {
+          "id": "ernie-4.0-8k"
+        },
+        {
+          "id": "ernie-speed-128k"
+        },
+        {
+          "id": "ernie-3.5-8k"
+        }
+      ]
+    }
+  }
+}
