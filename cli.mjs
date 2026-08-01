@@ -72,31 +72,103 @@ async function cmdPrompt(text, jsonMode) {
   session.dispose()
 }
 
-// ===== 交互式对话（REPL）=====
+// ===== 交互式对话（REPL，类 pi / Claude Code）=====
+const BANNER = `
+╔══════════════════════════════════════╗
+║   🤖 AbapBuddy  v2.0                 ║
+║   SAP ABAP AI 助手 · 42 个工具        ║
+╚══════════════════════════════════════╝
+`
+
 async function cmdChat() {
+  console.log(BANNER)
   const { session } = await createAgent()
-  console.log("\n🤖 AbapBuddy 交互模式（/exit 退出，/tools 查看工具，/help 帮助）")
   const readline = await import("node:readline").then((m) =>
     m.createInterface({ input: process.stdin, output: process.stdout })
   )
+  let streaming = false
+
+  // Ctrl+C：流式中停止当前生成；空闲时退出
+  readline.on("SIGINT", async () => {
+    if (streaming) {
+      streaming = false
+      try { await session.abort() } catch { /* 忽略 */ }
+      process.stdout.write("\n⏹ 已停止\n")
+      ask()
+    } else {
+      process.stdout.write("\n👋 再见\n")
+      session.dispose()
+      process.exit(0)
+    }
+  })
+
+  const helpText = `
+  可用命令:
+    /exit       退出
+    /tools      查看 42 个 SAP 工具
+    /compact    压缩上下文（节省 tokens）
+    /stop       停止当前生成
+    /model      切换模型
+    /clear      清屏
+    /help       帮助
+  `
+
   const ask = () => {
     readline.question("\n❯ ", async (input) => {
       const t = input.trim()
-      if (t === "/exit" || t === "/quit") { session.dispose(); readline.close(); process.exit(0) }
-      if (t === "/tools") { await cmdTools(); return ask() }
-      if (t === "/help") {
-        console.log("  /exit 退出  /tools 工具列表  /help 帮助")
-        return ask()
-      }
       if (!t) return ask()
+
+      // ── 命令处理 ──
+      switch (t) {
+        case "/exit":
+        case "/quit":
+          console.log("👋 再见")
+          session.dispose()
+          readline.close()
+          process.exit(0)
+        case "/tools":
+          await cmdTools()
+          return ask()
+        case "/help":
+          console.log(helpText)
+          return ask()
+        case "/clear":
+          process.stdout.write("\x1bc")
+          console.log(BANNER)
+          return ask()
+        case "/stop":
+          if (streaming) { streaming = false; await session.abort().catch(() => {}); console.log("⏹ 已停止") }
+          else console.log("当前没有生成中的内容")
+          return ask()
+        case "/compact":
+          console.log("🧹 正在压缩上下文…")
+          try {
+            await session.compact()
+            console.log("✅ 压缩完成")
+          } catch (e) { console.log(`⚠️ 压缩失败: ${e.message}`) }
+          return ask()
+        case "/model": {
+          const result = await session.cycleModel().catch(() => undefined)
+          if (result?.model) console.log(`🔄 已切换: ${result.model.provider}/${result.model.id}`)
+          else console.log("⚠️ 没有可切换的模型")
+          return ask()
+        }
+      }
+
+      // ── 普通对话 ──
+      streaming = true
       process.stdout.write("\n")
       const unsub = session.subscribe((event) => {
         if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
           process.stdout.write(event.assistantMessageEvent.delta)
         }
+        if (event.type === "tool_execution_start") {
+          process.stdout.write(`\n[🔧 ${event.toolName}] `)
+        }
       })
       await session.prompt(t).catch((e) => console.log(`\n[错误] ${e.message}`))
       unsub()
+      streaming = false
       console.log("\n")
       ask()
     })
