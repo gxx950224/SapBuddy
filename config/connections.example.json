@@ -9,7 +9,11 @@
       "language": "ZH",
       "authMethod": "basic",
       "ssl": { "allowSelfSigned": true },
-      "description": "开发系统"
+      "description": "开发系统",
+      "security": {
+        "requireDevClient": true,
+        "developmentCategories": ["D", "C"]
+      }
     }
   ],
   "security": { "readOnly": true }

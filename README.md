@@ -100,6 +100,11 @@ abapbuddy/
 ## 🔒 安全
 
 - 默认 `security.readOnly: true`，写操作需显式开启
+- **开发客户端守卫（默认开启）**：写操作前自动查询 `T000.CCCATEGORY` 判断客户端类别，
+  仅允许开发类客户端（默认 `D` 开发 / `C` 定制）修改代码；
+  **测试（T）/ 生产（P）/ 系统（S）客户端一律拒绝**，无法确认类别时 fail-closed（拒绝）。
+  连接级配置 `security.requireDevClient: false` 可显式放行（不推荐），
+  `security.developmentCategories` 可调整放行类别列表。
 - SAP 密码与模型 Key 不写入代码库（配置模板已脱敏）
 - 工具描述内置避坑说明，错误信息可自愈
 

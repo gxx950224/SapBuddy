@@ -337,13 +337,19 @@ const server = http.createServer(async (req, res) => {
     // ── SAP 状态（真实检测）──
     if (p === "/api/sap-status" && req.method === "GET") {
       try {
-        const { getClient } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+        const { getClient, getClientCategory } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
         const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
         const conn = getConfig().connections[0]
         if (!conn) return json(res, 200, { success: false, error: "未配置 SAP 连接" })
         const client = await getClient(conn.id)
         await client.runQuery("SELECT MANDT FROM T000", 1, true)
-        return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client } })
+        // 客户端类别（T000.CCCATEGORY：D/C=开发类 T=测试 P=生产 S=系统）
+        let category = "", categoryLabel = ""
+        try {
+          category = await getClientCategory(conn.id)
+          categoryLabel = category === "D" ? "开发" : category === "C" ? "定制/客户开发" : category === "T" ? "测试" : category === "P" ? "生产" : category === "S" ? "系统" : `未知(${category || "未维护"})`
+        } catch {}
+        return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client, clientCategory: category, clientCategoryLabel: categoryLabel } })
       } catch (e) {
         return json(res, 200, { success: false, error: e.message })
       }

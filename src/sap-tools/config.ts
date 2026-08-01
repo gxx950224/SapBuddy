@@ -33,6 +33,16 @@ export interface ConnectionConfig {
     /** 自定义 CA 证书路径 */
     customCA?: string
   }
+  /**
+   * 安全策略
+   * requireDevClient: 默认 true——仅允许在开发类客户端上写操作；设为 false 可显式放行（不推荐）
+   * developmentCategories: 视为开发机的 T000.CCCATEGORY 列表，默认 ["D","C"]
+   *   D=开发、C=定制/客户开发（放行）；T=测试、P=生产、S=系统（拦截）
+   */
+  security?: {
+    requireDevClient?: boolean
+    developmentCategories?: string[]
+  }
   description?: string
 }
 

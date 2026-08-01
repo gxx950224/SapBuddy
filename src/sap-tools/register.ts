@@ -6,6 +6,8 @@ import { z } from "zod"
 import { Type } from "typebox"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
+import { assertDevClient } from "./adtManager.js"
+import { resolveConnectionId } from "./tools/shared.js"
 
 /** JSON Schema → TypeBox */
 function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined): unknown {
@@ -71,6 +73,12 @@ export function registerSapTools(pi: ExtensionAPI): number {
       parameters: zodToTypebox(t.inputSchema) as never,
       async execute(_toolCallId, params) {
         try {
+          // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
+          if (t.write) {
+            const p = (params ?? {}) as Record<string, unknown>
+            const connId = await resolveConnectionId(p.connectionId as string | undefined)
+            await assertDevClient(connId)
+          }
           const text = await t.execute((params ?? {}) as Record<string, unknown>)
           return { content: [{ type: "text" as const, text }], details: {} }
         } catch (err) {

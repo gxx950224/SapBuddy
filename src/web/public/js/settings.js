@@ -751,7 +751,8 @@
           if (pj.success && pj.data) {
             st.textContent = "已保存 · Ping 成功";
             st.style.color = "var(--success)";
-            stEl.innerHTML = `<span class="dot ok"></span> 已连接：${pj.data.sid || "SAP"}（用户 ${pj.data.user || ""}）`;
+            const cat = pj.data.clientCategoryLabel ? ` · 客户端类别 ${pj.data.clientCategoryLabel}${pj.data.clientCategory ? `(${pj.data.clientCategory})` : ""}` : "";
+            stEl.innerHTML = `<span class="dot ok"></span> 已连接：${pj.data.sid || "SAP"}（用户 ${pj.data.user || ""}${cat}）`;
           } else {
             st.textContent = "已保存 · Ping 失败";
             st.style.color = "var(--error)";

@@ -73,7 +73,9 @@
       clearTimeout(timeout);
       const j = await r.json();
       if (j.success && j.data) {
-        const label = `SAP ${j.data.sid || "已连接"} · ${j.data.user || ""}`;
+        const d = j.data;
+        const cat = d.clientCategoryLabel ? ` · 类别 ${d.clientCategoryLabel}${d.clientCategory ? `(${d.clientCategory})` : ""}` : "";
+        const label = `SAP ${j.data.sid || "已连接"} · ${j.data.user || ""}${cat}`;
         if (dot) dot.className = "dot ok";
         if (text) text.textContent = label;
       } else {

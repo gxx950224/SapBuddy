@@ -14,6 +14,72 @@ interface ManagedClient {
 
 const pool = new Map<string, ManagedClient>()
 
+/** 客户端类别缓存：connId → T000.CCCATEGORY（D=开发 T=测试 P=生产） */
+const clientCategoryCache = new Map<string, Promise<string>>()
+
+/**
+ * 获取客户端类别（T000.CCCATEGORY），按连接缓存
+ * 查询失败时抛出（fail-closed）
+ */
+export function getClientCategory(connId: string): Promise<string> {
+  const id = connId.toLowerCase()
+  let p = clientCategoryCache.get(id)
+  if (!p) {
+    p = (async () => {
+      const conf = getConnection(id)
+      const client = await getClient(id)
+      const result = await client.runQuery(
+        `SELECT MANDT, CCCATEGORY FROM T000 WHERE MANDT = '${conf.client}'`,
+        1,
+        true
+      )
+      const row = (result?.values?.[0] ?? {}) as Record<string, unknown>
+      return String(row.CCCATEGORY ?? "").toUpperCase()
+    })().catch((err) => {
+      clientCategoryCache.delete(id)
+      throw err
+    })
+    clientCategoryCache.set(id, p)
+  }
+  return p
+}
+
+/**
+ * 写操作安全守卫：只允许在开发类客户端上修改代码。
+ * 放行类别：D（开发）、C（定制/客户开发）——默认配置，可用 security.developmentCategories 调整。
+ * 测试（T）/生产（P）/系统（S）绝对禁止；无法确认时 fail-closed（拒绝）。
+ * 连接配置 security.requireDevClient=false 可显式放行（不推荐）。
+ */
+export async function assertDevClient(connId: string): Promise<void> {
+  const conf = getConnection(connId)
+  if (conf.security?.requireDevClient === false) return
+  const allow = (conf.security?.developmentCategories ?? ["D", "C"]).map((c) => c.toUpperCase())
+  let category: string
+  try {
+    category = await getClientCategory(connId)
+  } catch (err) {
+    throw new Error(
+      `无法确认客户端 ${conf.client}（连接 ${conf.id}）的类别，已按安全策略拒绝写操作。` +
+        `原因: ${err instanceof Error ? err.message : String(err)}。` +
+        `如确认该连接为开发机，请检查账号的 T000 查询权限；` +
+        `或在连接配置中显式设置 security.requireDevClient=false 放行（不推荐）。`
+    )
+  }
+  if (allow.includes(category)) return // 开发类客户端放行
+  const label =
+    category === "P"
+      ? "生产"
+      : category === "T"
+        ? "测试"
+        : category === "S"
+          ? "系统"
+          : `未知(${category || "未维护"})`
+  throw new Error(
+    `安全拦截：客户端 ${conf.client}（连接 ${conf.id}）属于 ${label} 环境（T000.CCCATEGORY=${category || "未维护"}）。` +
+      `只允许在开发类客户端（${allow.join("/")}）上修改代码，测试/生产/系统客户端禁止任何写操作（创建/修改/激活/删除/DDIC 变更/传输等）。`
+  )
+}
+
 function buildClientOptions(conf: ConnectionConfig): ClientOptions {
   const options: ClientOptions = { timeout: 120_000 } // SAP 系统响应慢，放宽超时
   if (conf.url.match(/https:/i)) {
@@ -88,11 +154,13 @@ export async function dropClient(connId: string): Promise<void> {
   if (!managed) return
   await managed.client.dropSession().catch(() => undefined)
   pool.delete(connId.toLowerCase())
+  clientCategoryCache.delete(connId.toLowerCase())
 }
 
 /** 释放所有连接 */
 export async function dropAllClients(): Promise<void> {
   await Promise.all([...pool.keys()].map(dropClient))
+  clientCategoryCache.clear()
 }
 
 export function connectedIds(): string[] {
