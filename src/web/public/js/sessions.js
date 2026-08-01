@@ -88,7 +88,7 @@
   // ── 刷新会话列表（数据无变化时跳过 DOM 重建） ──
   let _refreshToken = 0;
   let _lastSessionsSig = "";
-  App.refreshSessions = async function() {
+  App.refreshSessions = async function(force) {
     const token = ++_refreshToken;
     try {
       const r = await fetch("/api/sessions");
@@ -98,7 +98,7 @@
       const sessions = j.data.sessions || [];
       // 计算签名，数据未变则跳过 DOM 重建
       const sig = JSON.stringify(sessions.map((s) => s.path + "|" + s.modified + "|" + s.messageCount + "|" + !!s.current));
-      if (sig === _lastSessionsSig && sessions.length > 0) return;
+      if (!force && sig === _lastSessionsSig && sessions.length > 0) return;
       _lastSessionsSig = sig;
       const list = $("#session-list");
       list.innerHTML = "";

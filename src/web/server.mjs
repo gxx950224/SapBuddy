@@ -185,7 +185,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/thinking-level" && req.method === "POST") {
       const { level } = await readBody(req)
       try { session?.setThinkingLevel(level) } catch {}
-      return json(res, 200, { ok: true })
+      return json(res, 200, { success: true, thinkingLevel: level })
     }
 
     // 上下文统计

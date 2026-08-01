@@ -163,6 +163,9 @@
       }
       if (j.data?.path) state.currentPath = j.data.path;
       if (j.data?.gen) state.currentGen = j.data.gen;
+      // 刷新列表高亮 + 状态栏（会话 ID）
+      App.refreshSessions?.(true);
+      App.refreshState?.();
     } catch (e) {
       App.addSystemNote("切换对话失败：" + (e?.message || e));
     } finally {
