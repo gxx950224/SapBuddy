@@ -1,5 +1,5 @@
 /**
- * AbapBuddy SAP 工具 Pi 扩展（文件扩展，session_start 时注册 42 个 SAP 工具）
+ * SapBuddy SAP 工具 Pi 扩展（文件扩展，session_start 时注册 42 个 SAP 工具）
  * 通过 DefaultResourceLoader 的 additionalExtensionPaths 加载
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"

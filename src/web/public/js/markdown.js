@@ -4,7 +4,7 @@
 "use strict";
 
 (function() {
-  const App = window.AbapBuddy;
+  const App = window.SapBuddy;
   const escapeHtml = App.escapeHtml;
 
   App.renderMarkdown = function(src) {

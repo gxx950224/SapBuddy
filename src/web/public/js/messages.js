@@ -4,7 +4,7 @@
 "use strict";
 
 (function() {
-  const App = window.AbapBuddy;
+  const App = window.SapBuddy;
   const state = App.state;
   const $ = App.$;
   const renderMarkdown = App.renderMarkdown;
@@ -42,7 +42,7 @@
     if (state.currentAssistantEl) return state.currentAssistantEl;
     const el = document.createElement("div");
     el.className = "msg agent";
-    el.innerHTML = '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><circle cx="18.5" cy="18.5" r="1.3" fill="white" stroke="none"/></svg></div><div class="msg-content"><div class="meta">AbapBuddy</div><div class="body md"></div></div>';
+    el.innerHTML = '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><circle cx="18.5" cy="18.5" r="1.3" fill="white" stroke="none"/></svg></div><div class="msg-content"><div class="meta">SapBuddy</div><div class="body md"></div></div>';
     messagesEl.appendChild(el);
     state.currentAssistantEl = el.querySelector(".body");
     return state.currentAssistantEl;
@@ -207,7 +207,7 @@
     btn.style.fontSize = "13px";
     btn.addEventListener("click", () => {
       el.remove();
-      window.AbapBuddy.sendMessage("请继续刚才的回答，从上次中断的地方接着写下去");
+      window.SapBuddy.sendMessage("请继续刚才的回答，从上次中断的地方接着写下去");
     });
     el.appendChild(document.createElement("br"));
     el.appendChild(btn);

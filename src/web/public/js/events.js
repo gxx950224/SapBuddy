@@ -4,7 +4,7 @@
 "use strict";
 
 (function() {
-  const App = window.AbapBuddy;
+  const App = window.SapBuddy;
   const state = App.state;
   const $ = App.$;
 
@@ -81,7 +81,7 @@
         body: JSON.stringify({ toolCallId, choice, custom_text: customText || "" }),
       });
     } catch (e) {
-      console.error("[AbapBuddy] 确认发送失败:", e);
+      console.error("[SapBuddy] 确认发送失败:", e);
     }
     const card = document.querySelector(`.confirm-card[data-cid="${CSS.escape(toolCallId)}"]`);
     if (card) {
@@ -214,7 +214,7 @@
         break;
 
       case "agent_abort":
-        console.log("[AbapBuddy] 收到 agent_abort 事件");
+        console.log("[SapBuddy] 收到 agent_abort 事件");
         App.addSystemNote("操作已中止");
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
         state.currentAssistantEl = null;
@@ -233,7 +233,7 @@
         break;
 
       case "agent_end":
-        console.log("[AbapBuddy] 收到 agent_end, stopReason:", ev.message?.stopReason);
+        console.log("[SapBuddy] 收到 agent_end, stopReason:", ev.message?.stopReason);
         if (ev.message?.stopReason === "error" || ev.message?.errorMessage === "terminated") {
           App.onGenerationInterrupted();
         }

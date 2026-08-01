@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-AbapBuddy：SAP ABAP AI 辅助开发助手。基于 pi-coding-agent（AI Agent 引擎）与 abap-adt-api（SAP ADT 协议），通过自然语言驱动 42 个 SAP 工具。CLI + Web 双模式，跨平台。
+SapBuddy：SAP ABAP AI 辅助开发助手。基于 pi-coding-agent（AI Agent 引擎）与 abap-adt-api（SAP ADT 协议），通过自然语言驱动 42 个 SAP 工具。CLI + Web 双模式，跨平台。
 
 ## 核心架构
 

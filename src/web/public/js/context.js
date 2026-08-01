@@ -4,7 +4,7 @@
 "use strict";
 
 (function() {
-  const App = window.AbapBuddy;
+  const App = window.SapBuddy;
   const state = App.state;
   const $ = App.$;
 

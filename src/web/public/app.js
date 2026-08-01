@@ -1,11 +1,11 @@
 /**
- * AbapBuddy — 入口（初始化 + 全局事件绑定）
- * 各功能模块均已拆分至 js/ 目录，通过 window.AbapBuddy 命名空间通信
+ * SapBuddy — 入口（初始化 + 全局事件绑定）
+ * 各功能模块均已拆分至 js/ 目录，通过 window.SapBuddy 命名空间通信
  */
 "use strict";
 
 (function() {
-  const App = window.AbapBuddy;
+  const App = window.SapBuddy;
   const state = App.state;
   const $ = App.$;
 

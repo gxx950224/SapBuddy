@@ -1,11 +1,11 @@
 {
-  "name": "abapbuddy",
+  "name": "sapbuddy",
   "version": "2.0.0",
-  "description": "SAP ABAP AI 辅助开发助手 — 用自然语言驱动 42 个 SAP 工具（CLI + Web）",
+  "description": "SAP ABAP AI 全能助手（面向开发顾问与业务顾问）— 用自然语言驱动 42 个 SAP 工具（CLI + Web）",
   "type": "module",
   "main": "cli.mjs",
   "bin": {
-    "abapbuddy": "cli.mjs"
+    "sapbuddy": "cli.mjs"
   },
   "scripts": {
     "build": "tsc",
@@ -22,7 +22,9 @@
     "assistant",
     "adt",
     "cli",
-    "copilot"
+    "copilot",
+    "consultant",
+    "business"
   ],
   "license": "MIT",
   "engines": {

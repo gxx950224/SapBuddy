@@ -1,6 +1,6 @@
-# AbapBuddy
+# SapBuddy
 
-> SAP ABAP AI 辅助开发助手 —— 用自然语言驱动 42 个 SAP 工具（搜索、读码、分析、ATC、单测、SQL、DDIC 管理……）
+> SAP ABAP AI 全能助手 —— 面向**开发顾问与业务顾问**，用自然语言驱动 42 个 SAP 工具（搜索、读码、分析、开发、ATC、单测、SQL、DDIC 管理、程序解读……）
 
 基于 [pi-coding-agent](https://github.com/badlogic/pi-mono)（AI Agent 引擎）与 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api)（SAP ADT 协议）构建，跨平台（Windows / macOS / Linux）。
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * AbapBuddy CLI — SAP ABAP AI 助手（跨平台）
+ * SapBuddy CLI — SAP ABAP AI 助手（跨平台）
  *
  * 用法:
- *   abapbuddy chat               交互式对话
- *   abapbuddy "提问内容"         单次提问
- *   abapbuddy --json "提问"      单次提问（JSON 输出）
- *   abapbuddy web                启动 Web 版（浏览器访问 http://127.0.0.1:7400）
- *   abapbuddy tools              列出 42 个 SAP 工具
- *   abapbuddy doctor             环境自检
+ *   sapbuddy chat               交互式对话
+ *   sapbuddy "提问内容"         单次提问
+ *   sapbuddy --json "提问"      单次提问（JSON 输出）
+ *   sapbuddy web                启动 Web 版（浏览器访问 http://127.0.0.1:7400）
+ *   sapbuddy tools              列出 42 个 SAP 工具
+ *   sapbuddy doctor             环境自检
  */
 import path from "node:path"
 import fs from "node:fs"
@@ -31,7 +31,7 @@ async function cmdTools() {
 
 // ===== doctor：环境自检 =====
 async function cmdDoctor() {
-  console.log("=== AbapBuddy 环境自检 ===")
+  console.log("=== SapBuddy 环境自检 ===")
   console.log(`Node: ${process.version}`)
   try {
     const { tools } = await import(pathToFileURL(path.join(HERE, "dist", "sap-tools", "tools", "index.js")).href)
@@ -75,7 +75,7 @@ async function cmdPrompt(text, jsonMode) {
 // ===== 交互式对话（REPL，类 pi / Claude Code）=====
 const BANNER = `
 ╔══════════════════════════════════════╗
-║   🤖 AbapBuddy  v2.0                 ║
+║   🤖 SapBuddy  v2.0                 ║
 ║   SAP ABAP AI 助手 · 42 个工具        ║
 ╚══════════════════════════════════════╝
 `
@@ -194,14 +194,14 @@ async function main() {
   if (first === "web") return cmdWeb()
   if (first === "--json") return cmdPrompt(args.slice(1).join(" "), true)
   if (first && !first.startsWith("-")) return cmdPrompt(args.join(" "), false)
-  console.log(`AbapBuddy — SAP ABAP AI 助手
+  console.log(`SapBuddy — SAP ABAP AI 助手
 
 用法:
-  abapbuddy chat                  交互式对话
-  abapbuddy "提问"                单次提问
-  abapbuddy web [--port 7400]     启动 Web 版
-  abapbuddy tools                 列出 SAP 工具
-  abapbuddy doctor                环境自检
+  sapbuddy chat                  交互式对话
+  sapbuddy "提问"                单次提问
+  sapbuddy web [--port 7400]     启动 Web 版
+  sapbuddy tools                 列出 SAP 工具
+  sapbuddy doctor                环境自检
 `)
 }
 

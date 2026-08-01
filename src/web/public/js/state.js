@@ -1,10 +1,10 @@
 /**
  * 全局状态 + 工具函数
- * 所有模块通过 window.AbapBuddy 命名空间共享
+ * 所有模块通过 window.SapBuddy 命名空间共享
  */
 "use strict";
 
-const App = window.AbapBuddy || (window.AbapBuddy = {});
+const App = window.SapBuddy || (window.SapBuddy = {});
 
 // ── 全局状态 ──
 App.state = {

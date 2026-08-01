@@ -7,88 +7,94 @@ agent_created: true
 
 # ABAP 报表开发参考
 
-> 命名与编码规则以 `SYSTEM.md` 为唯一权威；本文件只提供代码模板与写法参考。
+> 命名与编码规则以 `SYSTEM.md`（默认 SAP 官方 Clean ABAP）为唯一权威；本文件只提供代码模板与写法参考。
 
 ## 报表类型
 
-### 1. REUSE_ALV_GRID_DISPLAY_LVC（首选，AbapBuddy 标准）
-
-```abap
-DATA: lt_fieldcat TYPE lvc_t_fcat,
-      ls_fieldcat TYPE lvc_s_fcat,
-      ls_layout   TYPE lvc_s_layo.
-
-" 字段目录必须显式逐字段定义，禁止用 FORM 或宏自动生成
-CLEAR ls_fieldcat.
-ls_fieldcat-fieldname = 'VBELN'.
-ls_fieldcat-coltext   = '销售订单'.
-APPEND ls_fieldcat TO lt_fieldcat.
-
-CLEAR ls_fieldcat.
-ls_fieldcat-fieldname = 'NETWR'.
-ls_fieldcat-coltext   = '净金额'.
-ls_fieldcat-no_zero   = abap_true.
-APPEND ls_fieldcat TO lt_fieldcat.
-
-ls_layout-zebra      = abap_true.
-ls_layout-cwidth_opt = abap_true.
-
-CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
-  EXPORTING
-    i_callback_program = sy-repid
-    is_layout_lvc      = ls_layout
-    it_fieldcat_lvc    = lt_fieldcat
-  TABLES
-    t_outtab           = lt_data
-  EXCEPTIONS
-    program_error      = 1
-    OTHERS             = 2.
-```
-
-### 2. CL_GUI_ALV_GRID（备选，需要交互/事件场景）
-
-```abap
-DATA: lo_alv      TYPE REF TO cl_gui_alv_grid,
-      lo_container TYPE REF TO cl_gui_custom_container.
-
-CREATE OBJECT lo_container
-  EXPORTING container_name = 'ALV_CONTAINER'.
-
-CREATE OBJECT lo_alv
-  EXPORTING i_parent = lo_container.
-
-lo_alv->set_table_for_first_display(
-  EXPORTING is_layout       = ls_layout
-  CHANGING  it_outtab       = lt_data
-            it_fieldcatalog = lt_fieldcat ).
-```
-
-### 3. cl_salv_table（备选，快速原型）
+### 1. cl_salv_table（首选，SapBuddy 标准，符合 Clean ABAP OO 优先）
 
 ```abap
 TRY.
     cl_salv_table=>factory(
-      IMPORTING r_salv_table = DATA(lo_salv)
-      CHANGING  t_table      = lt_data ).
+      IMPORTING r_salv_table = DATA(salv)
+      CHANGING  t_table      = report_data ).
 
-    lo_salv->get_functions( )->set_all( abap_true ).
-    lo_salv->get_columns( )->set_optimize( abap_true ).
-    lo_salv->display( ).
+    salv->get_functions( )->set_all( abap_true ).
+    salv->get_columns( )->set_optimize( abap_true ).
+    salv->display( ).
 
   CATCH cx_salv_msg INTO DATA(lx_msg).
     MESSAGE lx_msg->get_text( ) TYPE 'E'.
 ENDTRY.
 ```
 
+> Clean ABAP 推荐面向对象 API；`cl_salv_table` 代码最简、无布局对象，适合多数报表。
+> 需要行高亮/编辑/事件等高级交互时用 `cl_gui_alv_grid`（备选）。
+
+### 2. CL_GUI_ALV_GRID（备选，需要交互/事件场景）
+
+```abap
+DATA: alv      TYPE REF TO cl_gui_alv_grid,
+      container TYPE REF TO cl_gui_custom_container.
+
+CREATE OBJECT container
+  EXPORTING container_name = 'ALV_CONTAINER'.
+
+CREATE OBJECT alv
+  EXPORTING i_parent = container.
+
+alv->set_table_for_first_display(
+  EXPORTING is_layout       = layout
+  CHANGING  it_outtab       = report_data
+            it_fieldcatalog = field_catalog ).
+```
+
+### 3. REUSE_ALV_GRID_DISPLAY_LVC（兼容备选：遗留系统/存量代码风格）
+
+> 仅当目标系统版本旧或存量代码已用此风格时采用；新代码优先前两种 OO 方案。
+> 注：`lt_`/`ls_` 前缀仅限 ALV 字段目录/输出内表等业界通行场景（本技能模板沿用），普通变量遵循 Clean ABAP 无前缀。
+
+```abap
+DATA: field_catalog TYPE lvc_t_fcat,
+      fieldcat_line TYPE lvc_s_fcat,
+      layout        TYPE lvc_s_layo.
+
+" 字段目录必须显式逐字段定义，禁止用 FORM 或宏自动生成
+CLEAR fieldcat_line.
+fieldcat_line-fieldname = 'VBELN'.
+fieldcat_line-coltext   = '销售订单'.
+APPEND fieldcat_line TO field_catalog.
+
+CLEAR fieldcat_line.
+fieldcat_line-fieldname = 'NETWR'.
+fieldcat_line-coltext   = '净金额'.
+fieldcat_line-no_zero   = abap_true.
+APPEND fieldcat_line TO field_catalog.
+
+layout-zebra      = abap_true.
+layout-cwidth_opt = abap_true.
+
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+  EXPORTING
+    i_callback_program = sy-repid
+    is_layout_lvc      = layout
+    it_fieldcat_lvc    = field_catalog
+  TABLES
+    t_outtab           = report_data
+  EXCEPTIONS
+    program_error      = 1
+    OTHERS             = 2.
+```
+
 ### 4. 层次 ALV（备选，抬头-行项目双层展示）
 
 ```abap
 cl_salv_hierseq_table=>factory(
-  IMPORTING r_salv_hierseq = DATA(lo_hier)
-  CHANGING  t_table1       = lt_header
-            t_table2       = lt_items ).
+  IMPORTING r_salv_hierseq = DATA(hier)
+  CHANGING  t_table1       = header_data
+            t_table2       = item_data ).
 
-lo_hier->display( ).
+hier->display( ).
 ```
 
 ## 选择屏幕

@@ -1,5 +1,5 @@
 /**
- * AbapBuddy Web Server — 本地 Web 版（完整 API）
+ * SapBuddy Web Server — 本地 Web 版（完整 API）
  *
  * 启动: node src/web/server.mjs [--port 7400]
  * API:
@@ -629,6 +629,6 @@ const ids = models.map((m) => m.id)
 })
 
 server.listen(PORT, HOST, () => {
-  console.log(`\n  🚀 AbapBuddy Web 版已启动`)
+  console.log(`\n  🚀 SapBuddy Web 版已启动`)
   console.log(`  📍 http://${HOST}:${PORT}\n`)
 })

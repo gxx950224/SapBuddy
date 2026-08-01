@@ -41,7 +41,7 @@ async function registerMcpTools(pi) {
     try {
       const st = await testServer(name, server)
       if (!st.connected) {
-        console.log(`[abapbuddy] MCP ${name} 连接失败: ${st.error}`)
+        console.log(`[sapbuddy] MCP ${name} 连接失败: ${st.error}`)
         continue
       }
       for (const t of st.tools) {
@@ -66,9 +66,9 @@ async function registerMcpTools(pi) {
           },
         })
       }
-      console.log(`[abapbuddy] MCP ${name} 已注册 ${st.tools.length} 个工具（${st.tools.map((x) => x.name).join(", ")}）`)
+      console.log(`[sapbuddy] MCP ${name} 已注册 ${st.tools.length} 个工具（${st.tools.map((x) => x.name).join(", ")}）`)
     } catch (e) {
-      console.log(`[abapbuddy] MCP ${name} 注册失败: ${e instanceof Error ? e.message : String(e)}`)
+      console.log(`[sapbuddy] MCP ${name} 注册失败: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 }
@@ -108,7 +108,7 @@ export async function createAgent(opts = {}) {
     if (!model) {
       const ds = (await modelRuntime.getAvailable()).filter((m) => m.provider === provider)
       model = ds[0]
-      console.log(`[abapbuddy] 模型 ${provider}/${modelId} 未找到，回退 ${model?.id ?? "默认"}`)
+      console.log(`[sapbuddy] 模型 ${provider}/${modelId} 未找到，回退 ${model?.id ?? "默认"}`)
     }
   } catch {
     model = undefined
@@ -123,9 +123,9 @@ export async function createAgent(opts = {}) {
         // 加载期直接注册（不能调 getAllTools 等 action method，registerTool 本身可用）
         try {
           const n = registerSapTools(pi)
-          console.log(`[abapbuddy] 已注册 ${n} 个 SAP 工具`)
+          console.log(`[sapbuddy] 已注册 ${n} 个 SAP 工具`)
         } catch (e) {
-          console.log(`[abapbuddy] 工具注册失败: ${e.message}`)
+          console.log(`[sapbuddy] 工具注册失败: ${e.message}`)
         }
       },
       // MCP 服务器工具动态注册（async factory：设置-MCP 保存的服务器在此生效）
