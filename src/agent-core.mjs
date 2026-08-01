@@ -93,7 +93,8 @@ export async function createAgent(opts = {}) {
     modelRuntime,
     model,
     thinkingLevel: settings.defaultThinkingLevel ?? "off",
-    sessionManager: SessionManager.inMemory(),
+    // 持久化会话到 .pi/sessions（历史会话可用）
+    sessionManager: SessionManager.create(ROOT),
     settingsManager: SettingsManager.inMemory(),
   })
   return { session, settings }

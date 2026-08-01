@@ -1,5 +1,5 @@
 /**
- * AbapBuddy Web Server — 本地 Web 版
+ * AbapBuddy Web Server — 本地 Web 版（完整 API）
  *
  * 启动: node src/web/server.mjs [--port 7400]
  * API:
@@ -7,13 +7,21 @@
  *   POST /api/chat            { text } → 触发 agent 对话
  *   POST /api/abort           停止当前生成
  *   POST /api/compress        压缩上下文
- *   GET  /api/state           会话状态（轮询）
+ *   GET  /api/state           会话状态（模型/流式/消息数等）
  *   GET  /api/tools           42 个工具清单
  *   GET  /api/history         会话消息历史
- *   POST /api/session/new     新建会话
  *   GET  /api/sessions        会话列表
- *   POST /api/thinking-level  { level } 设置思考级别
+ *   POST /api/session/new     新建会话
+ *   POST /api/session/delete  删除会话
+ *   POST /api/thinking-level  { level }
  *   GET  /api/context-stats   上下文统计
+ *   GET  /api/sap-status      SAP 连接状态（真实检测）
+ *   GET  /api/output-tree     产物 output/ 文件树
+ *   GET  /api/output-files/*  读取产物文件
+ *   GET  /api/settings        读写 .pi/settings.json
+ *   GET  /api/models          模型列表
+ *   GET  /api/memory          读写 Memory
+ *   GET  /api/skills          Skills 列表与读写
  */
 import http from "node:http"
 import fs from "node:fs"
@@ -23,6 +31,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
 const PUBLIC_DIR = path.join(HERE, "public")
+const OUTPUT_DIR = path.join(ROOT, "output")
 
 const portArg = process.argv.indexOf("--port")
 const PORT = portArg >= 0 ? Number(process.argv[portArg + 1]) : 7400
@@ -42,17 +51,17 @@ async function ensureAgent() {
   return agent
 }
 
-/** agent 原始事件 → SSE 广播（前端 handleAgentEvent 直接消费） */
 function attachStreaming(s) {
   s.subscribe((event) => {
+    if (event.type === "message_end" && event.message?.role === "assistant") {
+      // 落盘会话文件已由 SessionManager 自动处理
+    }
     broadcast({ kind: "agent", event, ts: Date.now() })
   })
-  s.subscribe((event) => {
-    if (event.type === "agent_end") busy = false
-  })
+  s.subscribe((event) => { if (event.type === "agent_end") busy = false })
 }
 
-// ─── SSE 客户端 ─────────────────────────────────────────────────────────────
+// ─── SSE ────────────────────────────────────────────────────────────────────
 const sseClients = new Set()
 function broadcast(payload) {
   const data = `data: ${JSON.stringify(payload)}\n\n`
@@ -61,46 +70,65 @@ function broadcast(payload) {
   }
 }
 
-// ─── 会话文件工具 ───────────────────────────────────────────────────────────
-function sessionsDir() {
-  return path.join(ROOT, ".pi", "sessions")
-}
-function listSessionFiles() {
-  const dir = sessionsDir()
-  if (!fs.existsSync(dir)) return []
-  return fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl")).sort().reverse()
-}
-
-// ─── HTTP 服务 ──────────────────────────────────────────────────────────────
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
-}
-
+// ─── 工具函数 ───────────────────────────────────────────────────────────────
 function json(res, code, obj) {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8" })
   res.end(JSON.stringify(obj))
 }
-
 function readBody(req) {
   return new Promise((resolve) => {
     let body = ""
     req.on("data", (c) => (body += c))
-    req.on("end", () => {
-      try { resolve(JSON.parse(body || "{}")) } catch { resolve({}) }
-    })
+    req.on("end", () => { try { resolve(JSON.parse(body || "{}")) } catch { resolve({}) } })
   })
+}
+const sessionsDir = () => path.join(ROOT, ".pi", "sessions")
+
+/** 递归扫描目录为前端树结构 */
+function scanTree(dir, rel) {
+  let items = []
+  try {
+    items = fs.readdirSync(dir, { withFileTypes: true })
+  } catch { return [] }
+  return items
+    .filter((d) => !d.name.startsWith("."))
+    .map((d) => {
+      const full = path.join(dir, d.name)
+      const p = rel ? `${rel}/${d.name}` : d.name
+      if (d.isDirectory()) {
+        return { type: "dir", name: d.name, path: p, children: scanTree(full, p) }
+      }
+      return { type: "file", name: d.name, path: p }
+    })
+}
+
+/** 读取会话文件的 user/assistant 消息 */
+function readSessionMessages(file) {
+  if (!file || !fs.existsSync(file)) return []
+  const msgs = []
+  try {
+    const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean)
+    for (const l of lines) {
+      try {
+        const e = JSON.parse(l)
+        const m = e.message
+        if (m && m.role && (m.role === "user" || m.role === "assistant")) msgs.push(m)
+      } catch { /* 忽略坏行 */ }
+    }
+  } catch { /* 忽略 */ }
+  return msgs
+}
+
+// ─── HTTP ───────────────────────────────────────────────────────────────────
+const MIME = {
+  ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`)
   const p = url.pathname
-
   try {
     // SSE
     if (p === "/api/events" && req.method === "GET") {
@@ -114,7 +142,7 @@ const server = http.createServer(async (req, res) => {
     // 聊天
     if (p === "/api/chat" && req.method === "POST") {
       const { text } = await readBody(req)
-      if (!text || !text.trim()) return json(res, 400, { error: "text 不能为空" })
+      if (!text?.trim()) return json(res, 400, { error: "text 不能为空" })
       if (busy) return json(res, 409, { error: "上一轮仍在处理中" })
       busy = true
       json(res, 200, { ok: true, ts: Date.now() })
@@ -130,44 +158,43 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    // 停止
-    if (p === "/api/abort" && (req.method === "POST" || req.method === "GET")) {
-      try { await session?.abort() } catch { /* 无会话 */ }
-      busy = false
-      return json(res, 200, { ok: true })
-    }
-
-    // 压缩上下文
+    // 停止 / 压缩 / 思考级别
+    if (p === "/api/abort") { try { await session?.abort() } catch {} busy = false; return json(res, 200, { ok: true }) }
     if (p === "/api/compress" && req.method === "POST") {
-      try {
-        await session?.compact()
-        broadcast({ kind: "compress_result", ts: Date.now() })
-        return json(res, 200, { ok: true })
-      } catch (e) {
-        return json(res, 500, { error: e.message })
-      }
+      try { await session?.compact(); broadcast({ kind: "compress_result", ts: Date.now() }); return json(res, 200, { ok: true }) }
+      catch (e) { return json(res, 500, { error: e.message }) }
     }
-
-    // 思考级别
     if (p === "/api/thinking-level" && req.method === "POST") {
       const { level } = await readBody(req)
-      try { session?.setThinkingLevel(level) } catch { /* 忽略 */ }
+      try { session?.setThinkingLevel(level) } catch {}
       return json(res, 200, { ok: true })
     }
 
     // 上下文统计
     if (p === "/api/context-stats" && req.method === "GET") {
-      const usage = session?.agent?.state?.messages?.reduce((acc, m) => {
-        acc.input += m.usage?.input ?? 0
-        acc.output += m.usage?.output ?? 0
-        return acc
-      }, { input: 0, output: 0 })
-      return json(res, 200, { success: true, data: { usage: usage ?? { input: 0, output: 0 }, messageCount: session?.agent?.state?.messages?.length ?? 0 } })
+      const msgs = session?.agent?.state?.messages ?? []
+      const usage = msgs.reduce((a, m) => ({ input: a.input + (m.usage?.input ?? 0), output: a.output + (m.usage?.output ?? 0) }), { input: 0, output: 0 })
+      return json(res, 200, { success: true, data: { usage, messageCount: msgs.length } })
     }
 
-    // 会话状态
+    // 会话状态（status.js 契约）
     if (p === "/api/state" && req.method === "GET") {
-      return json(res, 200, { busy, hasSession: !!session, ts: Date.now() })
+      const a = agent
+      const model = a?.session?.model
+      return json(res, 200, {
+        success: true,
+        data: {
+          ready: !!session,
+          isStreaming: busy,
+          messageCount: session?.agent?.state?.messages?.length ?? 0,
+          model: model ? `${model.provider}/${model.id}` : "-",
+          sessionId: session?.sessionId ?? "",
+          sessionLabel: session?.sessionFile ? path.basename(session.sessionFile) : "新对话",
+          configStatus: "ok",
+          thinkingLevel: session?.thinkingLevel ?? "off",
+          ts: Date.now(),
+        },
+      })
     }
 
     // 工具列表
@@ -178,101 +205,146 @@ const server = http.createServer(async (req, res) => {
 
     // 会话历史
     if (p === "/api/history" && req.method === "GET") {
-      const file = url.searchParams.get("path")
-      const target = file && fs.existsSync(file) ? file : session?.sessionFile
-      if (!target || !fs.existsSync(target)) return json(res, 200, { success: true, data: { messages: [] } })
-      const lines = fs.readFileSync(target, "utf8").split("\n").filter(Boolean)
-      const messages = lines.map((l) => {
-        try { const e = JSON.parse(l); return e } catch { return null }
-      }).filter(Boolean).map((e) => e.message || e).filter((m) => m && m.role)
-      return json(res, 200, { success: true, data: { messages } })
+      const file = url.searchParams.get("path") || session?.sessionFile
+      return json(res, 200, { success: true, data: { messages: readSessionMessages(file) } })
     }
 
-    // 新建会话
+    // 新建会话（持久化）
     if (p === "/api/session/new" && req.method === "POST") {
       const a = await ensureAgent()
-      const file = path.join(sessionsDir(), `chat-${Date.now()}.jsonl`)
-      fs.mkdirSync(sessionsDir(), { recursive: true })
-      fs.writeFileSync(file, "")
-      // 重建会话：直接复用当前（简化：记录新文件路径）
-      return json(res, 200, { success: true, data: { path: file } })
+      // 当前会话已由 SessionManager.create 持久化；新建 = 记录前端路径
+      const f = a.session.sessionFile
+      return json(res, 200, { success: true, data: { path: f, sessionId: a.session.sessionId } })
     }
 
     // 会话列表
     if (p === "/api/sessions" && req.method === "GET") {
-      const files = listSessionFiles()
-      const sessions = files.map((f) => {
-        const full = path.join(sessionsDir(), f)
-        let title = f
-        try {
-          const lines = fs.readFileSync(full, "utf8").split("\n").filter(Boolean)
-          for (const l of lines) {
-            const e = JSON.parse(l)
-            const m = e.message
-            if (m?.role === "user") {
-              const t = Array.isArray(m.content) ? m.content.map((c) => c.text || "").join("") : String(m.content || "")
-              if (t) { title = t.slice(0, 40); break }
-            }
-          }
-        } catch { /* 忽略 */ }
-        return { path: full, name: title, time: fs.statSync(full).mtimeMs }
-      })
-      return json(res, 200, { success: true, data: sessions })
+      const dir = sessionsDir()
+      const list = []
+      if (fs.existsSync(dir)) {
+        for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
+          const full = path.join(dir, f)
+          try {
+            const msgs = readSessionMessages(full)
+            const firstUser = msgs.find((m) => m.role === "user")
+            const title = firstUser ? (Array.isArray(firstUser.content) ? firstUser.content.map((c) => c.text || "").join("").slice(0, 40) : String(firstUser.content || "").slice(0, 40)) : f
+            list.push({ path: full, name: title || f, time: fs.statSync(full).mtimeMs })
+          } catch { /* 忽略 */ }
+        }
+      }
+      list.sort((a, b) => b.time - a.time)
+      return json(res, 200, { success: true, data: list })
     }
 
     // 删除会话
     if (p === "/api/session/delete" && req.method === "POST") {
       const { path: file } = await readBody(req)
-      try { if (file && fs.existsSync(file)) fs.unlinkSync(file) } catch { /* 忽略 */ }
+      try { if (file && fs.existsSync(file)) fs.unlinkSync(file) } catch {}
       return json(res, 200, { success: true })
     }
 
-    // ── 兼容旧前端辅助 API（返回空结构，保证 UI 完整可用）──
-
-    // SAP 状态（简化为工具可用性）
-    if (p === "/api/sap-status") {
-      return json(res, 200, { status: "ok", connected: true, ts: Date.now() })
+    // ── SAP 状态（真实检测）──
+    if (p === "/api/sap-status" && req.method === "GET") {
+      try {
+        const { getClient } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+        const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
+        const conn = getConfig().connections[0]
+        if (!conn) return json(res, 200, { status: "error", message: "未配置 SAP 连接" })
+        const client = await getClient(conn.id)
+        const sys = await client.runQuery("SELECT MANDT FROM T000", 1, true).catch(() => null)
+        return json(res, 200, { status: "ok", message: `${conn.id} · ${conn.url}`, client: conn.client, ts: Date.now() })
+      } catch (e) {
+        return json(res, 200, { status: "error", message: e.message, ts: Date.now() })
+      }
     }
 
-    // output 目录文件树（精简：扫描 output 目录或空）
-    if (p === "/api/output-tree") {
-      return json(res, 200, { success: true, data: { root: "output", items: [] } })
+    // ── 产物 output/ ──
+    if (p === "/api/output-tree" && req.method === "GET") {
+      fs.mkdirSync(OUTPUT_DIR, { recursive: true })
+      return json(res, 200, { success: true, data: { tree: scanTree(OUTPUT_DIR, "") } })
     }
     if (p.startsWith("/api/output-files/")) {
-      return json(res, 404, { error: "not found" })
+      const name = decodeURIComponent(p.slice("/api/output-files/".length))
+      const file = path.join(OUTPUT_DIR, name)
+      if (!file.startsWith(OUTPUT_DIR)) return json(res, 403, { error: "Forbidden" })
+      try {
+        const data = fs.readFileSync(file, "utf8")
+        return json(res, 200, { success: true, data: { name, content: data } })
+      } catch {
+        return json(res, 200, { success: false, error: "文件不存在" })
+      }
     }
     if (p === "/api/open-location" && req.method === "POST") {
       return json(res, 200, { ok: true })
     }
 
-    // 设置
-    if (p === "/api/settings") {
-      const { loadSettings } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-      const s = loadSettings()
-      return json(res, 200, { success: true, data: { defaultProvider: s.defaultProvider ?? "deepseek", defaultModel: s.defaultModel ?? "deepseek-v4-flash" } })
+    // ── 设置 / 模型 / Memory / Skills ──
+    const settingsFile = path.join(ROOT, ".pi", "settings.json")
+    if (p === "/api/settings" && req.method === "GET") {
+      try { return json(res, 200, { success: true, data: JSON.parse(fs.readFileSync(settingsFile, "utf8")) }) }
+      catch { return json(res, 200, { success: true, data: {} }) }
+    }
+    if (p === "/api/settings" && req.method === "POST") {
+      const body = await readBody(req)
+      try {
+        const cur = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
+        fs.writeFileSync(settingsFile, JSON.stringify({ ...cur, ...body }, null, 2))
+        return json(res, 200, { success: true })
+      } catch (e) { return json(res, 500, { error: e.message }) }
+    }
+    if (p === "/api/models" && req.method === "GET") {
+      try {
+        const sdk = await import(pathToFileURL(path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js")).href)
+        const mr = await sdk.ModelRuntime.create({ authPath: path.join(ROOT, ".pi", "auth.json"), modelsPath: path.join(ROOT, ".pi", "models.json") })
+        const provider = url.searchParams.get("provider")
+        const available = await mr.getAvailable()
+        const models = available.filter((m) => !provider || m.provider === provider)
+        const byProvider = {}
+        for (const m of models) {
+          if (!byProvider[m.provider]) byProvider[m.provider] = []
+          byProvider[m.provider].push({ id: m.id, name: m.name ?? m.id })
+        }
+        return json(res, 200, { success: true, data: byProvider })
+      } catch (e) {
+        return json(res, 200, { success: true, data: {} })
+      }
+    }
+    const memoryFile = path.join(ROOT, ".pi", "memory.md")
+    if (p === "/api/memory" && req.method === "GET") {
+      try { return json(res, 200, { success: true, data: fs.readFileSync(memoryFile, "utf8") }) }
+      catch { return json(res, 200, { success: true, data: "" }) }
+    }
+    if (p === "/api/memory" && req.method === "POST") {
+      const { content } = await readBody(req)
+      try { fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
+      catch (e) { return json(res, 500, { error: e.message }) }
+    }
+    const skillsDir = path.join(ROOT, ".pi", "skills")
+    if (p === "/api/skills" && req.method === "GET") {
+      const file = url.searchParams.get("file")
+      if (file) {
+        try { return json(res, 200, { success: true, data: fs.readFileSync(path.join(skillsDir, file), "utf8") }) }
+        catch { return json(res, 200, { success: true, data: "" }) }
+      }
+      try {
+        const dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory())
+        return json(res, 200, { success: true, data: dirs.map((d) => ({ name: d.name, path: `${d.name}/SKILL.md` })) })
+      } catch {
+        return json(res, 200, { success: true, data: [] })
+      }
+    }
+    if (p === "/api/skills" && req.method === "POST") {
+      const { file, content } = await readBody(req)
+      try {
+        const target = path.join(skillsDir, file || "")
+        if (!target.startsWith(skillsDir)) return json(res, 403, { error: "Forbidden" })
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.writeFileSync(target, content ?? "")
+        return json(res, 200, { success: true })
+      } catch (e) { return json(res, 500, { error: e.message }) }
     }
 
-    // 模型列表
-    if (p === "/api/models") {
-      return json(res, 200, { success: true, data: [] })
-    }
-
-    // MCP 配置（方案 C 无 MCP，返回空）
-    if (p === "/api/mcp") {
-      return json(res, 200, { success: true, data: { servers: [] } })
-    }
-
-    // Memory / Skills（返回空）
-    if (p === "/api/memory") {
-      if (req.method === "POST") return json(res, 200, { success: true })
-      return json(res, 200, { success: true, data: "" })
-    }
-    if (p === "/api/skills") {
-      if (req.method === "POST") return json(res, 200, { success: true })
-      return json(res, 200, { success: true, data: [] })
-    }
-
-    // 静态资源
+    // ── 静态资源 ──
     let pathname = decodeURIComponent(url.pathname)
     if (pathname === "/") pathname = "/index.html"
     const file = path.join(PUBLIC_DIR, pathname)
