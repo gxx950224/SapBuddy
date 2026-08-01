@@ -17,8 +17,8 @@
 需要 Node.js ≥ 20。
 
 ```bash
-git clone https://github.com/yourname/abapbuddy.git
-cd abapbuddy
+git clone https://github.com/yourname/sapbuddy.git
+cd sapbuddy
 npm install
 npm run build
 ```
