@@ -18,3 +18,4 @@ connections.json
 Thumbs.db
 # 产物目录（AI 生成的文件，不提交）
 output/
+.pi/mcp.json
