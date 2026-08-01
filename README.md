@@ -111,6 +111,10 @@ abapbuddy/
 - 提交前 `npm run format`（如有）
 - 工具遵循"读优先、写需显式授权"原则
 
+## 🙏 致谢与参考
+
+本项目的 SAP 工具设计与 ADT 交互模式参考了 [marcellourbani/vscode_abap_remote_fs](https://github.com/marcellourbani/vscode_abap_remote_fs)（ABAP Remote FileSystem）及其内置语言模型工具，并基于 [marcellourbani/abap-adt-api](https://github.com/marcellourbani/abap-adt-api) 实现。详见 [CREDITS.md](./CREDITS.md)。
+
 ## 📄 License
 
 [MIT](./LICENSE)
