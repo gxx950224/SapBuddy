@@ -86,29 +86,12 @@
     return ctxTooltip;
   }
 
-  function showCtxTooltip(x, y, anchorRect) {
-    const tip = ensureCtxTooltip();
-    const H = 330; // tooltip 估算高度
-    let top = y
-    // 默认在按钮上方展开；空间不足则放到按钮下方
-    if (anchorRect) {
-      if (anchorRect.top - H - 8 >= 8) {
-        top = anchorRect.top - H - 8
-      } else {
-        top = anchorRect.bottom + 8
-      }
-    }
-    tip.style.left = Math.min(Math.max(8, x), window.innerWidth - 260) + "px";
-    tip.style.top = Math.min(top, window.innerHeight - 16) + "px";
-    tip.classList.add("visible");
-  }
-
   function hideCtxTooltip() {
     if (ctxTooltipTimer) { clearTimeout(ctxTooltipTimer); ctxTooltipTimer = null; }
     if (ctxTooltip) ctxTooltip.classList.remove("visible");
   }
 
-  App.refreshCtxTooltip = async function() {
+  App.refreshCtxTooltip = async function(anchorRect) {
     try {
       const r = await fetch("/api/context-stats");
       const j = await r.json();
@@ -138,20 +121,38 @@
           <div class="ctx-row"><span class="ctx-label indent">历史消息</span><span class="ctx-val">${App.formatTokens(d.conversation)} <span class="ctx-pct">${d.pctConv}%</span></span></div>
         </div>
         <div class="ctx-footer">剩余 ${App.formatTokens(d.remaining)} tokens</div>`;
+      // 数据就绪后再显示（鼠标已移开则不弹）
+      if (!_ctxHoverActive) return;
+      showCtxTooltipAt(anchorRect || _ctxAnchorRect);
       return tip;
     } catch { /* 忽略 */ }
   };
 
   let _ctxHoverTimer = null;
+  let _ctxHoverActive = false;
+  let _ctxAnchorRect = null;
+
+  function showCtxTooltipAt(anchorRect) {
+    const tip = ensureCtxTooltip();
+    const H = 330; // tooltip 完整高度估算
+    let top = anchorRect.top - H - 8 >= 8 ? anchorRect.top - H - 8 : anchorRect.bottom + 8;
+    tip.style.left = Math.min(Math.max(8, anchorRect.left - 100), window.innerWidth - 260) + "px";
+    tip.style.top = Math.min(top, window.innerHeight - 16) + "px";
+    tip.classList.add("visible");
+  }
+
   $("#compress-btn").addEventListener("mouseenter", (e) => {
+    _ctxHoverActive = true;
+    const rect = e.target.getBoundingClientRect();
+    _ctxAnchorRect = rect;
     if (_ctxHoverTimer) clearTimeout(_ctxHoverTimer);
     _ctxHoverTimer = setTimeout(() => {
-      App.refreshCtxTooltip();
+      // 数据就绪后再显示，避免“先上边后下边”的填充跳跃
+      App.refreshCtxTooltip(rect);
     }, 200); // 防抖：停留 200ms 后才请求
-    const rect = e.target.getBoundingClientRect();
-    showCtxTooltip(rect.left - 100, rect.top - 350, rect);
   });
   $("#compress-btn").addEventListener("mouseleave", () => {
+    _ctxHoverActive = false;
     ctxTooltipTimer = setTimeout(hideCtxTooltip, 150);
   });
 

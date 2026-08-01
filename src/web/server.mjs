@@ -202,8 +202,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { success: true, thinkingLevel: level })
     }
 
-    // 上下文统计
+    // 上下文统计（3s 缓存，避免每次悬浮重复读文件估算 tokens）
+    let ctxStatsCache = { ts: 0, body: null }
     if (p === "/api/context-stats" && req.method === "GET") {
+      if (Date.now() - ctxStatsCache.ts < 3000 && ctxStatsCache.body) {
+        // 对话消息数变化时仍需刷新：消息数不一致则重算
+        const msgsNow = session?.agent?.state?.messages?.length ?? 0
+        if (ctxStatsCache.msgs === msgsNow) return json(res, 200, ctxStatsCache.body)
+      }
       const msgs = session?.agent?.state?.messages ?? []
       const usage = msgs.reduce((a, m) => ({ input: a.input + (m.usage?.input ?? 0), output: a.output + (m.usage?.output ?? 0) }), { input: 0, output: 0 })
       const t = (txt) => Math.max(1, Math.ceil(String(txt ?? "").length / 3))
@@ -221,14 +227,16 @@ const server = http.createServer(async (req, res) => {
       const total = piAgent + extensions + mcp + agents + systemMd + memory + skills + conversation
       const pct = Math.min(999, Math.round(total / max * 100))
       const cache = 0
-      return json(res, 200, { success: true, data: {
+      const statsBody = { success: true, data: {
         usage, messageCount: msgs.length,
         total, max, pct, remaining: Math.max(0, max - total),
         cache, pctCache: 0,
         piAgent, extensions, mcp, agents, systemMd, memory, skills, conversation,
         pctPiAgent: Math.round(piAgent / max * 100), pctExtensions: Math.round(extensions / max * 100), pctMcp: 0,
         pctAgents: Math.round(agents / max * 100), pctSystemMd: Math.round(systemMd / max * 100), pctMemory: Math.round(memory / max * 100), pctSkills: Math.round(skills / max * 100), pctConv: Math.round(conversation / max * 100),
-      } })
+      } }
+      ctxStatsCache = { ts: Date.now(), body: statsBody, msgs: msgs.length }
+      return json(res, 200, statsBody)
     }
 
     // 会话状态（status.js 契约）
