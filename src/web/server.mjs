@@ -179,8 +179,22 @@ const server = http.createServer(async (req, res) => {
         const after = session?.agent?.state?.messages?.length ?? 0
         const saved = Math.max(0, before - after)
         broadcast({ kind: "compress_result", saved, ts: Date.now() })
-        return json(res, 200, { ok: true, saved })
-      } catch (e) { return json(res, 500, { error: e.message }) }
+        return json(res, 200, { success: true, saved })
+      } catch (e) {
+        const msg = String(e?.message || e)
+        if (msg.includes("Nothing to compact")) {
+          // 保留最近 20000 tokens，超出部分才可压缩；对话太短时给出提示
+          const conv = (session?.agent?.state?.messages ?? []).reduce((a, m) => a + (m.usage?.input ?? 0) + (m.usage?.output ?? 0), 0)
+          return json(res, 200, {
+            success: false,
+            error: `对话内容太少（约 ${conv} tokens），无法压缩。需超过 20000 tokens（约 3-4 万字对话）才有可压缩的历史。`,
+          })
+        }
+        if (msg.includes("Already compacted")) {
+          return json(res, 200, { success: false, error: "本段对话已压缩过，请继续对话后再压缩。" })
+        }
+        return json(res, 500, { error: e.message })
+      }
     }
     if (p === "/api/thinking-level" && req.method === "POST") {
       const { level } = await readBody(req)
