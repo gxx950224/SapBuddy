@@ -1,4 +1,4 @@
-# SYSTEM.md — ABAP 开发专家 Agent
+# SYSTEM.md — SAP ABAP AI 全能助手（面向开发顾问与业务顾问）
 
 ## 身份
 
