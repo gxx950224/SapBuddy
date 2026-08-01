@@ -1,97 +1,111 @@
 # AbapBuddy
 
-SAP ABAP AI 辅助开发工具箱。通过自然语言对话编写 ABAP 代码，支持直接连接 SAP 系统创建、修改、激活程序。
+> SAP ABAP AI 辅助开发助手 —— 用自然语言驱动 42 个 SAP 工具（搜索、读码、分析、ATC、单测、SQL、DDIC 管理……）
 
-## 快速开始
+基于 [pi-coding-agent](https://github.com/badlogic/pi-mono)（AI Agent 引擎）与 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api)（SAP ADT 协议）构建，跨平台（Windows / macOS / Linux）。
 
-### 方式一：直接运行（源码）
+## ✨ 功能
+
+- 💬 **自然语言开发**：对话完成 SAP 代码查询、分析、修改、测试
+- 🛠 **42 个 SAP 工具**：搜索对象、读源码、where-used、ATC 检查、单元测试、SQL 查询、传输请求、版本历史、ST22 dump 分析、DDIC 管理（表/结构/数据元素/域/CDS）、文本元素与 text pool 多语言翻译……
+- 🔒 **默认只读**：写操作（创建/编辑/激活）可单独开启，生产安全
+- 🖥 **CLI + Web 双模式**：终端交互 / 浏览器界面
+- 🔀 **多模型**：支持 DeepSeek、OpenAI、Anthropic、Qwen 等（pi 生态）
+
+## 📦 安装
+
+需要 Node.js ≥ 20。
 
 ```bash
-# 启动 Web IDE
-双击 AbapBuddy.bat
-# 浏览器打开 http://127.0.0.1:7400
+git clone https://github.com/yourname/abapbuddy.git
+cd abapbuddy
+npm install
+npm run build
 ```
 
-### 方式二：桌面应用（需先打包）
+## ⚙️ 配置
+
+### 1. AI 模型 Key
 
 ```bash
-# 运行 build.bat 生成安装包
-# 安装后从开始菜单启动
-```
-
-首次使用先配置 API Key 和 SAP 连接。
-
-## 配置
-
-### 1. API Key（必需）
-
-编辑 `.pi/auth.json`：
-
-```json
-{
-  "deepseek": {
-    "type": "api_key",
-    "key": "你的DeepSeek API Key"
-  }
-}
+cp config/auth.example.json .pi/auth.json
+# 编辑 .pi/auth.json 填入你的 API Key
 ```
 
 ### 2. SAP 连接
 
-编辑 `.gxx-abap/config.json`：
-
-```json
-{
-  "host": "10.x.x.x",
-  "user": "你的SAP账号",
-  "pass": "密码",
-  "client": "100",
-  "language": "ZH"
-}
+```bash
+cp config/connections.example.json connections.json
+# 编辑 connections.json 填入 SAP 系统信息
+# （ADT 需在 SICF 中激活 /sap/bc/adt，自签名证书请设置 ssl.allowSelfSigned）
 ```
 
-验证连接：
+### 3. （可选）模型与思考级别
 
 ```bash
-# 双击 gxx-abap.bat，然后
-gxx-abap> ping
+cp config/settings.example.json .pi/settings.json
 ```
 
-### 3. MCP 服务器（可选）
+## 🚀 使用
 
-编辑 `.pi/settings.json` 的 `mcpServers` 字段，可接入自定义 MCP 工具。
+```bash
+# 交互式对话
+npm run chat
+# 或 node cli.mjs chat
 
-## 功能
+# 单次提问
+node cli.mjs "搜索 ZCL_* 开头的类"
 
-- **对话式 ABAP 开发** — 用中文描述需求，AI 直接生成代码并写入 SAP
-- **代码审查** — 自动审查 ABAP 代码并生成 HTML 报告
-- **程序逻辑详解** — 分析现有程序逻辑，用业务语言输出说明
-- **MCP 扩展** — 支持挂载外部 MCP 服务器扩展能力
-- **Electron 桌面壳** — 可选桌面应用封装
+# 启动 Web 版（浏览器打开 http://127.0.0.1:7400）
+node cli.mjs web
 
-## 目录结构
-
-```
-AbapBuddy/
-  AbapBuddy.bat           ← 启动 Web IDE（双击）
-  gxx-abap.bat            ← SAP CLI 工具
-  build.bat               ← 生成 exe 安装包
-  webide/                 ← 后端服务 + 前端页面
-  gxx-abap/               ← SAP ADT 协议客户端
-  .pi/                    ← AI 配置 + 技能 + 提示词
-    auth.json             ← API Key
-    settings.json         ← 模型、MCP 配置
-    skills/               ← AI 技能
-    prompts/              ← 提示词模板
-  node/                   ← 内嵌 Node.js 运行时
-  output/                 ← 生成的代码和报告
-  package/                ← Electron 打包配置
+# 其他
+node cli.mjs tools     # 列出 42 个 SAP 工具
+node cli.mjs doctor    # 环境自检
 ```
 
-## 系统要求
+## 📁 项目结构
 
-- Windows 10+
-- 内嵌 Node.js，无需额外安装
-- 需要 DeepSeek API Key
-- 需要 SAP 账号（SAP 操作功能）
-# AbapBuddy
+```
+abapbuddy/
+├── cli.mjs                 # CLI 入口（chat / 单次 / web / tools / doctor）
+├── src/
+│   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析
+│   ├── sap-tools/          # 42 个 SAP 工具（纯 Node，基于 abap-adt-api）
+│   │   ├── tools/*.ts         工具实现（zod schema + execute）
+│   │   ├── adtManager.ts      SAP 连接池
+│   │   ├── config.ts          连接配置加载
+│   │   └── register.ts        ★ 工具注册适配（zod → TypeBox → pi.registerTool）
+│   └── web/
+│       ├── server.mjs      # 本地 Web 服务器（SSE 流式）
+│       └── public/         # Web UI（聊天界面）
+├── config/                 # 配置模板（不包含真实凭据）
+└── .pi/                    # pi 运行时配置（auth/settings，已 gitignore）
+```
+
+## 🧩 架构
+
+```
+用户 ──CLI / Web──► pi SDK (AgentSession)
+                       │  42 个 SAP 工具（方案 C：直接函数调用，无 MCP 进程）
+                       ▼
+                  abap-adt-api ──ADT HTTPS──► SAP /sap/bc/adt
+```
+
+## 🔒 安全
+
+- 默认 `security.readOnly: true`，写操作需显式开启
+- SAP 密码与模型 Key 不写入代码库（配置模板已脱敏）
+- 工具描述内置避坑说明，错误信息可自愈
+
+## 🤝 贡献
+
+欢迎 PR。请保持：
+
+- 代码风格：Prettier、无分号、双引号
+- 提交前 `npm run format`（如有）
+- 工具遵循"读优先、写需显式授权"原则
+
+## 📄 License
+
+[MIT](./LICENSE)

@@ -1,20 +1,5 @@
 {
   "providers": {
-    "deepseek": {
-      "baseUrl": "https://api.deepseek.com/v1",
-      "api": "openai-completions",
-      "models": [
-        {
-          "id": "deepseek-chat"
-        },
-        {
-          "id": "deepseek-reasoner"
-        },
-        {
-          "id": "deepseek-v3"
-        }
-      ]
-    },
     "qwen": {
       "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
       "api": "openai-completions",

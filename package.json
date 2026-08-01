@@ -1,0 +1,41 @@
+{
+  "name": "abapbuddy",
+  "version": "2.0.0",
+  "description": "SAP ABAP AI 辅助开发助手 — 用自然语言驱动 42 个 SAP 工具（CLI + Web）",
+  "type": "module",
+  "main": "cli.mjs",
+  "bin": {
+    "abapbuddy": "cli.mjs"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node cli.mjs",
+    "chat": "node cli.mjs chat",
+    "web": "node cli.mjs web",
+    "tools": "node cli.mjs tools",
+    "doctor": "node cli.mjs doctor"
+  },
+  "keywords": [
+    "sap",
+    "abap",
+    "ai",
+    "assistant",
+    "adt",
+    "cli",
+    "copilot"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "latest",
+    "abap-adt-api": "^8.4.1",
+    "typebox": "^1.3.0",
+    "zod": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.6.0"
+  }
+}

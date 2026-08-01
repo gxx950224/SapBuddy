@@ -1,0 +1,16 @@
+{
+  "connections": [
+    {
+      "id": "dev",
+      "url": "https://your-sap-host:44300",
+      "client": "100",
+      "username": "YOUR_USER",
+      "password": "YOUR_PASSWORD",
+      "language": "ZH",
+      "authMethod": "basic",
+      "ssl": { "allowSelfSigned": true },
+      "description": "开发系统"
+    }
+  ],
+  "security": { "readOnly": true }
+}
