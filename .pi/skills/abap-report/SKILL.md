@@ -16,12 +16,12 @@ agent_created: true
 ```abap
 TRY.
     cl_salv_table=>factory(
-      IMPORTING r_salv_table = DATA(salv)
-      CHANGING  t_table      = report_data ).
+      IMPORTING r_salv_table = DATA(lo_salv)
+      CHANGING  t_table      = lt_data ).
 
-    salv->get_functions( )->set_all( abap_true ).
-    salv->get_columns( )->set_optimize( abap_true ).
-    salv->display( ).
+    lo_salv->get_functions( )->set_all( abap_true ).
+    lo_salv->get_columns( )->set_optimize( abap_true ).
+    lo_salv->display( ).
 
   CATCH cx_salv_msg INTO DATA(lx_msg).
     MESSAGE lx_msg->get_text( ) TYPE 'E'.
@@ -34,19 +34,19 @@ ENDTRY.
 ### 2. CL_GUI_ALV_GRID（备选，需要交互/事件场景）
 
 ```abap
-DATA: alv      TYPE REF TO cl_gui_alv_grid,
-      container TYPE REF TO cl_gui_custom_container.
+DATA: lo_alv      TYPE REF TO cl_gui_alv_grid,
+      lo_container TYPE REF TO cl_gui_custom_container.
 
-CREATE OBJECT container
+CREATE OBJECT lo_container
   EXPORTING container_name = 'ALV_CONTAINER'.
 
-CREATE OBJECT alv
-  EXPORTING i_parent = container.
+CREATE OBJECT lo_alv
+  EXPORTING i_parent = lo_container.
 
-alv->set_table_for_first_display(
-  EXPORTING is_layout       = layout
-  CHANGING  it_outtab       = report_data
-            it_fieldcatalog = field_catalog ).
+lo_alv->set_table_for_first_display(
+  EXPORTING is_layout       = ls_layout
+  CHANGING  it_outtab       = lt_data
+            it_fieldcatalog = lt_fieldcat ).
 ```
 
 ### 3. REUSE_ALV_GRID_DISPLAY_LVC（兼容备选：遗留系统/存量代码风格）
@@ -55,32 +55,32 @@ alv->set_table_for_first_display(
 > 注：`lt_`/`ls_` 前缀仅限 ALV 字段目录/输出内表等业界通行场景（本技能模板沿用），普通变量遵循 Clean ABAP 无前缀。
 
 ```abap
-DATA: field_catalog TYPE lvc_t_fcat,
-      fieldcat_line TYPE lvc_s_fcat,
-      layout        TYPE lvc_s_layo.
+DATA: lt_fieldcat TYPE lvc_t_fcat,
+      ls_fieldcat TYPE lvc_s_fcat,
+      ls_layout   TYPE lvc_s_layo.
 
 " 字段目录必须显式逐字段定义，禁止用 FORM 或宏自动生成
-CLEAR fieldcat_line.
-fieldcat_line-fieldname = 'VBELN'.
-fieldcat_line-coltext   = '销售订单'.
-APPEND fieldcat_line TO field_catalog.
+CLEAR ls_fieldcat.
+ls_fieldcat-fieldname = 'VBELN'.
+ls_fieldcat-coltext   = '销售订单'.
+APPEND ls_fieldcat TO lt_fieldcat.
 
-CLEAR fieldcat_line.
-fieldcat_line-fieldname = 'NETWR'.
-fieldcat_line-coltext   = '净金额'.
-fieldcat_line-no_zero   = abap_true.
-APPEND fieldcat_line TO field_catalog.
+CLEAR ls_fieldcat.
+ls_fieldcat-fieldname = 'NETWR'.
+ls_fieldcat-coltext   = '净金额'.
+ls_fieldcat-no_zero   = abap_true.
+APPEND ls_fieldcat TO lt_fieldcat.
 
-layout-zebra      = abap_true.
-layout-cwidth_opt = abap_true.
+ls_layout-zebra      = abap_true.
+ls_layout-cwidth_opt = abap_true.
 
 CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
   EXPORTING
     i_callback_program = sy-repid
-    is_layout_lvc      = layout
-    it_fieldcat_lvc    = field_catalog
+    is_layout_lvc      = ls_layout
+    it_fieldcat_lvc    = lt_fieldcat
   TABLES
-    t_outtab           = report_data
+    t_outtab           = lt_data
   EXCEPTIONS
     program_error      = 1
     OTHERS             = 2.
@@ -90,11 +90,11 @@ CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
 
 ```abap
 cl_salv_hierseq_table=>factory(
-  IMPORTING r_salv_hierseq = DATA(hier)
-  CHANGING  t_table1       = header_data
+  IMPORTING r_salv_hierseq = DATA(lo_hier)
+  CHANGING  t_table1       = lt_header
             t_table2       = item_data ).
 
-hier->display( ).
+lo_lo_hier->display( ).
 ```
 
 ## 选择屏幕
