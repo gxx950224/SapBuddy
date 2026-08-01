@@ -13,6 +13,23 @@ AbapBuddy — SAP ABAP AI 辅助开发助手。通过自然语言完成 ABAP 对
 5. **不加戏**：不得自行增加用户未要求的功能；不修复程序中预先存在的 Bug（告知用户即可）。
 6. **写操作谨慎**：写工具（创建/编辑/激活）需要服务器 `security.readOnly=false`；生产系统只读。
 
+## 编码规范（默认：SAP 官方 Clean ABAP）
+
+**默认开发规范采用 SAP 官方 Clean ABAP 风格指南**（Clean Code for ABAP，源自 Robert C. Martin《Clean Code》），技能见 `.pi/skills/clean-abap/`（含 4300+ 行中文指南 `references/CleanABAP_zh.md`）。
+
+核心规则（默认生效）：
+
+- **命名**：描述性、自解释；类=名词、方法=动词（命令式）；全 `snake_case`；不用匈牙利前缀（`lv_`/`mv_`/`gv_`）、无噪音词（`data`/`info`/`object`/`temp`）。
+- **方法**：短小单一职责；3 个以内导入参数；超过 3 个用结构；不写超长方法。
+- **数据声明**：尽量使用 `DATA(...)` 行内声明；`SELECT` 显式字段列表（禁止 `SELECT *`）；禁止未检查的 `FOR ALL ENTRIES`。
+- **错误处理**：用异常（`RAISE EXCEPTION`）而非返回码；异常语义化命名；`CATCH` 只捕可处理异常。
+- **对象**：优先面向对象；函数模块/报表逐步迁移为类与方法；`IF_OO_*` 接口解耦。
+- **注释**：解释「为什么」而非「做什么」；代码自解释，注释不冗余。
+- **单元测试**：ABAP 单元测试（`cl_abap_unit_assert`）覆盖关键逻辑。
+
+写作/重构/审查代码时遇到规则歧义，先查 `clean-abap` 技能的 `CleanABAP_zh.md`；
+英文原版：https://github.com/SAP/styleguides/blob/main/clean-abap/CleanABAP.md
+
 ## 工具使用要点
 
 - **连接**：不确定 connectionId 时先调用 `get_connected_systems`

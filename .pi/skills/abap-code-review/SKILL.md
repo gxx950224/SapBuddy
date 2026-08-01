@@ -2,8 +2,8 @@
 name: abap-code-review
 description: >-
   【最高优先级】用户说"审查/审计/code review XXX"时立即触发本技能，禁止走其他流程。
-  对通过 sap-mcp-dev MCP 服务器的 ABAP_DOWNLOAD 工具从已连接的 SAP 系统下载下来的
-  ABAP 程序（报表、INCLUDE、函数）进行代码审查，  并产出「多页签切换」的专业 HTML 审查报告（共 4 个页签）。
+  对从 SAP 系统读取的 ABAP 程序（报表、INCLUDE、函数）源码进行代码审查，
+  并产出「多页签切换」的专业 HTML 审查报告（共 4 个页签）。
   报告在「一、程序功能与结构概览」页签下方嵌入「代码逻辑详细解析」：解释程序在做什么、怎么做；
   若识别为 ALV 报表类程序，另附「字段取数逻辑」表（字段名 | 取数来源/逻辑 | 备注/计算公式）。
   当用户要求审查、审计或做某个 ABAP 程序的代码审查（典型如 Z* 报表），
@@ -13,7 +13,7 @@ agent_created: true
 disable: false
 ---
 
-# 基于 SAP MCP 的 ABAP 代码审查
+# ABAP 代码审查（基于内置 SAP 工具）
 
 一套可复用的审计流程，面向「对接外部系统（CRM/HTTP 接口）」类的 ABAP 程序，
 并产出固定格式的 HTML 审查报告。
@@ -26,27 +26,22 @@ disable: false
 
 ## 前置条件
 
-- `sap-mcp-dev` MCP 服务器必须已连接，且提供 `ABAP_DOWNLOAD` 工具。
-  若处于断开状态，应停下并告知用户先连接 SAP MCP 服务器。
-- 本技能审查时需要调用 `sap-abap-skills` 互补（语法/版本参考）S/4语法，但不替代它。
+- SAP 连接已配置（`get_connected_systems` 确认可用连接）。
+- 源码通过**内置 SAP 工具**读取，不依赖任何 MCP 服务器。
+- 审查规范遵循 `clean-abap` 技能（SAP 官方 Clean ABAP）；语法/版本参考 `sap-abap-skills` 互补。
 
 ## 执行步骤
 
-**【强制】以下步骤必须按顺序执行，不得插入其他工具调用。**
+【强制】以下步骤必须按顺序执行，不得插入其他工具调用。
 
 1. **获取输入。** 从用户处确认程序/函数名称以及审查范围。
-2. **下载源码**，调用 `mcp__sap-mcp-dev__ABAP_DOWNLOAD`：
-   - **禁止先调用 `ls` 确认对象是否存在**——直接下载，对象不存在时 MCP 会返回错误。
-   - **禁止先调用 `cat` 读取源码**——审查源码必须通过 MCP 下载。
-   - 报表/程序：`{ "RPROG": "X", "SOPROG": "<程序名>" }`
-   - 函数模块：`{ "RFUNC": "X", "SOFNAME": "<函数名>" }`
-   - 工具返回 JSON 数组，元素为 `{ "FILENAME": ..., "CONTENT": ... }`。
-     持久化输出可能很大,多个文件，审查前需读取完整文件。
-3. **存档源码。** 将下载的源码保存到 `output/` 目录，以工具返回 JSON 数组中的 FILENAME 命名（如 `output/ZFIR001.abap`），便于用户对照。
+2. **读取源码**，调用内置 `get_abap_object_lines`：
+   - 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`。
+   - 若对象名不确定，先 `search_abap_objects`（pattern=`<对象名>*`）确认存在。
+   - 一次读取全部源码（必要时分页读取多个 INCLUDE）。
+3. **存档源码。** 将读取的源码保存到 `output/` 目录，命名为 `output/<程序名>.abap`，便于用户对照。
 4. **收集关联对象。** 留意被 INCLUDE 的程序、配置表（`ZBCT_OUTF_CONFIG`）、
-   结构（`ZCRMS_*`、`ZBCS_*`）等引用对象。
-   按程序名下载通常已包含直接 INCLUDE 的源码；
-   对于被引用的 DDIC 结构/配置，可依据源码文本审查或向用户索取。
+   结构（`ZCRMS_*`、`ZBCS_*`）等引用对象，可继续用内置工具读取或向用户索取。
 5. **静态走查。** 自顶向下逐段核对 `references/checklist.md` 的每一项：
    选择屏幕 → `INITIALIZATION` → GET_DATA（接口调用 + JSON 反序列化 + 展平）
    → ALV 展示 → 可编辑处理 → 发送/更新命令。

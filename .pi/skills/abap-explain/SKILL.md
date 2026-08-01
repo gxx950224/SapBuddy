@@ -1,8 +1,8 @@
-﻿---
+---
 name: abap-explain
 description: >-
   用户说 解释/说明/详解/讲讲/分析一下 XXX 程序或这个程序做什么、逻辑是什么时触发本技能。
-  面向业务顾问（非开发人员），通过 MCP ABAP_DOWNLOAD 下载 ABAP 程序源码，
+  面向业务顾问（非开发人员），从 SAP 系统读取 ABAP 程序源码，
   用业务语言（非技术术语）解析程序的业务逻辑、数据来源、处理流程，
   输出结构化的逻辑说明文档。
   触发关键词：解释、说明、详解、讲讲、分析一下、这个程序做什么、逻辑是什么。
@@ -23,17 +23,16 @@ disable: false
 
 ## 前置条件
 
-- sap-mcp-dev MCP 服务器必须已连接，且提供 ABAP_DOWNLOAD 工具
-- 若处于断开状态，应停下并告知用户先连接 SAP MCP 服务器
+- SAP 连接已配置（`get_connected_systems` 确认可用连接）。
+- 源码通过**内置 SAP 工具**读取，不依赖任何 MCP 服务器。
 
 ## 执行步骤
 
 1. **获取输入。** 从用户处确认程序/函数名称。信息不全 → 直接提问，不得假设。
 
-2. **下载源码。** 调用 mcp__sap-mcp-dev__ABAP_DOWNLOAD：
-   - 报表/程序：{ RPROG: X, SOPROG: <程序名> }
-   - 函数模块：{ RFUNC: X, SOFNAME: <函数名> }
-   - 工具返回 JSON 数组，元素为 { FILENAME: ..., CONTENT: ... }
+2. **读取源码。** 调用内置 `get_abap_object_lines`：
+   - 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`。
+   - 若对象名不确定，先 `search_abap_objects`（pattern=`<对象名>*`）确认存在。
 
 3. **存档源码。** 保存到 output/ref_<程序名>.abap。
 
