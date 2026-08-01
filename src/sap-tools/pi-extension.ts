@@ -9,9 +9,9 @@ export default function (pi: ExtensionAPI): void {
   pi.on("session_start", () => {
     try {
       const n = registerSapTools(pi)
-      console.log(`[abapbuddy] 已注册 ${n} 个 SAP 工具`)
+      console.log(`[sapbuddy] 已注册 ${n} 个 SAP 工具`)
     } catch (e) {
-      console.log(`[abapbuddy] 工具注册失败: ${e instanceof Error ? e.message : e}`)
+      console.log(`[sapbuddy] 工具注册失败: ${e instanceof Error ? e.message : e}`)
     }
   })
 }

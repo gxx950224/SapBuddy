@@ -102,7 +102,7 @@ export async function testServer(name, server) {
     const init = await rpcRequest(server.url, server, "initialize", {
       protocolVersion: "2025-03-26",
       capabilities: {},
-      clientInfo: { name: "abapbuddy", version: "2.0.0" },
+      clientInfo: { name: "sapbuddy", version: "2.0.0" },
     }, 1)
     if (init.status !== 200 && init.status !== 202) {
       return { name, url: server.url, connected: false, tools: [], error: `HTTP ${init.status}` }
