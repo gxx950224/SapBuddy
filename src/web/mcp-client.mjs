@@ -9,7 +9,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-export const PROJECT_MCP_FILE = path.join(process.cwd(), ".pi", "mcp.json")
+export const PROJECT_MCP_FILE = path.join(os.homedir(), ".SapBuddy", "mcp.json")
 export const GLOBAL_MCP_FILE = path.join(os.homedir(), ".pi", "agent", "mcp.json")
 
 /** 读取 MCP 服务器配置（项目优先，回退全局），返回 Record<name, server> */

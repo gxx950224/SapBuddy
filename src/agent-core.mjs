@@ -5,12 +5,18 @@ import { createRequire } from "node:module"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import path from "node:path"
 import fs from "node:fs"
+import os from "node:os"
 
 const require = createRequire(import.meta.url)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const ROOT = path.resolve(HERE, "..")
-/** 用户可写配置目录：cwd/.pi（克隆场景=项目根，npm 全局=用户项目目录） */
-export const USER_PI = path.join(process.cwd(), ".pi")
+/**
+ * 用户配置目录：~/.SapBuddy（用户主目录的隐藏目录，全局安装/源码运行统一）
+ * auth / settings / models / connections / sessions / skills / prompts / output 都在这里
+ */
+export const CONFIG_DIR = path.join(os.homedir(), ".SapBuddy")
+/** 兼容旧版：cwd/.pi（历史配置，优先于包内默认） */
+export const LEGACY_PI = path.join(process.cwd(), ".pi")
 
 // pi SDK 通过绝对路径 require 加载（项目结构特殊，与 webide/server.mjs 一致）
 const PI_SDK_PATH = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent")
@@ -24,7 +30,7 @@ const {
 
 /** 读取认证（.pi/auth.json） */
 export function loadAuth() {
-  for (const f of [path.join(USER_PI, "auth.json"), path.join(ROOT, ".pi", "auth.json")]) {
+  for (const f of [path.join(CONFIG_DIR, "auth.json"), path.join(LEGACY_PI, "auth.json"), path.join(ROOT, ".pi", "auth.json")]) {
     try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
   }
   return {}
@@ -77,7 +83,7 @@ async function registerMcpTools(pi) {
 /** 读取设置（默认模型等） */
 export function loadSettings() {
   try {
-    for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".pi", "settings.json")]) {
+    for (const f of [path.join(CONFIG_DIR, "settings.json"), path.join(LEGACY_PI, "settings.json"), path.join(ROOT, ".pi", "settings.json")]) {
       try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
     }
     return {}
@@ -90,21 +96,31 @@ export function loadSettings() {
  * 创建带 42 个 SAP 工具的 Agent 会话
  * @param opts.sessionFile 指定会话文件（切换历史会话用）
  */
-/** 首次运行引导：把包内默认技能/提示词/模型注册表复制到用户目录（仅当用户目录缺失时） */
-function ensureRuntimeFiles() {
+/** 首次运行引导：初始化 ~/.SapBuddy（技能/提示词/模型注册表），来源优先旧配置 cwd/.pi（迁移）→ 包内默认 */
+export function ensureRuntimeFiles() {
   try {
-    fs.mkdirSync(USER_PI, { recursive: true })
+    fs.mkdirSync(CONFIG_DIR, { recursive: true })
     for (const sub of ["skills", "prompts"]) {
-      const src = path.join(ROOT, ".pi", sub)
-      const dst = path.join(USER_PI, sub)
-      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.cpSync(src, dst, { recursive: true })
+      const dst = path.join(CONFIG_DIR, sub)
+      if (fs.existsSync(dst)) continue
+      const legacy = path.join(LEGACY_PI, sub)
+      const pkg = path.join(ROOT, ".pi", sub)
+      if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
+      else if (fs.existsSync(pkg)) fs.cpSync(pkg, dst, { recursive: true })
     }
-    for (const f of ["models.json"]) {
-      const src = path.join(ROOT, ".pi", f)
-      const dst = path.join(USER_PI, f)
-      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst)
+    for (const f of ["models.json", "auth.json", "settings.json"]) {
+      const dst = path.join(CONFIG_DIR, f)
+      if (fs.existsSync(dst)) continue
+      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, ".pi", f)]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
+      }
     }
-  } catch { /* 复制失败不影响运行 */ }
+    if (!fs.existsSync(path.join(CONFIG_DIR, "connections.json"))) {
+      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json")]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
+      }
+    }
+  } catch { /* 初始化失败不影响运行 */ }
 }
 
 export async function createAgent(opts = {}) {
@@ -117,8 +133,8 @@ export async function createAgent(opts = {}) {
   const settings = loadSettings()
 
   const modelRuntime = await ModelRuntime.create({
-    authPath: path.join(USER_PI, "auth.json"),
-    modelsPath: path.join(USER_PI, "models.json"),
+    authPath: path.join(CONFIG_DIR, "auth.json"),
+    modelsPath: path.join(CONFIG_DIR, "models.json"),
   })
 
   // 显式解析默认模型（SDK 不自动读 settings 的 defaultModel）
@@ -138,7 +154,7 @@ export async function createAgent(opts = {}) {
 
   const loader = new DefaultResourceLoader({
     cwd: ROOT,
-    agentDir: USER_PI,
+    agentDir: CONFIG_DIR,
     settingsManager: SettingsManager.inMemory(),
     extensionFactories: [
       (pi) => {
@@ -161,7 +177,7 @@ export async function createAgent(opts = {}) {
   // 持久化会话到 .pi/sessions（历史会话可用）；指定文件时打开该会话
   const sessionManager = opts.sessionFile
     ? SessionManager.open(opts.sessionFile)
-    : SessionManager.create(process.cwd())
+    : SessionManager.create(process.cwd(), path.join(CONFIG_DIR, "sessions"))
 
   const { session } = await createAgentSession({
     cwd: ROOT,

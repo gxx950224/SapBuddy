@@ -2,10 +2,12 @@
  * 连接配置加载：支持多 SAP 系统、${ENV} 环境变量展开（secret manager 友好）
  *
  * 配置文件示例见 connections.example.json
- * 可通过环境变量 ABAP_MCP_CONFIG 指定配置文件路径，默认 ./connections.json
+ * 可通过环境变量 ABAP_MCP_CONFIG 指定配置文件路径，
+ * 默认读取 ~/.SapBuddy/connections.json（兼容旧版项目根 connections.json）
  */
 import { readFileSync, existsSync } from "node:fs"
 import { resolve } from "node:path"
+import { homedir } from "node:os"
 
 export interface ConnectionConfig {
   /** 连接 ID，工具调用时用 connectionId 指定，如 "dev" */
@@ -73,9 +75,10 @@ function expandEnv(value: string): string {
 }
 
 function resolveConfigPath(): string {
-  return process.env.ABAP_MCP_CONFIG
-    ? resolve(process.env.ABAP_MCP_CONFIG)
-    : resolve(process.cwd(), "connections.json")
+  if (process.env.ABAP_MCP_CONFIG) return resolve(process.env.ABAP_MCP_CONFIG)
+  const user = resolve(homedir(), ".SapBuddy", "connections.json")
+  if (existsSync(user)) return user
+  return resolve(process.cwd(), "connections.json") // 兼容旧版：项目根配置
 }
 
 export function loadConfig(): ServerConfig {

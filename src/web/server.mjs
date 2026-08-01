@@ -27,12 +27,13 @@ import http from "node:http"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import os from "node:os"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
 const PUBLIC_DIR = path.join(HERE, "public")
-const USER_PI = path.join(process.cwd(), ".pi")
-const OUTPUT_DIR = path.join(process.cwd(), "output")
+const USER_PI = path.join(os.homedir(), ".SapBuddy")
+const OUTPUT_DIR = path.join(USER_PI, "output")
 
 const portArg = process.argv.indexOf("--port")
 const PORT = portArg >= 0 ? Number(process.argv[portArg + 1]) : 7400
@@ -546,7 +547,7 @@ const ids = models.map((m) => m.id)
     }
 
     // ── SAP 连接配置（connections.json 读写）──
-    const connFile = path.join(process.cwd(), "connections.json")
+    const connFile = path.join(USER_PI, "connections.json")
     if (p === "/api/sap-config" && req.method === "GET") {
       try {
         const conf = JSON.parse(fs.readFileSync(connFile, "utf8"))
@@ -634,6 +635,10 @@ const ids = models.map((m) => m.id)
 })
 
 server.listen(PORT, HOST, () => {
+  // 首次运行：初始化 ~/.SapBuddy（技能/提示词/模型/连接迁移）
+  import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
+    .then((m) => m.ensureRuntimeFiles?.())
+    .catch(() => undefined)
   console.log(`\n  🚀 SapBuddy Web 版已启动`)
   console.log(`  📍 http://${HOST}:${PORT}\n`)
 })
