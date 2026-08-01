@@ -1,6 +1,0 @@
-{
-  "defaultProvider": "deepseek",
-  "defaultModel": "deepseek-v4-flash",
-  "contextTokens": 1000000,
-  "defaultThinkingLevel": "high"
-}

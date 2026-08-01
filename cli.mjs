@@ -82,6 +82,14 @@ const BANNER = `
 
 async function cmdChat() {
   console.log(BANNER)
+  // 首次运行引导：未配置 API Key / 连接时给出提示
+  const auth = loadAuth()
+  const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
+  if (!hasKey) {
+    console.log("⚠️  未配置 AI 模型 API Key。请先：")
+    console.log("    cp config/auth.example.json .pi/auth.json   # 然后填入你的 API Key")
+    console.log("    或运行: node cli.mjs doctor\n")
+  }
   const { session } = await createAgent()
   const readline = await import("node:readline").then((m) =>
     m.createInterface({ input: process.stdin, output: process.stdout })

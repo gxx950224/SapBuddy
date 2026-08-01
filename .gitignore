@@ -1,6 +1,5 @@
 # 依赖
 node_modules/
-package-lock.json
 
 # 编译产物
 dist/
@@ -19,3 +18,5 @@ Thumbs.db
 # 产物目录（AI 生成的文件，不提交）
 output/
 .pi/mcp.json
+.pi/memory.md
+.pi/settings.json

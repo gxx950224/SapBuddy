@@ -9,6 +9,8 @@ import fs from "node:fs"
 const require = createRequire(import.meta.url)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const ROOT = path.resolve(HERE, "..")
+/** 用户可写配置目录：cwd/.pi（克隆场景=项目根，npm 全局=用户项目目录） */
+export const USER_PI = path.join(process.cwd(), ".pi")
 
 // pi SDK 通过绝对路径 require 加载（项目结构特殊，与 webide/server.mjs 一致）
 const PI_SDK_PATH = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent")
@@ -22,11 +24,10 @@ const {
 
 /** 读取认证（.pi/auth.json） */
 export function loadAuth() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(ROOT, ".pi", "auth.json"), "utf8"))
-  } catch {
-    return {}
+  for (const f of [path.join(USER_PI, "auth.json"), path.join(ROOT, ".pi", "auth.json")]) {
+    try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
   }
+  return {}
 }
 
 /**
@@ -76,7 +77,10 @@ async function registerMcpTools(pi) {
 /** 读取设置（默认模型等） */
 export function loadSettings() {
   try {
-    return JSON.parse(fs.readFileSync(path.join(ROOT, ".pi", "settings.json"), "utf8"))
+    for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".pi", "settings.json")]) {
+      try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
+    }
+    return {}
   } catch {
     return {}
   }
@@ -86,7 +90,25 @@ export function loadSettings() {
  * 创建带 42 个 SAP 工具的 Agent 会话
  * @param opts.sessionFile 指定会话文件（切换历史会话用）
  */
+/** 首次运行引导：把包内默认技能/提示词/模型注册表复制到用户目录（仅当用户目录缺失时） */
+function ensureRuntimeFiles() {
+  try {
+    fs.mkdirSync(USER_PI, { recursive: true })
+    for (const sub of ["skills", "prompts"]) {
+      const src = path.join(ROOT, ".pi", sub)
+      const dst = path.join(USER_PI, sub)
+      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.cpSync(src, dst, { recursive: true })
+    }
+    for (const f of ["models.json"]) {
+      const src = path.join(ROOT, ".pi", f)
+      const dst = path.join(USER_PI, f)
+      if (fs.existsSync(src) && !fs.existsSync(dst)) fs.copyFileSync(src, dst)
+    }
+  } catch { /* 复制失败不影响运行 */ }
+}
+
 export async function createAgent(opts = {}) {
+  ensureRuntimeFiles()
   // 动态 import 工具注册层（编译产物 dist/sap-tools/register.js）
   const { registerSapTools } = await import(
     pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href
@@ -95,8 +117,8 @@ export async function createAgent(opts = {}) {
   const settings = loadSettings()
 
   const modelRuntime = await ModelRuntime.create({
-    authPath: path.join(ROOT, ".pi", "auth.json"),
-    modelsPath: path.join(ROOT, ".pi", "models.json"),
+    authPath: path.join(USER_PI, "auth.json"),
+    modelsPath: path.join(USER_PI, "models.json"),
   })
 
   // 显式解析默认模型（SDK 不自动读 settings 的 defaultModel）
@@ -116,7 +138,7 @@ export async function createAgent(opts = {}) {
 
   const loader = new DefaultResourceLoader({
     cwd: ROOT,
-    agentDir: path.join(ROOT, ".pi"),
+    agentDir: USER_PI,
     settingsManager: SettingsManager.inMemory(),
     extensionFactories: [
       (pi) => {
@@ -139,7 +161,7 @@ export async function createAgent(opts = {}) {
   // 持久化会话到 .pi/sessions（历史会话可用）；指定文件时打开该会话
   const sessionManager = opts.sessionFile
     ? SessionManager.open(opts.sessionFile)
-    : SessionManager.create(ROOT)
+    : SessionManager.create(process.cwd())
 
   const { session } = await createAgentSession({
     cwd: ROOT,

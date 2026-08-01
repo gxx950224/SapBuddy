@@ -31,7 +31,8 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
 const PUBLIC_DIR = path.join(HERE, "public")
-const OUTPUT_DIR = path.join(ROOT, "output")
+const USER_PI = path.join(process.cwd(), ".pi")
+const OUTPUT_DIR = path.join(process.cwd(), "output")
 
 const portArg = process.argv.indexOf("--port")
 const PORT = portArg >= 0 ? Number(process.argv[portArg + 1]) : 7400
@@ -97,7 +98,7 @@ function readBody(req) {
     req.on("end", () => { try { resolve(JSON.parse(body || "{}")) } catch { resolve({}) } })
   })
 }
-const sessionsDir = () => path.join(ROOT, ".pi", "sessions")
+const sessionsDir = () => path.join(USER_PI, "sessions")
 
 /** 递归扫描目录为前端树结构 */
 function scanTree(dir, rel) {
@@ -224,14 +225,16 @@ const server = http.createServer(async (req, res) => {
       let agents = 0, systemMd = 0, memory = 0, skills = 0
       try { agents = t(fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8")) } catch {}
       try { systemMd = t(fs.readFileSync(path.join(ROOT, "SYSTEM.md"), "utf8")) } catch {}
-      try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {}
-      try { for (const f of fs.readdirSync(path.join(ROOT, ".pi", "skills"), { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(ROOT, ".pi", "skills", String(f)), "utf8")) } catch {}
+      try { memory = t(fs.readFileSync(memoryFile, "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
+      try { for (const base of [skillsDir, path.join(ROOT, ".pi", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
       const piAgent = 1500
       const extensions = 8000
       const mcp = 0
       const conversation = usage.input + usage.output
-      const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, ".pi", "settings.json"), "utf8").toString()).contextTokens ?? 200000
-      const max = Number(cfg) || 200000
+      let cfg = {}
+      try { cfg = JSON.parse(fs.readFileSync(settingsFile, "utf8").toString()) } catch {}
+      const max0 = cfg.contextTokens ?? 200000
+      const max = Number(max0) || 200000
       const total = piAgent + extensions + mcp + agents + systemMd + memory + skills + conversation
       const pct = Math.min(999, Math.round(total / max * 100))
       const cache = 0
@@ -428,7 +431,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ── 设置 / 模型 / Memory / Skills ──
-    const settingsFile = path.join(ROOT, ".pi", "settings.json")
+    const settingsFile = path.join(USER_PI, "settings.json")
     if (p === "/api/settings" && req.method === "GET") {
       try {
         const cfg = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
@@ -482,10 +485,12 @@ const ids = models.map((m) => m.id)
         return json(res, 200, { success: true, models: [] })
       }
     }
-    const memoryFile = path.join(ROOT, "Memory.md")
+    const memoryFile = path.join(USER_PI, "memory.md")
     if (p === "/api/memory" && req.method === "GET") {
-      try { return json(res, 200, { success: true, data: { content: fs.readFileSync(memoryFile, "utf8"), path: memoryFile } }) }
-      catch { return json(res, 200, { success: true, data: { content: "", path: memoryFile } }) }
+      for (const f of [memoryFile, path.join(ROOT, "Memory.md")]) {
+        try { return json(res, 200, { success: true, data: { content: fs.readFileSync(f, "utf8"), path: f } }) } catch { /* 继续 */ }
+      }
+      return json(res, 200, { success: true, data: { content: "", path: memoryFile } })
     }
     if (p === "/api/memory" && req.method === "POST") {
       const { content } = await readBody(req)
@@ -521,10 +526,10 @@ const ids = models.map((m) => m.id)
     }
 
     // ── Prompts（提示词）──
-    const promptsDir = path.join(ROOT, ".pi", "prompts")
+    const promptsDir = path.join(USER_PI, "prompts")
     if (p === "/api/prompt" && req.method === "GET") {
       const file = url.searchParams.get("file") || "AGENTS.md"
-      const candidates = [path.join(ROOT, file), path.join(promptsDir, file), path.join(ROOT, ".pi", "skills", file)]
+      const candidates = [path.join(ROOT, file), path.join(promptsDir, file), path.join(ROOT, ".pi", "prompts", file), path.join(ROOT, ".pi", "skills", file)]
       for (const c of candidates) {
         if (fs.existsSync(c)) return json(res, 200, { success: true, data: { content: fs.readFileSync(c, "utf8"), path: c } })
       }
@@ -541,7 +546,7 @@ const ids = models.map((m) => m.id)
     }
 
     // ── SAP 连接配置（connections.json 读写）──
-    const connFile = path.join(ROOT, "connections.json")
+    const connFile = path.join(process.cwd(), "connections.json")
     if (p === "/api/sap-config" && req.method === "GET") {
       try {
         const conf = JSON.parse(fs.readFileSync(connFile, "utf8"))
@@ -588,7 +593,7 @@ const ids = models.map((m) => m.id)
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
 
-    const skillsDir = path.join(ROOT, ".pi", "skills")
+    const skillsDir = path.join(USER_PI, "skills")
     if (p === "/api/skills" && req.method === "GET") {
       const file = url.searchParams.get("file")
       if (file) {
