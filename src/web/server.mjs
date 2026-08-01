@@ -173,8 +173,14 @@ const server = http.createServer(async (req, res) => {
     // 停止 / 压缩 / 思考级别
     if (p === "/api/abort") { try { await session?.abort() } catch {} busy = false; return json(res, 200, { ok: true }) }
     if (p === "/api/compress" && req.method === "POST") {
-      try { await session?.compact(); broadcast({ kind: "compress_result", ts: Date.now() }); return json(res, 200, { ok: true }) }
-      catch (e) { return json(res, 500, { error: e.message }) }
+      try {
+        const before = session?.agent?.state?.messages?.length ?? 0
+        await session?.compact()
+        const after = session?.agent?.state?.messages?.length ?? 0
+        const saved = Math.max(0, before - after)
+        broadcast({ kind: "compress_result", saved, ts: Date.now() })
+        return json(res, 200, { ok: true, saved })
+      } catch (e) { return json(res, 500, { error: e.message }) }
     }
     if (p === "/api/thinking-level" && req.method === "POST") {
       const { level } = await readBody(req)
@@ -221,12 +227,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { success: true, data: { messages: readSessionMessages(file) } })
     }
 
-    // 新建会话（持久化）
+    // 新建会话（真正创建新会话文件 + 重建 agent，避免数据叠加）
     if (p === "/api/session/new" && req.method === "POST") {
-      const a = await ensureAgent()
-      // 当前会话已由 SessionManager.create 持久化；新建 = 记录前端路径
-      const f = a.session.sessionFile
-      return json(res, 200, { success: true, data: { path: f, sessionId: a.session.sessionId } })
+      const dir = sessionsDir()
+      fs.mkdirSync(dir, { recursive: true })
+      const file = path.join(dir, `chat-${Date.now()}.jsonl`)
+      fs.writeFileSync(file, "")
+      await rebuildAgent(file)
+      return json(res, 200, { success: true, data: { path: file, sessionId: session?.sessionId, gen: Date.now() } })
     }
 
     // 会话列表
@@ -240,7 +248,7 @@ const server = http.createServer(async (req, res) => {
             const msgs = readSessionMessages(full)
             const firstUser = msgs.find((m) => m.role === "user")
             const title = firstUser ? (Array.isArray(firstUser.content) ? firstUser.content.map((c) => c.text || "").join("").slice(0, 40) : String(firstUser.content || "").slice(0, 40)) : f
-            list.push({ path: full, name: title || f, time: fs.statSync(full).mtimeMs })
+            list.push({ path: full, name: title || f, time: fs.statSync(full).mtimeMs, messageCount: msgs.length, modified: fs.statSync(full).mtimeMs, firstMessage: title })
           } catch { /* 忽略 */ }
         }
       }
@@ -301,8 +309,12 @@ const server = http.createServer(async (req, res) => {
         res.end(data)
         return
       }
-      // JSON 模式：返回内容（文本预览）
-      return json(res, 200, { success: true, data: { name, content: fs.readFileSync(file, "utf8") } })
+      // 默认模式：直接返回文件原始内容（文本预览/HTML frame 都可用）
+      const data = fs.readFileSync(file)
+      const ext = path.extname(file).toLowerCase()
+      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": data.length })
+      res.end(data)
+      return
     }
     if (p === "/api/open-location" && req.method === "POST") {
       const b = await readBody(req)
@@ -447,6 +459,11 @@ const ids = models.map((m) => m.id)
         }]
         existing.security = { ...(existing.security ?? {}), readOnly: !!b.readOnly }
         fs.writeFileSync(connFile, JSON.stringify(existing, null, 2))
+        // 重置 ADT 连接池，使新配置立即生效
+        try {
+          const { dropAllClients } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+          await dropAllClients()
+        } catch {}
         return json(res, 200, { success: true })
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
