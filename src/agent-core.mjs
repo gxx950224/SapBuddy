@@ -40,6 +40,7 @@ export function loadSettings() {
 
 /**
  * 创建带 42 个 SAP 工具的 Agent 会话
+ * @param opts.sessionFile 指定会话文件（切换历史会话用）
  */
 export async function createAgent(opts = {}) {
   // 动态 import 工具注册层（编译产物 dist/sap-tools/register.js）
@@ -87,14 +88,18 @@ export async function createAgent(opts = {}) {
   })
   await loader.reload()
 
+  // 持久化会话到 .pi/sessions（历史会话可用）；指定文件时打开该会话
+  const sessionManager = opts.sessionFile
+    ? SessionManager.open(opts.sessionFile)
+    : SessionManager.create(ROOT)
+
   const { session } = await createAgentSession({
     cwd: ROOT,
     resourceLoader: loader,
     modelRuntime,
     model,
     thinkingLevel: settings.defaultThinkingLevel ?? "off",
-    // 持久化会话到 .pi/sessions（历史会话可用）
-    sessionManager: SessionManager.create(ROOT),
+    sessionManager,
     settingsManager: SettingsManager.inMemory(),
   })
   return { session, settings }

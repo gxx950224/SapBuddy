@@ -51,6 +51,18 @@ async function ensureAgent() {
   return agent
 }
 
+/** 切换会话：销毁旧会话，重建到指定文件 */
+async function rebuildAgent(sessionFile) {
+  try { await session?.dispose() } catch {}
+  agent = null
+  session = null
+  const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
+  agent = await createAgent({ sessionFile })
+  session = agent.session
+  attachStreaming(session)
+  return agent
+}
+
 function attachStreaming(s) {
   s.subscribe((event) => {
     if (event.type === "message_end" && event.message?.role === "assistant") {
@@ -243,6 +255,18 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { success: true })
     }
 
+    // 切换会话（重建 agent 到指定历史文件）
+    if (p === "/api/session/switch" && req.method === "POST") {
+      const { path: file } = await readBody(req)
+      if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      try {
+        await rebuildAgent(file)
+        return json(res, 200, { success: true, data: { path: file, gen: Date.now() } })
+      } catch (e) {
+        return json(res, 500, { error: e.message })
+      }
+    }
+
     // ── SAP 状态（真实检测）──
     if (p === "/api/sap-status" && req.method === "GET") {
       try {
@@ -264,31 +288,78 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { success: true, data: { tree: scanTree(OUTPUT_DIR, "") } })
     }
     if (p.startsWith("/api/output-files/")) {
-      const name = decodeURIComponent(p.slice("/api/output-files/".length))
+      const qIdx = p.indexOf("?")
+      const name = decodeURIComponent((qIdx >= 0 ? p.slice(0, qIdx) : p).slice("/api/output-files/".length))
       const file = path.join(OUTPUT_DIR, name)
       if (!file.startsWith(OUTPUT_DIR)) return json(res, 403, { error: "Forbidden" })
-      try {
-        const data = fs.readFileSync(file, "utf8")
-        return json(res, 200, { success: true, data: { name, content: data } })
-      } catch {
-        return json(res, 200, { success: false, error: "文件不存在" })
+      if (!fs.existsSync(file)) return json(res, 200, { success: false, error: "文件不存在" })
+      // raw 模式：直接返回文件内容（HTML 预览/下载用）
+      if (url.searchParams.get("raw") || url.searchParams.get("download")) {
+        const data = fs.readFileSync(file)
+        const ext = path.extname(file).toLowerCase()
+        res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": data.length })
+        res.end(data)
+        return
       }
+      // JSON 模式：返回内容（文本预览）
+      return json(res, 200, { success: true, data: { name, content: fs.readFileSync(file, "utf8") } })
     }
     if (p === "/api/open-location" && req.method === "POST") {
-      return json(res, 200, { ok: true })
+      const b = await readBody(req)
+      const name = b.path || b.name || ""
+      let target = name
+      if (!path.isAbsolute(target)) target = path.join(OUTPUT_DIR, name)
+      try {
+        const dir = fs.statSync(target).isDirectory() ? target : path.dirname(target)
+        const { spawn } = await import("node:child_process")
+        if (process.platform === "win32") spawn("explorer", [dir], { detached: true, stdio: "ignore" })
+        else if (process.platform === "darwin") spawn("open", [dir], { detached: true, stdio: "ignore" })
+        else spawn("xdg-open", [dir], { detached: true, stdio: "ignore" })
+        return json(res, 200, { success: true })
+      } catch (e) {
+        return json(res, 200, { success: false, error: e.message })
+      }
     }
 
     // ── 设置 / 模型 / Memory / Skills ──
     const settingsFile = path.join(ROOT, ".pi", "settings.json")
     if (p === "/api/settings" && req.method === "GET") {
-      try { return json(res, 200, { success: true, data: JSON.parse(fs.readFileSync(settingsFile, "utf8")) }) }
-      catch { return json(res, 200, { success: true, data: {} }) }
+      try {
+        const cfg = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
+        let apiKey = ""
+        try {
+          const auth = JSON.parse(fs.readFileSync(path.join(ROOT, ".pi", "auth.json"), "utf8"))
+          const k = Object.values(auth).find((v) => v?.type === "api_key" && v.key)
+          apiKey = k?.key ?? ""
+        } catch {}
+        return json(res, 200, {
+          success: true,
+          data: {
+            provider: cfg.defaultProvider ?? "deepseek",
+            model: cfg.defaultModel ?? "",
+            apiKey,
+            contextTokens: cfg.contextTokens ?? 200000,
+            thinkingLevel: cfg.defaultThinkingLevel ?? "off",
+          },
+        })
+      } catch { return json(res, 200, { success: true, data: {} }) }
     }
     if (p === "/api/settings" && req.method === "POST") {
       const body = await readBody(req)
       try {
         const cur = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
-        fs.writeFileSync(settingsFile, JSON.stringify({ ...cur, ...body }, null, 2))
+        const next = { ...cur }
+        if (body.provider) next.defaultProvider = body.provider
+        if (body.model) next.defaultModel = body.model
+        if (body.contextTokens) next.contextTokens = Number(body.contextTokens)
+        if (body.thinkingLevel) next.defaultThinkingLevel = body.thinkingLevel
+        fs.writeFileSync(settingsFile, JSON.stringify(next, null, 2))
+        if (body.apiKey) {
+          const authFile = path.join(ROOT, ".pi", "auth.json")
+          const auth = fs.existsSync(authFile) ? JSON.parse(fs.readFileSync(authFile, "utf8")) : {}
+          auth[next.defaultProvider ?? "deepseek"] = { type: "api_key", key: body.apiKey }
+          fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
+        }
         return json(res, 200, { success: true })
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
@@ -299,8 +370,8 @@ const server = http.createServer(async (req, res) => {
         const provider = url.searchParams.get("provider")
         const available = await mr.getAvailable()
         const models = available.filter((m) => !provider || m.provider === provider)
-const flat = models.map((m) => ({ provider: m.provider, id: m.id, name: m.name ?? m.id }))
-        return json(res, 200, { success: true, models: flat })
+const ids = models.map((m) => m.id)
+        return json(res, 200, { success: true, models: ids })
       } catch (e) {
         return json(res, 200, { success: true, models: [] })
       }
@@ -315,6 +386,12 @@ const flat = models.map((m) => ({ provider: m.provider, id: m.id, name: m.name ?
       try { fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
       catch (e) { return json(res, 500, { error: e.message }) }
     }
+    // ── MCP（方案 C 已直接集成 42 工具，返回空配置）──
+    if (p === "/api/mcp") {
+      if (req.method === "POST") { await readBody(req); return json(res, 200, { success: true }) }
+      return json(res, 200, { success: true, config: {}, status: [] })
+    }
+
     // ── Prompts（提示词）──
     const promptsDir = path.join(ROOT, ".pi", "prompts")
     if (p === "/api/prompt" && req.method === "GET") {
