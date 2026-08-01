@@ -86,10 +86,20 @@
     return ctxTooltip;
   }
 
-  function showCtxTooltip(x, y) {
+  function showCtxTooltip(x, y, anchorRect) {
     const tip = ensureCtxTooltip();
-    tip.style.left = Math.min(x, window.innerWidth - 260) + "px";
-    tip.style.top = Math.min(y, window.innerHeight - 320) + "px";
+    const H = 330; // tooltip 估算高度
+    let top = y
+    // 默认在按钮上方展开；空间不足则放到按钮下方
+    if (anchorRect) {
+      if (anchorRect.top - H - 8 >= 8) {
+        top = anchorRect.top - H - 8
+      } else {
+        top = anchorRect.bottom + 8
+      }
+    }
+    tip.style.left = Math.min(Math.max(8, x), window.innerWidth - 260) + "px";
+    tip.style.top = Math.min(top, window.innerHeight - 16) + "px";
     tip.classList.add("visible");
   }
 
@@ -139,10 +149,10 @@
       App.refreshCtxTooltip();
     }, 200); // 防抖：停留 200ms 后才请求
     const rect = e.target.getBoundingClientRect();
-    showCtxTooltip(rect.left - 100, rect.top - 350);
+    showCtxTooltip(rect.left - 100, rect.top - 350, rect);
   });
   $("#compress-btn").addEventListener("mouseleave", () => {
-    ctxTooltipTimer = setTimeout(hideCtxTooltip, 200);
+    ctxTooltipTimer = setTimeout(hideCtxTooltip, 150);
   });
 
   // ── 思考等级开关（off / high 两态；deepseek-v4-flash 不支持 medium，故以 off 作轻量默认档）──

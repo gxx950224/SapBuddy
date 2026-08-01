@@ -192,7 +192,29 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/context-stats" && req.method === "GET") {
       const msgs = session?.agent?.state?.messages ?? []
       const usage = msgs.reduce((a, m) => ({ input: a.input + (m.usage?.input ?? 0), output: a.output + (m.usage?.output ?? 0) }), { input: 0, output: 0 })
-      return json(res, 200, { success: true, data: { usage, messageCount: msgs.length } })
+      const t = (txt) => Math.max(1, Math.ceil(String(txt ?? "").length / 3))
+      let agents = 0, systemMd = 0, memory = 0, skills = 0
+      try { agents = t(fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8")) } catch {}
+      try { systemMd = t(fs.readFileSync(path.join(ROOT, "SYSTEM.md"), "utf8")) } catch {}
+      try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {}
+      try { for (const f of fs.readdirSync(path.join(ROOT, ".pi", "skills"), { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(ROOT, ".pi", "skills", String(f)), "utf8")) } catch {}
+      const piAgent = 1500
+      const extensions = 8000
+      const mcp = 0
+      const conversation = usage.input + usage.output
+      const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, ".pi", "settings.json"), "utf8").toString()).contextTokens ?? 200000
+      const max = Number(cfg) || 200000
+      const total = piAgent + extensions + mcp + agents + systemMd + memory + skills + conversation
+      const pct = Math.min(999, Math.round(total / max * 100))
+      const cache = 0
+      return json(res, 200, { success: true, data: {
+        usage, messageCount: msgs.length,
+        total, max, pct, remaining: Math.max(0, max - total),
+        cache, pctCache: 0,
+        piAgent, extensions, mcp, agents, systemMd, memory, skills, conversation,
+        pctPiAgent: Math.round(piAgent / max * 100), pctExtensions: Math.round(extensions / max * 100), pctMcp: 0,
+        pctAgents: Math.round(agents / max * 100), pctSystemMd: Math.round(systemMd / max * 100), pctMemory: Math.round(memory / max * 100), pctSkills: Math.round(skills / max * 100), pctConv: Math.round(conversation / max * 100),
+      } })
     }
 
     // 会话状态（status.js 契约）
@@ -323,6 +345,7 @@ const server = http.createServer(async (req, res) => {
       if (!path.isAbsolute(target)) target = path.join(OUTPUT_DIR, name)
       try {
         const dir = fs.statSync(target).isDirectory() ? target : path.dirname(target)
+        if (!dir) return json(res, 200, { success: false, error: "文件不存在" })
         const { spawn } = await import("node:child_process")
         if (process.platform === "win32") spawn("explorer", [dir], { detached: true, stdio: "ignore" })
         else if (process.platform === "darwin") spawn("open", [dir], { detached: true, stdio: "ignore" })
@@ -388,10 +411,10 @@ const ids = models.map((m) => m.id)
         return json(res, 200, { success: true, models: [] })
       }
     }
-    const memoryFile = path.join(ROOT, ".pi", "memory.md")
+    const memoryFile = path.join(ROOT, "Memory.md")
     if (p === "/api/memory" && req.method === "GET") {
-      try { return json(res, 200, { success: true, data: { content: fs.readFileSync(memoryFile, "utf8") } }) }
-      catch { return json(res, 200, { success: true, data: { content: "" } }) }
+      try { return json(res, 200, { success: true, data: { content: fs.readFileSync(memoryFile, "utf8"), path: memoryFile } }) }
+      catch { return json(res, 200, { success: true, data: { content: "", path: memoryFile } }) }
     }
     if (p === "/api/memory" && req.method === "POST") {
       const { content } = await readBody(req)
@@ -472,8 +495,8 @@ const ids = models.map((m) => m.id)
     if (p === "/api/skills" && req.method === "GET") {
       const file = url.searchParams.get("file")
       if (file) {
-        try { return json(res, 200, { success: true, data: { content: fs.readFileSync(path.join(skillsDir, file), "utf8") } }) }
-        catch { return json(res, 200, { success: true, data: { content: "" } }) }
+        try { return json(res, 200, { success: true, data: { content: fs.readFileSync(path.join(skillsDir, file), "utf8"), path: path.join(skillsDir, file) } }) }
+        catch { return json(res, 200, { success: true, data: { content: "", path: path.join(skillsDir, file) } }) }
       }
       try {
         const dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory())
