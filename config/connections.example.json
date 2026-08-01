@@ -12,7 +12,7 @@
       "description": "开发系统",
       "security": {
         "requireDevClient": true,
-        "developmentCategories": ["D", "C"]
+        "developmentCategories": ["C"]
       }
     }
   ],

@@ -36,8 +36,8 @@ export interface ConnectionConfig {
   /**
    * 安全策略
    * requireDevClient: 默认 true——仅允许在开发类客户端上写操作；设为 false 可显式放行（不推荐）
-   * developmentCategories: 视为开发机的 T000.CCCATEGORY 列表，默认 ["D","C"]
-   *   D=开发、C=定制/客户开发（放行）；T=测试、P=生产、S=系统（拦截）
+   * developmentCategories: 视为开发机的 T000.CCCATEGORY 列表，默认 ["C"]（SAP 角色：C=定制/客户开发）
+   *   P=生产、T=测试、C=定制(开发)、D=演示、E=培训/教育、S=SAP参考
    */
   security?: {
     requireDevClient?: boolean

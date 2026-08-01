@@ -1,6 +1,6 @@
 /** 工具组：系统信息与扩展（get_sap_system_info、adt_discovery_export、abap_fs_documentation、调试工具降级） */
 import { z } from "zod"
-import { getClient } from "../adtManager.js"
+import { getClient, CLIENT_CATEGORY_LABELS } from "../adtManager.js"
 import { resolveConnectionId, toToolError, connectionIdSchema } from "./shared.js"
 
 // ─── get_sap_system_info ────────────────────────────────────────────────────
@@ -32,7 +32,11 @@ export const sapSystemInfoTool = {
           true
         )
         const row = (t000?.values?.[0] ?? {}) as Record<string, unknown>
-        if (row && Object.keys(row).length > 0) lines.push(`客户端类型: ${row.CCCATEGORY ?? "?"} (${row.CCTYP ?? "?"})`)
+        if (row && Object.keys(row).length > 0) {
+          const cat = String(row.CCCATEGORY ?? "")
+          const label = CLIENT_CATEGORY_LABELS[cat] ?? ""
+          lines.push(`客户端类型: ${cat || "?"}${label ? `（${label}）` : ""}`)
+        }
       } catch { /* 某些系统 T000 不可查询 */ }
 
       // 产品版本 CVERS

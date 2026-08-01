@@ -343,11 +343,12 @@ const server = http.createServer(async (req, res) => {
         if (!conn) return json(res, 200, { success: false, error: "未配置 SAP 连接" })
         const client = await getClient(conn.id)
         await client.runQuery("SELECT MANDT FROM T000", 1, true)
-        // 客户端类别（T000.CCCATEGORY：D/C=开发类 T=测试 P=生产 S=系统）
+        // 客户端类别（T000.CCCATEGORY：P=生产 T=测试 C=定制(开发) D=演示 E=培训/教育 S=SAP参考）
         let category = "", categoryLabel = ""
         try {
           category = await getClientCategory(conn.id)
-          categoryLabel = category === "D" ? "开发" : category === "C" ? "定制/客户开发" : category === "T" ? "测试" : category === "P" ? "生产" : category === "S" ? "系统" : `未知(${category || "未维护"})`
+          const { CLIENT_CATEGORY_LABELS } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+          categoryLabel = CLIENT_CATEGORY_LABELS?.[category] ?? `未知(${category || "未维护"})`
         } catch {}
         return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client, clientCategory: category, clientCategoryLabel: categoryLabel } })
       } catch (e) {
