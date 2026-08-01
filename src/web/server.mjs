@@ -115,6 +115,11 @@ function scanTree(dir, rel) {
 }
 
 /** 读取会话文件的 user/assistant 消息 */
+function isEmptySession(file) {
+  if (!file || !fs.existsSync(file)) return true
+  try { return readSessionMessages(file).length === 0 } catch { return false }
+}
+
 function readSessionMessages(file) {
   if (!file || !fs.existsSync(file)) return []
   const msgs = []
@@ -273,11 +278,16 @@ const server = http.createServer(async (req, res) => {
 
     // 新建会话（真正创建新会话文件 + 重建 agent，避免数据叠加）
     if (p === "/api/session/new" && req.method === "POST") {
+      const curFile = session?.sessionFile
       const dir = sessionsDir()
       fs.mkdirSync(dir, { recursive: true })
       const file = path.join(dir, `chat-${Date.now()}.jsonl`)
       fs.writeFileSync(file, "")
       await rebuildAgent(file)
+      // 旧会话是空会话 → 重建（已释放句柄）后删除，避免残留 chat-xxx.jsonl
+      if (curFile && curFile !== file && isEmptySession(curFile)) {
+        try { fs.unlinkSync(curFile); console.log("[session] 已删除空会话", curFile) } catch (e) { console.error("[session] 删除空会话失败", curFile, e.code) }
+      }
       return json(res, 200, { success: true, data: { path: file, sessionId: session?.sessionId, gen: Date.now() } })
     }
 
@@ -291,8 +301,8 @@ const server = http.createServer(async (req, res) => {
           try {
             const msgs = readSessionMessages(full)
             const firstUser = msgs.find((m) => m.role === "user")
-            const title = firstUser ? (Array.isArray(firstUser.content) ? firstUser.content.map((c) => c.text || "").join("").slice(0, 40) : String(firstUser.content || "").slice(0, 40)) : f
-            list.push({ path: full, name: title || f, time: fs.statSync(full).mtimeMs, messageCount: msgs.length, modified: fs.statSync(full).mtimeMs, firstMessage: title })
+            const title = firstUser ? (Array.isArray(firstUser.content) ? firstUser.content.map((c) => c.text || "").join("").slice(0, 40) : String(firstUser.content || "").slice(0, 40)) : ""
+            list.push({ path: full, name: title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: msgs.length, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
           } catch { /* 忽略 */ }
         }
       }
@@ -311,8 +321,13 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/session/switch" && req.method === "POST") {
       const { path: file } = await readBody(req)
       if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      // 当前会话是空会话（无消息）→ 重建（已释放句柄）后自动删除，避免残留 chat-xxx.jsonl
+      const curFile = session?.sessionFile
       try {
         await rebuildAgent(file)
+        if (curFile && curFile !== file && isEmptySession(curFile)) {
+          try { fs.unlinkSync(curFile); console.log("[session] 已删除空会话", curFile) } catch (e) { console.error("[session] 删除空会话失败", curFile, e.code) }
+        }
         return json(res, 200, { success: true, data: { path: file, gen: Date.now() } })
       } catch (e) {
         return json(res, 500, { error: e.message })
