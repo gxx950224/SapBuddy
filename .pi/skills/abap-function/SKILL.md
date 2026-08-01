@@ -60,7 +60,9 @@ FUNCTION z_mm_fm_get_material.
     WHERE matnr = @iv_matnr.
 
   IF sy-subrc <> 0.
-    ev_return = VALUE #( type = 'E' message = '物料不存在' ).
+    " 文案走消息类（禁止硬编码中文）：MESSAGE ... INTO 取回文本给 BAPIRET2
+    MESSAGE e001(zmm) WITH iv_matnr INTO DATA(lv_msg).
+    ev_return = VALUE #( type = 'E' id = 'ZMM' number = '001' message = lv_msg ).
     RAISE material_not_found.
   ENDIF.
 
@@ -126,15 +128,18 @@ IF sy-subrc <> 0.
 ENDIF.
 ```
 
-### 模式2：BAPIRET2 返回
+### 模式2：BAPIRET2 返回（文案必须走消息类，禁止硬编码中文）
 ```abap
 DATA: ls_return TYPE bapiret2.
+
+" 从消息类 ZMM 取文案（维护在 SE91/文本元素，代码零硬编码）
+MESSAGE e001(zmm) WITH iv_matnr INTO DATA(lv_msg).
 
 ls_return = VALUE #(
   type       = 'E'
   id         = 'ZMM'
   number     = '001'
-  message    = '物料不存在'
+  message    = lv_msg
   message_v1 = iv_matnr
 ).
 

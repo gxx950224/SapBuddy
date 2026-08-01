@@ -130,6 +130,11 @@ SELECTION-SCREEN END OF BLOCK b1.
 ```
 块标题和选择项文本必须用文本元素（TEXT-001），禁止硬编码。
 
+> **禁止硬编码中文（强制）**：所有用户可见文案（提示/错误/说明）禁止直接写在代码里：
+> - MESSAGE 语句 → 消息类（`MESSAGE e001(zxxx) WITH ...`，消息类用 `manage_transport_requests` 查/建或 MSAG/N 创建）
+> - ALV 列文本/标题/选择文本 → 文本元素（`TEXT-xxx`，`manage_text_elements` 维护）
+> - 屏幕块标题 → 文本元素；仅技术注释可用中文。
+
 ### 屏幕事件
 
 ```abap
@@ -142,7 +147,8 @@ AT SELECTION-SCREEN OUTPUT.
 AT SELECTION-SCREEN.
   " 输入校验，输出合适的错误消息
   IF s_bukrs IS INITIAL.
-    MESSAGE e001(zfi) WITH '公司代码必填'.
+    " 消息文案在消息类 ZFI 的 e001 中维护（禁止 WITH 传中文文案）
+    MESSAGE e001(zfi).
   ENDIF.
 ```
 
