@@ -340,13 +340,20 @@ const server = http.createServer(async (req, res) => {
     // ── SAP 状态（真实检测）──
     if (p === "/api/sap-status" && req.method === "GET") {
       // 服务端 15s 超时：避免 ADT 120s 挂死导致状态检测卡住
+      // settled 标志：race 双方只允许一方响应（防止 ERR_HTTP_HEADERS_SENT 崩溃）
+      let settled = false
+      const sendOnce = (responder) => {
+        if (settled) return
+        settled = true
+        responder()
+      }
       const done = Promise.race([
         (async () => {
           try {
             const { getClient, getClientCategory } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
             const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
             const conn = getConfig().connections[0]
-            if (!conn) return json(res, 200, { success: false, error: "未配置 SAP 连接" })
+            if (!conn) return sendOnce(() => json(res, 200, { success: false, error: "未配置 SAP 连接" }))
             const client = await getClient(conn.id)
             await client.runQuery("SELECT MANDT FROM T000", 1, true)
             // 客户端类别（T000.CCCATEGORY：P=生产 T=测试 C=定制(开发) D=演示 E=培训/教育 S=SAP参考）
@@ -356,9 +363,9 @@ const server = http.createServer(async (req, res) => {
               const { CLIENT_CATEGORY_LABELS } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
               categoryLabel = CLIENT_CATEGORY_LABELS?.[category] ?? `未知(${category || "未维护"})`
             } catch {}
-            return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client, clientCategory: category, clientCategoryLabel: categoryLabel } })
+            return sendOnce(() => json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client, clientCategory: category, clientCategoryLabel: categoryLabel } }))
           } catch (e) {
-            return json(res, 200, { success: false, error: e.message })
+            return sendOnce(() => json(res, 200, { success: false, error: e.message }))
           }
         })(),
         new Promise((resolve) => {
@@ -368,7 +375,7 @@ const server = http.createServer(async (req, res) => {
             import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
               .then((m) => m.dropAllClients())
               .catch(() => undefined)
-              .finally(() => resolve(json(res, 200, { success: false, error: "连接超时（15 秒）" })))
+              .finally(() => sendOnce(() => json(res, 200, { success: false, error: "连接超时（15 秒）" })))
           }, 15000)
         }),
       ])
@@ -568,7 +575,11 @@ const ids = models.map((m) => m.id)
         }]
         existing.security = { ...(existing.security ?? {}), readOnly: !!b.readOnly }
         fs.writeFileSync(connFile, JSON.stringify(existing, null, 2))
-        // 重置 ADT 连接池，使新配置立即生效
+        // 重置配置缓存 + ADT 连接池，使新配置立即生效
+        try {
+          const { reloadConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
+          reloadConfig()
+        } catch {}
         try {
           const { dropAllClients } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
           await dropAllClients()
