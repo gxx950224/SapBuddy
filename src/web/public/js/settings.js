@@ -743,9 +743,15 @@
         st.textContent = "已保存，Ping 测试中…";
         st.style.color = "";
         loadSapConfig();
+        // 立即清旧状态：避免显示上一次连接的成功结果误导
+        const stEl0 = $("#sap-state");
+        if (stEl0) stEl0.innerHTML = '<span class="dot"></span> 正在检测新连接…';
         App.refreshSapStatus();
+        // Ping 加超时控制（15s，避免 SAP 不可达时长时间挂起）
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
         try {
-          const pr = await fetch("/api/sap-status");
+          const pr = await fetch("/api/sap-status", { signal: controller.signal });
           const pj = await pr.json();
           const stEl = $("#sap-state");
           if (pj.success && pj.data) {
@@ -758,10 +764,15 @@
             st.style.color = "var(--error)";
             stEl.innerHTML = `<span class="dot err"></span> Ping 失败：${pj.error || "连接失败"}`;
           }
-        } catch {
-          st.textContent = "已保存 · Ping 超时";
+        } catch (e) {
+          const isTimeout = e.name === "AbortError";
+          st.textContent = isTimeout ? "已保存 · Ping 超时" : "已保存 · Ping 失败";
           st.style.color = "var(--error)";
-          $("#sap-state").innerHTML = '<span class="dot err"></span> Ping 超时';
+          $("#sap-state").innerHTML = isTimeout
+            ? '<span class="dot err"></span> Ping 超时：SAP 在 15 秒内无响应（请检查地址/端口/网络）'
+            : '<span class="dot err"></span> Ping 失败：' + (e?.message || "请求异常");
+        } finally {
+          clearTimeout(timer);
         }
         setTimeout(() => { st.textContent = ""; }, 3000);
       } else {

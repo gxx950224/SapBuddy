@@ -339,24 +339,41 @@ const server = http.createServer(async (req, res) => {
 
     // ── SAP 状态（真实检测）──
     if (p === "/api/sap-status" && req.method === "GET") {
-      try {
-        const { getClient, getClientCategory } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
-        const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
-        const conn = getConfig().connections[0]
-        if (!conn) return json(res, 200, { success: false, error: "未配置 SAP 连接" })
-        const client = await getClient(conn.id)
-        await client.runQuery("SELECT MANDT FROM T000", 1, true)
-        // 客户端类别（T000.CCCATEGORY：P=生产 T=测试 C=定制(开发) D=演示 E=培训/教育 S=SAP参考）
-        let category = "", categoryLabel = ""
-        try {
-          category = await getClientCategory(conn.id)
-          const { CLIENT_CATEGORY_LABELS } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
-          categoryLabel = CLIENT_CATEGORY_LABELS?.[category] ?? `未知(${category || "未维护"})`
-        } catch {}
-        return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client, clientCategory: category, clientCategoryLabel: categoryLabel } })
-      } catch (e) {
-        return json(res, 200, { success: false, error: e.message })
-      }
+      // 服务端 15s 超时：避免 ADT 120s 挂死导致状态检测卡住
+      const done = Promise.race([
+        (async () => {
+          try {
+            const { getClient, getClientCategory } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+            const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
+            const conn = getConfig().connections[0]
+            if (!conn) return json(res, 200, { success: false, error: "未配置 SAP 连接" })
+            const client = await getClient(conn.id)
+            await client.runQuery("SELECT MANDT FROM T000", 1, true)
+            // 客户端类别（T000.CCCATEGORY：P=生产 T=测试 C=定制(开发) D=演示 E=培训/教育 S=SAP参考）
+            let category = "", categoryLabel = ""
+            try {
+              category = await getClientCategory(conn.id)
+              const { CLIENT_CATEGORY_LABELS } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+              categoryLabel = CLIENT_CATEGORY_LABELS?.[category] ?? `未知(${category || "未维护"})`
+            } catch {}
+            return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client, clientCategory: category, clientCategoryLabel: categoryLabel } })
+          } catch (e) {
+            return json(res, 200, { success: false, error: e.message })
+          }
+        })(),
+        new Promise((resolve) => {
+          const t = setTimeout(() => {
+            clearTimeout(t)
+            // 超时后清连接池，避免 pending 连接阻塞后续请求
+            import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+              .then((m) => m.dropAllClients())
+              .catch(() => undefined)
+              .finally(() => resolve(json(res, 200, { success: false, error: "连接超时（15 秒）" })))
+          }, 15000)
+        }),
+      ])
+      await done
+      return
     }
 
     // ── 产物 output/ ──
