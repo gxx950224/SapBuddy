@@ -37,6 +37,9 @@ const portArg = process.argv.indexOf("--port")
 const PORT = portArg >= 0 ? Number(process.argv[portArg + 1]) : 7400
 const HOST = "127.0.0.1"
 
+/** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
+let mcpStatusCache = null
+
 // ─── Agent 会话 ────────────────────────────────────────────────────────────
 let agent = null
 let session = null
@@ -467,8 +470,30 @@ const ids = models.map((m) => m.id)
     }
     // ── MCP（方案 C 已直接集成 42 工具，返回空配置）──
     if (p === "/api/mcp") {
-      if (req.method === "POST") { await readBody(req); return json(res, 200, { success: true }) }
-      return json(res, 200, { success: true, config: {}, status: [] })
+      const { loadMcpServers, saveMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
+      if (req.method === "POST") {
+        const body = await readBody(req)
+        const servers = (body && (body.mcpServers ?? body.config ?? body)) || {}
+        saveMcpServers(servers)
+        // 连接测试（并行）
+        const status = await Promise.all(
+          Object.entries(servers)
+            .filter(([, s]) => s && s.url)
+            .map(([n, s]) => testServer(n, s))
+        )
+        mcpStatusCache = status
+        // 配置变化 → 重建 agent（MCP 工具动态注册生效）
+        try { await rebuildAgent(session?.sessionFile) } catch {}
+        return json(res, 200, { success: true, config: servers, status })
+      }
+      // GET：读配置 + 状态缓存（无缓存且配置非空时惰性测一次）
+      const servers = loadMcpServers()
+      if (!mcpStatusCache && Object.keys(servers).length > 0) {
+        try {
+          mcpStatusCache = await Promise.all(Object.entries(servers).map(([n, s]) => testServer(n, s)))
+        } catch {}
+      }
+      return json(res, 200, { success: true, config: servers, status: mcpStatusCache ?? [] })
     }
 
     // ── Prompts（提示词）──

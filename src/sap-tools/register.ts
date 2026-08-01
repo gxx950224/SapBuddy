@@ -9,8 +9,8 @@ import { tools } from "./tools/index.js"
 import { assertDevClient } from "./adtManager.js"
 import { resolveConnectionId } from "./tools/shared.js"
 
-/** JSON Schema → TypeBox */
-function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined): unknown {
+/** JSON Schema → TypeBox（供 register.ts 与 MCP 工具注册共用） */
+export function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined): unknown {
   if (!schema || typeof schema !== "object") return Type.Unknown()
   const s = schema as {
     type?: string

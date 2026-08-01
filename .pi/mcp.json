@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "sap-mcp-dev": {
+      "type": "streamable-http",
+      "url": "https://10.8.202.35:44300/sap/bc/zsx_intf_serv/zsx_mcp?sap-client=100",
+      "headers": {
+        "X-API-Key": "123456789"
+      },
+      "tls": {
+        "rejectUnauthorized": false
+      }
+    }
+  }
+}

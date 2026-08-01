@@ -97,6 +97,13 @@ abapbuddy/
                   abap-adt-api ──ADT HTTPS──► SAP /sap/bc/adt
 ```
 
+## 🔌 MCP 集成
+
+- **设置-MCP** 可添加外部 MCP 服务器（如 SAP 端 ZSX_MCP），保存后自动连接测试并**立即生效**
+- 轻量 streamable-http 客户端（零依赖），支持 JSON/SSE、自定义 header、自签名证书（tls.rejectUnauthorized）
+- MCP 工具以 `mcp_<服务器>_<工具名>` 注册为 customTools，与内置 42 工具同等可用
+- 配置保存到 `.pi/mcp.json`（项目）并同步 `~/.pi/agent/mcp.json`（pi mcp gateway）
+
 ## 🔒 安全
 
 - 默认 `security.readOnly: true`，写操作需显式开启
