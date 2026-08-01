@@ -67,7 +67,7 @@ node cli.mjs doctor    # 环境自检
 ## 📁 项目结构
 
 ```
-abapbuddy/
+sapbuddy/
 ├── cli.mjs                 # CLI 入口（chat / 单次 / web / tools / doctor）
 ├── src/
 │   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析

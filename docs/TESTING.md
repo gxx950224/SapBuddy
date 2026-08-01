@@ -131,7 +131,7 @@ curl -N http://127.0.0.1:7400/api/events # SSE 事件流
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `403 Request not allowed` | 模型名无效或 Key 错误 | 检查 `.pi/settings.json` 的 `defaultModel`（应为 `deepseek-v4-flash` 等 pi 内置模型）与 `.pi/auth.json` |
-| 工具未注册（只有 4 个内置） | 未编译或注册失败 | 执行 `npm run build`；检查 `[abapbuddy] 已注册 42 个` 日志 |
+| 工具未注册（只有 4 个内置） | 未编译或注册失败 | 执行 `npm run build`；检查 `[sapbuddy] 已注册 42 个` 日志 |
 | SAP 连接超时 | 网络/系统未启动 | 确认 SAP 可达、ADT 服务正常；自签名证书需 `ssl.allowSelfSigned` |
 | 单次提问无输出 | 模型未显式解析 | 确认 `agent-core.mjs` 中模型解析逻辑；检查错误事件 |
 | Web 端口占用 | 7400 被占用 | `node cli.mjs web --port 7401` |
