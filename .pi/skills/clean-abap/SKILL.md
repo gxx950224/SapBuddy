@@ -12,6 +12,11 @@ description: >-
 
 Follow the official **SAP Clean ABAP style guide** (an adoption of Robert C. Martin's *Clean Code* for ABAP) in all ABAP work.
 
+> **触发协调**：本技能提供代码规范与质量评审标准；
+> 用户要求"审查/审计/code review XXX"并产出 HTML 报告时，走 `abap-code-review` 技能（含 4 页签报告模板），
+> 其审查标准即依据本技能（Clean ABAP）。
+> 用户要求"解释/分析程序逻辑"时，走 `abap-explain` 技能。
+
 The full Chinese guide (4300+ lines, 17 chapters, every rule with examples) is in [references/CleanABAP_zh.md](references/CleanABAP_zh.md). **Consult it whenever a topic below is ambiguous, the user asks "why", or you need the exact example syntax.** English original: https://github.com/SAP/styleguides/blob/main/clean-abap/CleanABAP.md
 
 ## When to use

@@ -64,7 +64,7 @@ disable: false
      `{{SUMMARY_SECTION}}`（统计+汇总表）、`{{DETAIL_ITEMS}}`/`{{MEDIUM_ITEMS}}`/`{{LOW_ITEMS}}`（重点/中危/低危）、
      `{{POSITIVES}}`（亮点）、`{{CONCLUSION_SECTION}}`（结论表+脚注）。
    - 页签切换为纯原生 JS（模板自带 `showTab()`），无外部依赖，单文件可离线打开。
-8. **交付结果。** 调用 `present_files`，同时传入 `output/` 下的 HTML 报告（可预览）。
+8. **交付结果。** 告知用户报告位置 `output/<程序名或函数名>_CodeReview.html`（Web 端产物面板可预览），并简要总结发现问题数量。
 
 完整清单见 `references/checklist.md`，
 交付模板见 `assets/report-template.html`。

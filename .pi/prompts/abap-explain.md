@@ -1,4 +1,4 @@
-﻿# /abap-explain — ABAP 程序逻辑详解（面向业务顾问）
+# /abap-explain — ABAP 程序逻辑详解（面向业务顾问）
 
 ## 触发条件
 - 用户说 解释/说明/详解/讲讲/分析一下 XXX 程序
@@ -7,11 +7,11 @@
 
 ## 前置阅读
 - 编码规范：SYSTEM.md
-- SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `replace_string_in_abap_object` / `abap_activate` 等）
+- SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` 等）
 
 ## 前置条件
-- sap-mcp-dev MCP 服务器必须已连接，且提供 ABAP_DOWNLOAD 工具
-- 若处于断开状态，停下并告知用户先连接
+- SAP 连接已配置（`get_connected_systems` 确认可用连接）
+- 源码通过**内置 SAP 工具**读取，不依赖任何 MCP 服务器
 
 ## 工作流程
 
@@ -20,10 +20,10 @@
 
 先看其中是否已包含程序/函数名。已有则直接使用，只问缺失的信息。
 
-### 2. 下载源码
-调用 mcp__sap-mcp-dev__ABAP_DOWNLOAD：
-- 程序：传 RPROG/SOPROG，例：{ RPROG: "X", SOPROG: "<程序名>" }
-- 函数：传 RFUNC/SOFNAME，例：{ RFUNC: "X", SOFNAME: "<函数名>" }
+### 2. 读取源码
+调用内置 `get_abap_object_lines`：
+- 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`
+- 若对象名不确定，先 `search_abap_objects`（pattern=`<对象名>*`）确认存在
 
 ### 3. 存档源码
 保存到 output/ref_<程序名>.abap。

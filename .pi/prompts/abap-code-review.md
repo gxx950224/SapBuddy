@@ -1,4 +1,4 @@
-﻿# /abap-code-review — ABAP 代码审查
+# /abap-code-review — ABAP 代码审查
 
 ## 触发条件
 - 用户说 审查/审计/code review/检查代码/看看代码问题 XXX
@@ -7,11 +7,11 @@
 ## 前置阅读
 - 审查清单（12 维度）：.pi/skills/abap-code-review/references/checklist.md
 - 审查报告 HTML 模板：.pi/skills/abap-code-review/assets/report-template.html
-- 编码规范：SYSTEM.md
+- 编码规范：SYSTEM.md（默认 SAP 官方 Clean ABAP）
 
 ## 前置条件
-- sap-mcp-dev MCP 服务器必须已连接，且提供 ABAP_DOWNLOAD 工具
-- 若处于断开状态，停下并告知用户先连接 SAP MCP 服务器
+- SAP 连接已配置（`get_connected_systems` 确认可用连接）
+- 源码通过**内置 SAP 工具**读取，不依赖任何 MCP 服务器
 
 ## 工作流程（强制顺序执行）
 
@@ -20,18 +20,17 @@
 
 先看其中是否已包含程序/函数名。已有则直接使用，只问缺失的信息。
 
-### 2. 下载源码
-调用 mcp__sap-mcp-dev__ABAP_DOWNLOAD：
-- **禁止先调用 `ls` 确认对象是否存在**——直接下载，对象不存在时 MCP 会返回错误
-- **禁止先调用 `cat` 读取源码**——审查源码必须通过 MCP 下载
-- 参数示例：{ RPROG: "X", SOPROG: "<程序名>" }（程序）或 { RFUNC: "X", SOFNAME: "<函数名>" }（函数）
-- 工具返回 JSON 数组，元素为 { FILENAME: ..., CONTENT: ... }
+### 2. 读取源码
+调用内置 `get_abap_object_lines`：
+- 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`
+- 若对象名不确定，先 `search_abap_objects`（pattern=`<对象名>*`）确认存在
+- 一次读取全部源码（必要时分页读取多个 INCLUDE）
 
 ### 3. 存档源码
-将下载的源码保存到 output/ 目录，以 FILENAME 命名（如 output/ZFIR001.abap）。
+将读取的源码保存到 output/ 目录，命名为 output/<程序名>.abap。
 
 ### 4. 收集关联对象
-留意被 INCLUDE 的程序、配置表、结构等引用对象。按程序名下载通常已包含直接 INCLUDE 的源码。
+留意被 INCLUDE 的程序、配置表、结构等引用对象，可继续用内置工具读取或向用户索取。
 
 ### 5. 静态走查
 自顶向下逐段核对 references/checklist.md 的每一项：
@@ -55,7 +54,7 @@
 4. **亮点与结论**（亮点 / 结论与修复优先级）
 
 ### 8. 交付结果
-调用 present_files，传入 output/ 下的 HTML 报告。
+告知用户报告位置 `output/<程序名>_CodeReview.html`（Web 端产物面板可预览）。
 
 ## 示例（Few-Shot）
 
