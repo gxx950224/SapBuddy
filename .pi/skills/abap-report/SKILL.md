@@ -116,8 +116,8 @@ PARAMETERS: p_detail AS CHECKBOX DEFAULT 'X'.
 PARAMETERS: p_alv  RADIOBUTTON GROUP g1 DEFAULT 'X',
             p_list RADIOBUTTON GROUP g1.
 
-" 下拉列表
-PARAMETERS: p_type TYPE char1 AS LISTBOX VISIBLE LENGTH 20.
+" 下拉列表（状态/选项：用 xfeld 等标准数据元素，禁裸 TYPE char1）
+PARAMETERS: p_type TYPE xfeld AS LISTBOX VISIBLE LENGTH 20.
 ```
 
 ### 块与文本元素
@@ -210,7 +210,8 @@ SORT lt_kna1 BY kunnr.
 ### 导出 CSV（应用服务器）
 
 ```abap
-DATA: lv_file TYPE string VALUE '/tmp/export.csv'.
+" 文件路径：无标准数据元素时需创建 Z 数据元素（如 zz_path），禁裸 TYPE string
+DATA: lv_file TYPE zz_path VALUE '/tmp/export.csv'.
 
 OPEN DATASET lv_file FOR OUTPUT IN TEXT MODE ENCODING UTF-8.
 
