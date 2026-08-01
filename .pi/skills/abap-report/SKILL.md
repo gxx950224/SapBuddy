@@ -238,7 +238,7 @@ CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
 
 | 错误 | 原因 | 修复 |
 |------|------|------|
-| 字段不存在 | 表名字段名拼错 | `node gxx-abap/bin/gxx-abap.js meta <表名> --json` 确认字段名 |
+| 字段不存在 | 表名字段名拼错 | 用内置 `get_abap_object_info`（TABL）确认字段名 |
 | 类型不匹配 | 数据类型不一致 | 用 `CONV #( )` 或 `CORRESPONDING` |
 | 未声明变量 | 缺少 DATA 声明 | 用内联声明 `@DATA(...)` |
 | 表未声明 | TABLES 缺失 | 添加 `TABLES:` 声明（选择屏幕 FOR 字段需要） |

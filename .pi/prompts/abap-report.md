@@ -7,7 +7,7 @@
 ## 前置阅读
 - 编码规范：`SYSTEM.md`
 - 代码模板与最佳实践：`.pi/skills/abap-report/SKILL.md`
-- 工具用法：`.pi/skills/gxx-abap/SKILL.md`
+- SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `replace_string_in_abap_object` / `abap_activate` 等）
 
 ## 工作流程（含确认门禁，⚠ 处必须等用户明确确认）
 
@@ -26,15 +26,15 @@
 
 ### 3. 查重（决定新建/修改路径）
 ```
-node gxx-abap/bin/gxx-abap.js ls <程序名> --json
+内置 `search_abap_objects` 工具（pattern=`<程序名>`）查重
 ```
 - 不存在 → 走**新建**路径：步骤 4 → 5 → 6 → 7
 - 已存在 → 走**修改**路径：步骤 4 → 5 → 6 → 7（跳过 create）
 
 ### 4. 确认表结构和现有代码
 ```
-node gxx-abap/bin/gxx-abap.js meta <表名> --json
-node gxx-abap/bin/gxx-abap.js cat <程序名> --json    # 修改时读现有源码
+内置 `get_abap_object_info` 工具（TABL `<表名>`）看表结构
+内置 `get_abap_object_lines` 工具（PROG `<程序名>`）读现有源码
 ```
 
 ### 5. 输出逻辑说明（输出契约 A）— 必须等用户确认
@@ -58,18 +58,18 @@ node gxx-abap/bin/gxx-abap.js cat <程序名> --json    # 修改时读现有源�
 ⚠ 用户确认后才能写入 SAP。
 
 ### 7. 写入 SAP
-gxx-abap 会自动检测传输号，无需手动指定 --transport。
+传输请求由内置工具自动处理，无需手动指定。
 
 新建：
 ```
-node gxx-abap/bin/gxx-abap.js create <程序名> -t program --description "<描述>" [--package <包>] --json
-node gxx-abap/bin/gxx-abap.js put <程序名> output/<程序名>.abap --json
-node gxx-abap/bin/gxx-abap.js activate <程序名> --json
+内置 `create_object_programmatically`（PROG/I）创建空壳
+内置 `replace_string_in_abap_object` 写入代码
+内置 `abap_activate` 激活
 ```
 修改：
 ```
-node gxx-abap/bin/gxx-abap.js put <程序名> output/<程序名>.abap --json
-node gxx-abap/bin/gxx-abap.js activate <程序名> --json
+内置 `replace_string_in_abap_object` 写入代码
+内置 `abap_activate` 激活
 ```
 激活报错必须修复，同步更新本地文件。同一问题连续失败 3 次 → 停手上报。
 

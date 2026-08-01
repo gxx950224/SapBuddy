@@ -7,7 +7,7 @@
 
 ## 前置阅读
 - 编码规范：SYSTEM.md
-- 工具用法：.pi/skills/gxx-abap/SKILL.md
+- SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `replace_string_in_abap_object` / `abap_activate` 等）
 
 ## 前置条件
 - sap-mcp-dev MCP 服务器必须已连接，且提供 ABAP_DOWNLOAD 工具

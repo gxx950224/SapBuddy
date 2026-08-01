@@ -13,7 +13,7 @@
 ## 前置阅读
 - 编码规范：`SYSTEM.md`
 - 代码模板与最佳实践：`.pi/skills/abap-function/SKILL.md`
-- 工具用法：`.pi/skills/gxx-abap/SKILL.md`
+- SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `replace_string_in_abap_object` / `abap_activate` 等）
 
 ## 工作流程（含确认门禁，⚠ 处必须等用户明确确认）
 
@@ -42,8 +42,8 @@
 
 ### 4. 读取源码获取接口参数
 ```
-node gxx-abap/bin/gxx-abap.js ls <函数模块名> --json      # 确认存在
-node gxx-abap/bin/gxx-abap.js cat <函数模块名> -t fm --json  # 读取源码
+内置 `search_abap_objects` 工具（pattern=`<函数模块名>`）确认存在
+内置 `get_abap_object_lines` 工具（FUNC `<函数模块名>`）读取源码
 ```
 从 `*"` 注释块提取接口参数。向用户展示：
 ```
@@ -56,7 +56,7 @@ EXCEPTIONS：<异常清单>
 
 ### 5. 确认表结构和逻辑（输出契约 A）— 必须等用户确认
 ```
-node gxx-abap/bin/gxx-abap.js meta <表名> --json
+内置 `get_abap_object_info` 工具（TABL `<表名>`）看表结构
 ```
 按以下格式汇报，⛔ 用户明确回复确认前不得做任何代码操作：
 ```
@@ -73,10 +73,10 @@ node gxx-abap/bin/gxx-abap.js meta <表名> --json
 ⚠ 用户确认后才能写入 SAP。
 
 ### 7. 写入 SAP
-gxx-abap 会自动检测传输号，无需手动指定 --transport。
+传输请求由内置工具自动处理，无需手动指定。
 ```
-node gxx-abap/bin/gxx-abap.js put <函数模块名> output/<函数模块名>.abap -t fm --json
-node gxx-abap/bin/gxx-abap.js activate <函数模块名> -t fm --json
+内置 `replace_string_in_abap_object` 写入代码体
+内置 `abap_activate` 激活
 ```
 激活报错必须修复，同步更新本地文件。同一问题连续失败 3 次 → 停手上报。
 

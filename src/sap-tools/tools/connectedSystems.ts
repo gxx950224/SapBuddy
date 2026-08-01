@@ -1,6 +1,7 @@
 /** 工具：列出可用 SAP 连接（相当于 abap_fs 的 get_connected_systems） */
 import { z } from "zod"
 import { getConfig } from "../config.js"
+import { getClientCategory, CLIENT_CATEGORY_LABELS } from "../adtManager.js"
 
 export const connectedSystemsTool = {
   name: "get_connected_systems",
@@ -13,13 +14,22 @@ export const connectedSystemsTool = {
     if (config.connections.length === 0) {
       return "未配置任何 SAP 连接。请在 connections.json 中配置后再使用。"
     }
-    const lines = config.connections.map((c) => {
+    const lines: string[] = []
+    for (const c of config.connections) {
       const auth = c.authMethod === "oauth" ? "OAuth2" : "Basic"
-      return `- ${c.id.padEnd(12)} ${c.url}  Client: ${c.client}  Auth: ${auth}${c.description ? `  (${c.description})` : ""}`
-    })
+      // 客户端类别 + 写操作守卫状态（T000.CCCATEGORY）
+      let guard = "类别未知（写操作将被拦截）"
+      try {
+        const cat = await getClientCategory(c.id)
+        const label = CLIENT_CATEGORY_LABELS[cat] ?? `未知(${cat || "未维护"})`
+        const allow = (c.security?.developmentCategories ?? ["C"]).map((x) => x.toUpperCase())
+        guard = allow.includes(cat) ? `写操作: 允许（${label}）` : `写操作: 拦截（${label}）`
+      } catch { /* 类别查询失败，默认拦截 */ }
+      lines.push(`- ${c.id.padEnd(12)} ${c.url}  Client: ${c.client}  Auth: ${auth}  ${guard}${c.description ? `  (${c.description})` : ""}`)
+    }
     return (
       `可用 SAP 连接（${config.connections.length} 个）:\n${lines.join("\n")}\n\n` +
-      `只读模式: ${config.security?.readOnly === false ? "关闭（允许写操作）" : "开启（仅只读工具）"}`
+      `安全策略: ${config.security?.readOnly === false ? "允许写操作（受开发客户端守卫约束）" : "只读模式开启（仅只读工具）"}`
     )
   },
 }
