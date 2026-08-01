@@ -259,10 +259,10 @@
 
   // ── Toast 提示 ──
   App.showToast = function(message, isError = false, duration = 2600) {
-    let toast = document.getElementById("abapbuddy-toast");
+    let toast = document.getElementById("sapbuddy-toast");
     if (!toast) {
       toast = document.createElement("div");
-      toast.id = "abapbuddy-toast";
+      toast.id = "sapbuddy-toast";
       toast.style.cssText = `
         position: fixed; right: 20px; bottom: 20px; z-index: 200;
         padding: 10px 16px; border-radius: 8px;
