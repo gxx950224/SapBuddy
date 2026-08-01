@@ -233,7 +233,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
       list.sort((a, b) => b.time - a.time)
-      return json(res, 200, { success: true, data: list })
+      return json(res, 200, { success: true, data: { sessions: list.map((s) => ({ ...s, modified: s.time, firstMessage: s.name, current: false })) } })
     }
 
     // 删除会话
@@ -249,12 +249,12 @@ const server = http.createServer(async (req, res) => {
         const { getClient } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
         const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
         const conn = getConfig().connections[0]
-        if (!conn) return json(res, 200, { status: "error", message: "未配置 SAP 连接" })
+        if (!conn) return json(res, 200, { success: false, error: "未配置 SAP 连接" })
         const client = await getClient(conn.id)
-        const sys = await client.runQuery("SELECT MANDT FROM T000", 1, true).catch(() => null)
-        return json(res, 200, { status: "ok", message: `${conn.id} · ${conn.url}`, client: conn.client, ts: Date.now() })
+        await client.runQuery("SELECT MANDT FROM T000", 1, true)
+        return json(res, 200, { success: true, data: { sid: conn.id, user: conn.username, host: conn.url, client: conn.client } })
       } catch (e) {
-        return json(res, 200, { status: "error", message: e.message, ts: Date.now() })
+        return json(res, 200, { success: false, error: e.message })
       }
     }
 
@@ -299,36 +299,91 @@ const server = http.createServer(async (req, res) => {
         const provider = url.searchParams.get("provider")
         const available = await mr.getAvailable()
         const models = available.filter((m) => !provider || m.provider === provider)
-        const byProvider = {}
-        for (const m of models) {
-          if (!byProvider[m.provider]) byProvider[m.provider] = []
-          byProvider[m.provider].push({ id: m.id, name: m.name ?? m.id })
-        }
-        return json(res, 200, { success: true, data: byProvider })
+const flat = models.map((m) => ({ provider: m.provider, id: m.id, name: m.name ?? m.id }))
+        return json(res, 200, { success: true, models: flat })
       } catch (e) {
-        return json(res, 200, { success: true, data: {} })
+        return json(res, 200, { success: true, models: [] })
       }
     }
     const memoryFile = path.join(ROOT, ".pi", "memory.md")
     if (p === "/api/memory" && req.method === "GET") {
-      try { return json(res, 200, { success: true, data: fs.readFileSync(memoryFile, "utf8") }) }
-      catch { return json(res, 200, { success: true, data: "" }) }
+      try { return json(res, 200, { success: true, data: { content: fs.readFileSync(memoryFile, "utf8") } }) }
+      catch { return json(res, 200, { success: true, data: { content: "" } }) }
     }
     if (p === "/api/memory" && req.method === "POST") {
       const { content } = await readBody(req)
       try { fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
       catch (e) { return json(res, 500, { error: e.message }) }
     }
+    // ── Prompts（提示词）──
+    const promptsDir = path.join(ROOT, ".pi", "prompts")
+    if (p === "/api/prompt" && req.method === "GET") {
+      const file = url.searchParams.get("file") || "AGENTS.md"
+      const candidates = [path.join(ROOT, file), path.join(promptsDir, file), path.join(ROOT, ".pi", "skills", file)]
+      for (const c of candidates) {
+        if (fs.existsSync(c)) return json(res, 200, { success: true, data: { content: fs.readFileSync(c, "utf8"), path: c } })
+      }
+      return json(res, 200, { success: true, data: { content: "", path: file } })
+    }
+    if (p === "/api/prompt" && req.method === "POST") {
+      const { file, content } = await readBody(req)
+      try {
+        const target = path.join(promptsDir, file || "")
+        fs.mkdirSync(path.dirname(target), { recursive: true })
+        fs.writeFileSync(target, content ?? "")
+        return json(res, 200, { success: true, data: { path: target } })
+      } catch (e) { return json(res, 500, { error: e.message }) }
+    }
+
+    // ── SAP 连接配置（connections.json 读写）──
+    const connFile = path.join(ROOT, "connections.json")
+    if (p === "/api/sap-config" && req.method === "GET") {
+      try {
+        const conf = JSON.parse(fs.readFileSync(connFile, "utf8"))
+        const c = conf.connections?.[0] ?? {}
+        const u = new URL(c.url ?? "https://localhost:44300")
+        return json(res, 200, {
+          success: true,
+          data: {
+            host: u.hostname, port: u.port || "44300", protocol: u.protocol.replace(":", ""),
+            user: c.username, client: c.client, readOnly: conf.security?.readOnly ?? true,
+          },
+        })
+      } catch {
+        return json(res, 200, { success: true, data: { host: "", port: "44300", protocol: "https", user: "", client: "100", readOnly: true } })
+      }
+    }
+    if (p === "/api/sap-config" && req.method === "POST") {
+      const b = await readBody(req)
+      try {
+        const existing = fs.existsSync(connFile) ? JSON.parse(fs.readFileSync(connFile, "utf8")) : { connections: [], security: {} }
+        const port = b.port || "44300"
+        existing.connections = [{
+          id: "dev",
+          url: `${b.protocol || "https"}://${b.host}:${port}`,
+          client: b.client || "100",
+          username: b.user || "",
+          password: b.password ?? existing.connections?.[0]?.password ?? "",
+          language: "ZH",
+          authMethod: "basic",
+          ssl: { allowSelfSigned: true },
+        }]
+        existing.security = { ...(existing.security ?? {}), readOnly: !!b.readOnly }
+        fs.writeFileSync(connFile, JSON.stringify(existing, null, 2))
+        return json(res, 200, { success: true })
+      } catch (e) { return json(res, 500, { error: e.message }) }
+    }
+
     const skillsDir = path.join(ROOT, ".pi", "skills")
     if (p === "/api/skills" && req.method === "GET") {
       const file = url.searchParams.get("file")
       if (file) {
-        try { return json(res, 200, { success: true, data: fs.readFileSync(path.join(skillsDir, file), "utf8") }) }
-        catch { return json(res, 200, { success: true, data: "" }) }
+        try { return json(res, 200, { success: true, data: { content: fs.readFileSync(path.join(skillsDir, file), "utf8") } }) }
+        catch { return json(res, 200, { success: true, data: { content: "" } }) }
       }
       try {
         const dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory())
-        return json(res, 200, { success: true, data: dirs.map((d) => ({ name: d.name, path: `${d.name}/SKILL.md` })) })
+        return json(res, 200, { success: true, data: { tree: dirs.map((d) => ({ type: "dir", name: d.name, path: d.name, children: [{ type: "file", name: "SKILL.md", path: d.name + "/SKILL.md" }] })) } })
       } catch {
         return json(res, 200, { success: true, data: [] })
       }

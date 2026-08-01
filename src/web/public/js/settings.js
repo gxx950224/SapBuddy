@@ -610,8 +610,6 @@
       if (target === "mcp") { loadMcpConfig(); startMcpPolling(); } else { stopMcpPolling(); }
       if (target === "memory") loadMemory();
       if (target === "skills") loadSkillTree();
-      if (target === "prompts") App.loadPrompt(currentPromptFile || "AGENTS.md");
-      if (target === "about") loadAboutTab();
     });
   });
 
@@ -774,86 +772,6 @@
       st.style.color = "var(--error)";
     }
   });
-
-  // ── 关于面板 ──
-  let _aboutChecking = false;
-
-  async function loadAboutTab() {
-    // 显示当前版本
-    try {
-      const r = await fetch("/api/check-update");
-      const j = await r.json();
-      if (j.success && j.data) {
-        $("#about-version").textContent = j.data.currentVersion || "-";
-        $("#about-update-status").textContent = j.data.message || "已是最新";
-      }
-    } catch {
-      $("#about-version").textContent = "-";
-      $("#about-update-status").textContent = "获取失败";
-    }
-  }
-
-  async function doCheckUpdate() {
-    if (_aboutChecking) return;
-    _aboutChecking = true;
-    const btn = $("#about-check-update");
-    const statusEl = $("#about-update-status");
-    const origText = btn.textContent;
-    btn.textContent = "检查中…";
-    btn.disabled = true;
-    statusEl.textContent = "检查中…";
-    try {
-      const r = await fetch("/api/check-update");
-      const j = await r.json();
-      if (j.success && j.data) {
-        const d = j.data;
-        $("#about-version").textContent = d.currentVersion || "-";
-        if (d.updateAvailable) {
-          statusEl.textContent = `发现新版本 ${d.latestVersion}（当前 ${d.currentVersion}）`;
-          btn.textContent = "立即更新";
-          btn.disabled = false;
-          btn.dataset.downloadUrl = d.downloadUrl || "";
-          btn.dataset.latestVersion = d.latestVersion;
-          // 替换点击事件为下载安装
-          btn.replaceWith(btn.cloneNode(true));
-          const newBtn = $("#about-check-update");
-          newBtn.addEventListener("click", startUpdateDownload);
-        } else {
-          statusEl.textContent = d.message || "已是最新版本";
-          btn.textContent = origText;
-          btn.disabled = false;
-        }
-      } else {
-        statusEl.textContent = "检查失败";
-        btn.textContent = origText;
-        btn.disabled = false;
-      }
-    } catch (e) {
-      statusEl.textContent = "检查失败：" + e.message;
-      btn.textContent = origText;
-      btn.disabled = false;
-    } finally {
-      _aboutChecking = false;
-    }
-  }
-
-  async function startUpdateDownload() {
-    const btn = $("#about-check-update");
-    const statusEl = $("#about-update-status");
-    const downloadUrl = btn.dataset.downloadUrl;
-    if (!downloadUrl) { statusEl.textContent = "缺少下载地址"; return; }
-    btn.textContent = "下载中…";
-    btn.disabled = true;
-    btn.style.pointerEvents = "none";
-    await App.downloadAndInstall(downloadUrl, statusEl);
-    btn.textContent = "检查更新";
-    btn.disabled = false;
-    btn.style.pointerEvents = "";
-    btn.removeEventListener("click", startUpdateDownload);
-    btn.addEventListener("click", doCheckUpdate);
-  }
-
-  $("#about-check-update").addEventListener("click", doCheckUpdate);
 
   // ── ESC 关闭设置/预览 ──
   document.addEventListener("keydown", (e) => {
