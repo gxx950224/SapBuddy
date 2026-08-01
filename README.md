@@ -80,8 +80,13 @@ abapbuddy/
 │       ├── server.mjs      # 本地 Web 服务器（SSE 流式）
 │       └── public/         # Web UI（聊天界面）
 ├── config/                 # 配置模板（不包含真实凭据）
+├── docs/                   # 文档（测试指南等）
 └── .pi/                    # pi 运行时配置（auth/settings，已 gitignore）
 ```
+
+## 🧪 测试
+
+完整的测试流程见 [docs/TESTING.md](./docs/TESTING.md)，覆盖 CLI / Web / 42 工具回归矩阵。
 
 ## 🧩 架构
 
