@@ -55,7 +55,12 @@
       <div class="tool-body"></div>`;
     card.querySelector(".tool-name").textContent = name || "tool";
     card.querySelector(".tool-args").textContent = App.summarizeArgs(args);
-    card.querySelector(".tool-head").addEventListener("click", () => card.classList.toggle("expanded"));
+    const bodyEl = card.querySelector(".tool-body");
+    bodyEl.style.display = "none"; // 内联兜底：折叠必隐藏（不依赖 CSS）
+    card.querySelector(".tool-head").addEventListener("click", () => {
+      const expanded = card.classList.toggle("expanded");
+      bodyEl.style.display = expanded ? "block" : "none"; // JS 直接控制展开/折叠
+    });
     if (id) state.toolCards.set(id, card);
     return card;
   };
@@ -80,5 +85,6 @@
     pre.className = "tool-code";
     pre.textContent = text || "(无输出)";
     body.appendChild(pre);
+    // 完成时不改变折叠状态（保持 JS 内联控制）
   };
 })();
