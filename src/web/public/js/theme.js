@@ -13,6 +13,10 @@
     document.documentElement.setAttribute("data-theme", t);
     try { localStorage.setItem("abap-studio-theme", t); } catch (e) {}
   };
+  // 当前是否深色（markdown/Mermaid 等模块用）
+  App.isDark = function() {
+    return document.documentElement.getAttribute("data-theme") === "dark";
+  };
   if (themeToggleBtn) {
     themeToggleBtn.addEventListener("click", () => {
       const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
