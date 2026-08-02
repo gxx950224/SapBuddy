@@ -142,10 +142,15 @@ export const dataQueryTool = {
     try {
       const connId = await resolveConnectionId(args.connectionId)
       const sql = args.sqlQuery.trim()
-      if (!/^(SELECT|WITH)\b/i.test(sql)) {
+      // 先去掉块注释 /**/ 与字符串字面量再校验：注释里写 INSERT 不会误判，也防 /**/ 把关键字拆开
+      // 用空格替换（而非删除），避免 1/**/INSERT 拼成 1INSERT 绕过 \b 词边界
+      const cleaned = sql
+        .replace(/\/\*[\s\S]*?\*\//g, " ")
+        .replace(/'(?:[^']|'')*'/g, " ")
+      if (!/^(SELECT|WITH)\b/i.test(cleaned)) {
         return "安全限制：仅允许 SELECT 和 WITH 开头的查询（只读）。已拒绝执行。"
       }
-      if (/\b(INSERT|UPDATE|DELETE|DROP|CREATE|TRUNCATE|ALTER)\b/i.test(sql)) {
+      if (/\b(INSERT|UPDATE|DELETE|DROP|CREATE|TRUNCATE|ALTER)\b/i.test(cleaned)) {
         return "安全限制：检测到写操作关键字，已拒绝执行。"
       }
       const client = await getClient(connId)
