@@ -39,6 +39,26 @@ function sepLine() {
   return ANSI.dim + "─".repeat(Math.min(w, 100)) + ANSI.reset
 }
 
+// ── SAPBUDDY ASCII art ──
+const FIGLET = {
+  S: ["███████╗", "██╔════╝", "███████╗", "╚════██║", "███████║", "╚══════╝"],
+  A: [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"],
+  P: ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔═══╝ ", "██║     ", "╚═╝     "],
+  B: ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔══██╗", "██████╔╝", "╚═════╝ "],
+  U: ["██╗   ██╗", "██║   ██║", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
+  D: ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
+  Y: ["██╗   ██╗", "╚██╗ ██╔╝", " ╚████╔╝ ", "  ╚██╔╝  ", "   ██║   ", "   ╚═╝   "],
+}
+function renderBanner() {
+  const word = "SAPBUDDY"
+  const rows = Array(6).fill("")
+  for (const ch of word) {
+    const glyph = FIGLET[ch] || ["      ", "      ", "      ", "      ", "      ", "      "]
+    for (let i = 0; i < 6; i++) rows[i] += glyph[i]
+  }
+  return rows.join("\n") + "\n"
+}
+
 // ===== tools：列出工具 =====
 async function cmdTools() {
   const { listToolNames } = await import(pathToFileURL(path.join(HERE, "dist", "sap-tools", "register.js")).href)
