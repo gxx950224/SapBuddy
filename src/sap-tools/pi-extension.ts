@@ -9,7 +9,7 @@ import { SAPBUDDY_BANNER } from "./banner.js"
 export default function (pi: ExtensionAPI): void {
   // 启动图标（pi CLI 顶部信息区显示）
   console.log(SAPBUDDY_BANNER)
-  console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具")
+  console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具 · author:guoxiaoxi")
   try {
     registerSapTools(pi)
   } catch (e) {
