@@ -822,9 +822,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   max-height: 100px; overflow-y: auto; color: var(--text-dim);
   display: none;
 }
-.tool-card:not(.expanded) .tool-body { display: none !important; }
-.tool-card.expanded .tool-body { display: block; }
-.tool-card.expanded .tool-body { display: block; }
+.tool-card .tool-body { display: none !important; }
+.tool-card.expanded .tool-body { display: block !important; }
 .tool-code { margin: 0; padding: 0; background: transparent; border: none; white-space: pre; color: var(--text); }
 .tool-code code { font-family: var(--font-mono); font-size: 11px; line-height: 1.4; }
 

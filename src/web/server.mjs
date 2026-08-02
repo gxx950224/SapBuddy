@@ -693,7 +693,10 @@ const ids = models.map((m) => m.id)
     if (!file.startsWith(PUBLIC_DIR)) return json(res, 403, { error: "Forbidden" })
     fs.readFile(file, (err, data) => {
       if (err) { res.writeHead(404); return res.end("Not Found") }
-      res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" })
+      res.writeHead(200, {
+        "Content-Type": MIME[path.extname(file)] || "application/octet-stream",
+        "Cache-Control": "no-cache",
+      })
       res.end(data)
     })
   } catch (e) {
