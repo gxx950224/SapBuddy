@@ -248,9 +248,12 @@ export async function createAgent(opts = {}) {
 3. 需求明确 → 展示改动计划 → 等用户确认 → 才允许调用写工具。
 4. **创建可执行报表用 \`PROG/P\`（主程序），不要用 \`PROG/I\`（include）**；函数模块用 \`FUGR/FF\` + parentName 函数组。
 `
-          pi.on("before_agent_start", (event, _ctx) => {
+          pi.on("before_agent_start", async (event, _ctx) => {
             try {
               const prompt = String(event?.prompt || "").toLowerCase()
+              // 授权窗口：确认词/拒绝词统一处理（CLI/Web 同规则，由扩展层强制）
+              const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+              r.handleUserMessage?.(event?.prompt || "")
               let inject = GLOBAL_TOOL_RULES
               if (/创建|新建|开发|生成|写.*程序|create|new|开发一个/.test(prompt)) {
                 inject += CREATE_FLOW_RULES

@@ -216,17 +216,8 @@ const server = http.createServer(async (req, res) => {
       json(res, 200, { ok: true, ts: Date.now() })
       try {
         const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
-        // 手动确认机制：用户输入含确认词 → 开启批准窗口（AI 重试写工具放行）；否则重置
-        const CONFIRM_RE = /确认|同意|允许|批准|可以|好的|好，|好、|好 |ok|okay|yes|继续|执行|就这么办|没问题|没问题|行，|行 |行$|行，就|go ahead/i
-        // 明确拒绝/推翻：清空授权窗口（新需求需重新确认）
-        const REJECT_RE = /拒绝|不要|取消|算了|不干|停止|换个方案|重新来|推翻|改回|不用了|撤回/i
-        if (REJECT_RE.test(text.trim())) {
-          r.clearWriteApproval()
-        } else if (CONFIRM_RE.test(text.trim())) {
-          // 授权保持：确认后 2 小时内该需求所有写操作不再重复授权
-          r.setWriteApprovalWindow(2 * 60 * 60 * 1000)
-        }
-        // 中性/继续类消息（如"解锁了""继续"）不清除窗口，避免同一需求反复授权
+        // 授权窗口：确认词/拒绝词统一处理（与扩展层 before_agent_start 同规则）
+        r.handleUserMessage?.(text.trim())
         const a = await ensureAgent()
         await a.session.prompt(text.trim())
       } catch (e) {

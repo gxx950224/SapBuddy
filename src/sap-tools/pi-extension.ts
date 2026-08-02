@@ -3,7 +3,7 @@
  * 加载期直接注册 42 个 SAP 工具 + 打印启动图标
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
-import { registerSapTools, installWriteGate } from "./register.js"
+import { registerSapTools, installWriteGate, handleUserMessage } from "./register.js"
 import { SAPBUDDY_BANNER } from "./banner.js"
 
 export default function (pi: ExtensionAPI): void {
@@ -21,5 +21,15 @@ export default function (pi: ExtensionAPI): void {
     installWriteGate(pi)
   } catch (e) {
     console.log(`  [sapbuddy] 写操作拦截器安装失败: ${e instanceof Error ? e.message : e}`)
+  }
+  // 授权窗口：确认词/拒绝词统一处理（与 Web 同规则，扩展层强制）
+  try {
+    pi.on("before_agent_start" as never, (event: { prompt?: string }) => {
+      try {
+        handleUserMessage(event?.prompt || "")
+      } catch { /* 忽略 */ }
+    })
+  } catch (e) {
+    console.log(`  [sapbuddy] 授权窗口钩子安装失败: ${e instanceof Error ? e.message : e}`)
   }
 }
