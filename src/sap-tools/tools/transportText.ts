@@ -83,7 +83,8 @@ export const transportTool = {
           const lines = [`对象 ${obj["adtcore:type"]} ${obj["adtcore:name"]} 的传输信息:`, ""]
           if (info?.TRANSPORTS) {
             for (const t of info.TRANSPORTS) {
-              lines.push(`- ${t.TRKORR} [${t.TRSTATUS ?? "?"}] ${t.AS4TEXT ?? ""}`)
+              const st = t.TRSTATUS === "D" ? "可修改" : t.TRSTATUS === "R" ? "已发布" : (t.TRSTATUS ?? "?")
+              lines.push(`- ${t.TRKORR} [${st}] ${t.AS4TEXT ?? ""}`)
             }
           } else {
             lines.push("（无传输信息，对象可能无需传输）")
