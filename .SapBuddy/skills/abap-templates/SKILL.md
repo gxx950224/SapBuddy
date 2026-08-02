@@ -546,3 +546,220 @@ ENDCLASS.
 3. **避免函数间共享全局数据** — 除非必要，使用参数传递。
 
 4. **每个函数只做一件事** — 单一职责原则。
+
+# 三、ABAP 类（Class / 面向对象）
+
+> Clean ABAP 推荐面向对象优先；新功能优先用类实现。类命名 `ZCL_<模块>_<对象>`（如 ZCL_MM_MATERIAL_HELPER）、异常类 `ZCX_<模块>_<错误>`、接口 `ZIF_<模块>_<能力>`。
+
+## 完整类模板
+
+```abap
+CLASS zcl_mm_material_helper DEFINITION
+  PUBLIC
+  FINAL
+  CREATE PUBLIC.
+
+  PUBLIC SECTION.
+    " 构造函数：显式声明（需要依赖时）
+    METHODS constructor
+      IMPORTING
+        iv_matnr TYPE matnr OPTIONAL.
+
+    " 命令式方法：动词命名
+    METHODS validate
+      IMPORTING
+        iv_matnr TYPE matnr
+      RETURNING
+        VALUE(rv_valid) TYPE abap_bool.
+
+    " 查询式方法：is_/has_/get_ 命名
+    METHODS get_material
+      IMPORTING
+        iv_matnr TYPE matnr
+      RETURNING
+        VALUE(rs_mara) TYPE mara
+      RAISING
+        zcx_mm_material_error.
+
+    " 类方法（工厂/工具）
+    CLASS-METHODS create_instance
+      RETURNING
+        VALUE(ro_instance) TYPE REF TO zcl_mm_material_helper.
+
+  PRIVATE SECTION.
+    " 实例属性：mv_ / mo_ / mt_ 前缀（DDIC 数据元素类型）
+    DATA mv_matnr TYPE matnr.
+    DATA mt_items TYPE STANDARD TABLE OF mard WITH EMPTY KEY.
+
+    " 私有方法
+    METHODS read_material
+      IMPORTING
+        iv_matnr TYPE matnr
+      RETURNING
+        VALUE(rs_mara) TYPE mara.
+ENDCLASS.
+
+CLASS zcl_mm_material_helper IMPLEMENTATION.
+  METHOD constructor.
+    mv_matnr = iv_matnr.
+  ENDMETHOD.
+
+  METHOD create_instance.
+    ro_instance = NEW #( ).
+  ENDMETHOD.
+
+  METHOD validate.
+    rv_valid = boolc( iv_matnr IS NOT INITIAL ).
+  ENDMETHOD.
+
+  METHOD get_material.
+    rs_mara = read_material( iv_matnr ).
+    IF rs_mara-matnr IS INITIAL.
+      RAISE EXCEPTION TYPE zcx_mm_material_error
+        EXPORTING
+          textid = zcx_mm_material_error=>not_found.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD read_material.
+    " 显式字段列表，禁 SELECT *
+    SELECT SINGLE matnr, mtart, matkl, meins, maktx
+      FROM mara
+      INTO CORRESPONDING FIELDS OF @rs_mara
+      WHERE matnr = @iv_matnr.
+  ENDMETHOD.
+ENDCLASS.
+```
+
+## 接口实现（IF_OO_* 解耦）
+
+```abap
+INTERFACE zif_material_read.
+  METHODS get_material
+    IMPORTING
+      iv_matnr TYPE matnr
+    RETURNING
+      VALUE(rs_mara) TYPE mara
+    RAISING
+      zcx_mm_material_error.
+ENDINTERFACE.
+
+CLASS zcl_mm_material_reader DEFINITION PUBLIC FINAL CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES zif_material_read.
+ENDCLASS.
+
+CLASS zcl_mm_material_reader IMPLEMENTATION.
+  METHOD zif_material_read~get_material.
+    " 实现接口方法（接口名~方法名）
+    SELECT SINGLE matnr, mtart, matkl FROM mara
+      INTO CORRESPONDING FIELDS OF @rs_mara
+      WHERE matnr = @iv_matnr.
+    IF sy-subrc <> 0.
+      RAISE EXCEPTION TYPE zcx_mm_material_error.
+    ENDIF.
+  ENDMETHOD.
+ENDCLASS.
+```
+
+## 异常类（继承 CX_STATIC_CHECK）
+
+```abap
+CLASS zcx_mm_material_error DEFINITION
+  INHERITING FROM cx_static_check
+  PUBLIC FINAL CREATE PUBLIC.
+
+  PUBLIC SECTION.
+    " 文本 ID：绑定消息类 ZMM 的文本（SE91 维护，禁止硬编码中文）
+    CONSTANTS:
+      not_found TYPE sotr_conc VALUE '001',
+      invalid   TYPE sotr_conc VALUE '002'.
+
+    METHODS get_text REDEFINITION. " 消息文本由 cx_static_check 从消息类取回
+ENDCLASS.
+
+CLASS zcx_mm_material_error IMPLEMENTATION.
+ENDCLASS.
+```
+
+## 工厂方法 / 单例
+
+```abap
+" 单例（惰性）
+CLASS zcl_mm_manager DEFINITION PUBLIC FINAL CREATE PRIVATE.
+  PUBLIC SECTION.
+    CLASS-METHODS get_instance
+      RETURNING
+        VALUE(ro_instance) TYPE REF TO zcl_mm_manager.
+  PRIVATE SECTION.
+    CLASS-DATA go_instance TYPE REF TO zcl_mm_manager.
+ENDCLASS.
+
+CLASS zcl_mm_manager IMPLEMENTATION.
+  METHOD get_instance.
+    IF go_instance IS NOT BOUND.
+      go_instance = NEW #( ).
+    ENDIF.
+    ro_instance = go_instance.
+  ENDMETHOD.
+ENDCLASS.
+```
+
+## 调用示例
+
+```abap
+DATA(lo_helper) = NEW zcl_mm_material_helper( iv_matnr = lv_matnr ).
+
+IF lo_helper->validate( lv_matnr ).
+  DATA(ls_mara) = lo_helper->get_material( lv_matnr ).
+ENDIF.
+
+" 通过接口调用（解耦）
+DATA(lo_reader) = NEW zcl_mm_material_reader( ).
+lo_reader->zif_material_read~get_material( lv_matnr ).
+```
+
+## 类单元测试（ABAP Unit）
+
+```abap
+CLASS ltc_material DEFINITION FOR TESTING
+  RISK LEVEL HARMLESS
+  DURATION SHORT.
+
+  PRIVATE SECTION.
+    DATA mo_cut TYPE REF TO zcl_mm_material_helper.
+
+    METHODS setup,
+      test_validate_ok FOR TESTING,
+      test_get_material_raises FOR TESTING.
+
+ENDCLASS.
+
+CLASS ltc_material IMPLEMENTATION.
+  METHOD setup.
+    mo_cut = NEW #( ).
+  ENDMETHOD.
+
+  METHOD test_validate_ok.
+    cl_abap_unit_assert=>assert_true( mo_cut->validate( '000000000000001234' ) ).
+  ENDMETHOD.
+
+  METHOD test_get_material_raises.
+    TRY.
+        mo_cut->get_material( '000000000000009999' ).
+        cl_abap_unit_assert=>fail( '应抛出异常' ).
+      CATCH zcx_mm_material_error.
+        " 预期异常，测试通过
+    ENDTRY.
+  ENDMETHOD.
+ENDCLASS.
+```
+
+## 设计规范（Clean ABAP 核心）
+
+1. **单一职责**：一个类只做一件事；方法短小（≤15 行）
+2. **依赖注入**：构造函数收依赖（`mo_dep`），不内部 `NEW` 硬编码
+3. **属性私有**：`PRIVATE SECTION` 收好状态，通过方法暴露行为
+4. **异常而非返回码**：错误用 `RAISE EXCEPTION`，不返回 `ev_error`
+5. **不可变优先**：能 `READ-ONLY` / `FINAL` 就声明
+6. **命名**：类=名词、方法=动词（命令式）、查询=is_/has_/get_；属性 `mv_/mo_/mt_` 前缀
