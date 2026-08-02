@@ -192,19 +192,29 @@ async function cmdChat() {
 
       // ── 普通对话 ──
       streaming = true
-      process.stdout.write("\n")
+      history.push({ role: "user", text: t })
+      console.log()
+      console.log(sepLine())
+      console.log(ANSI.bold + "❯ " + ANSI.reset + esc(t))
+      console.log()
+      console.log(sepLine())
+      console.log(ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset)
+      let reply = ""
       const unsub = session.subscribe((event) => {
         if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
+          reply += event.assistantMessageEvent.delta
           process.stdout.write(event.assistantMessageEvent.delta)
         }
         if (event.type === "tool_execution_start") {
-          process.stdout.write(`\n[🔧 ${event.toolName}] `)
+          process.stdout.write(`\n${ANSI.magenta}[🔧 ${event.toolName}]${ANSI.reset} `)
         }
       })
       await session.prompt(t).catch((e) => console.log(`\n[错误] ${e.message}`))
       unsub()
       streaming = false
-      console.log("\n")
+      history.push({ role: "assistant", text: reply || "(无输出)" })
+      // 完成后全屏重绘（markdown 彩色渲染），呈现 pi 风格终态
+      drawAll()
       ask()
     })
   }
