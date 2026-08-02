@@ -39,7 +39,7 @@ disable: false
    - 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`。
    - 若对象名不确定，先 `search_abap_objects`（pattern=`<对象名>*`）确认存在。
    - 一次读取全部源码（必要时分页读取多个 INCLUDE）。
-3. **存档源码。** 将读取的源码保存到 `output/` 目录，命名为 `output/<程序名>.abap`，便于用户对照。
+3. **存档源码（可选）。** 默认**不**在本地保存源码；仅当用户明确要求时才保存到 `output/<程序名>.abap`，便于对照。
 4. **收集关联对象。** 留意被 INCLUDE 的程序、配置表（`ZBCT_OUTF_CONFIG`）、
    结构（`ZCRMS_*`、`ZBCS_*`）等引用对象，可继续用内置工具读取或向用户索取。
 5. **静态走查。** 自顶向下逐段核对 `references/checklist.md` 的每一项：
