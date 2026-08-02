@@ -59,21 +59,12 @@
     });
   });
 
-  // ── 代码块复制（事件委托） ──
+  // ── 代码块复制（事件委托，走通用复制=clipboard+execCommand 降级，内网 HTTP 可用） ──
   document.addEventListener("click", (e) => {
     if (e.target.classList.contains("code-copy-btn")) {
       const pre = document.getElementById(e.target.dataset.target);
       if (pre) {
-        navigator.clipboard.writeText(pre.textContent).then(() => {
-          e.target.textContent = "已复制";
-          setTimeout(() => e.target.textContent = "复制", 1500);
-        }).catch(() => {
-          const range = document.createRange();
-          range.selectNodeContents(pre);
-          const sel = window.getSelection();
-          sel.removeAllRanges();
-          sel.addRange(range);
-          document.execCommand("copy");
+        App.copyText(pre.textContent).then(() => {
           e.target.textContent = "已复制";
           setTimeout(() => e.target.textContent = "复制", 1500);
         });

@@ -53,7 +53,7 @@
       const el = document.createElement("div");
       el.style.paddingLeft = (depth * 16) + "px";
       el.className = "skill-tree-dir";
-      if (outputExpanded.has(node.name)) el.classList.add("open");
+      if (outputExpanded.has(node.path)) el.classList.add("open");
       el.innerHTML = `<span class="skill-tree-arrow">▶</span><span class="skill-tree-icon">📁</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
       const childrenWrap = document.createElement("div");
       childrenWrap.className = "skill-tree-children";
@@ -63,8 +63,8 @@
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         el.classList.toggle("open");
-        if (el.classList.contains("open")) outputExpanded.add(node.name);
-        else outputExpanded.delete(node.name);
+        if (el.classList.contains("open")) outputExpanded.add(node.path);
+        else outputExpanded.delete(node.path);
       });
       const frag = document.createDocumentFragment();
       frag.appendChild(el);

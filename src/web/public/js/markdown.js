@@ -81,7 +81,7 @@
       r = r.replace(/`([^`\n]+)`/g, '<code class="inline">$1</code>');
       r = r.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
       r = r.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, "<em>$1</em>");
-      r = r.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      r = r.replace(/\[([^\]]+)\]\((https?:[^)"\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
       return r;
     }
   };
@@ -120,8 +120,8 @@
     const nodes = container.querySelectorAll(".mermaid[data-code]:not([data-rendered])");
     if (!nodes.length) return;
     try {
-      if (!window.mermaid.initialize) {
-        // v10+：mermaid 自动初始化，设置主题
+      // v10+：统一初始化并设置主题（跟随页面深色/浅色）
+      if (window.mermaid.initialize) {
         window.mermaid.initialize({ startOnLoad: false, theme: App.isDark?.() ? "dark" : "default", securityLevel: "loose", flowchart: { useMaxWidth: true } });
       }
     } catch { /* 忽略 */ }
