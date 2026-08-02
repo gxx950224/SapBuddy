@@ -97,5 +97,5 @@ node cli.mjs tools   # 工具列表
 
 - 提交前 `npm run build` 确保编译通过
 - 不提交：node_modules/、dist/、connections.json、.pi/（旧版目录）、.SapBuddy/ 下个人配置（auth/connections/settings/sessions/output/mcp/memory 等）
-- `.SapBuddy/skills/`、`.SapBuddy/models.json` 为默认内容**随仓库跟踪**（供安装包分发）
+- `defaults/skills/`、`defaults/models.json` 为默认内容**随仓库跟踪**（供 npm 包分发，首次运行拷贝到 ~/.SapBuddy/）
 - 提交信息简洁中文或英文均可

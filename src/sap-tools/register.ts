@@ -11,6 +11,7 @@ import { z } from "zod"
 import { Type } from "typebox"
 import { readFileSync } from "node:fs"
 import { join } from "node:path"
+import { homedir } from "node:os"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
 import { assertDevClient } from "./adtManager.js"
@@ -44,7 +45,7 @@ const REJECT_RE = /拒绝|不要|取消|算了|不干|停止|换个方案|重新
 /** 授权窗口毫秒数：读设置 .SapBuddy/settings.json 的 approvalWindowMinutes（默认 15 分钟） */
 function approvalWindowMs(): number {
   try {
-    const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "settings.json"), "utf8").toString())
+    const cfg = JSON.parse(readFileSync(join(homedir(), ".SapBuddy", "settings.json"), "utf8").toString())
     const m = Number(cfg.approvalWindowMinutes)
     if (m > 0 && Number.isFinite(m)) return m * 60 * 1000
   } catch { /* 默认 */ }
@@ -66,7 +67,7 @@ export function handleUserMessage(text: string): void {
  * （与网页端默认显示"已锁定"一致：没写该项 = 只读保护开启） */
 function isReadOnly(): boolean {
   try {
-    const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "connections.json"), "utf8").toString())
+    const cfg = JSON.parse(readFileSync(join(homedir(), ".SapBuddy", "connections.json"), "utf8").toString())
     return cfg.security?.readOnly !== false
   } catch { return false }
 }
@@ -166,17 +167,17 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
           return {
             block: true,
             reason:
-              `⛔ 跟程序相关的文件必须统一保存到 .SapBuddy/output/ 目录，不要写到其他位置（如 ${p || "当前路径"}）。\n` +
-              `请用 write 工具直接写入正确路径：.SapBuddy/output/${inferProgramDir(basename)}/${basename}（目录不存在会自动创建）。`,
+              `⛔ 跟程序相关的文件必须统一保存到 ~/.SapBuddy/output/ 目录，不要写到其他位置（如 ${p || "当前路径"}）。\n` +
+              `请用 write 工具直接写入正确路径：~/.SapBuddy/output/${inferProgramDir(basename)}/${basename}（目录不存在会自动创建）。`,
           }
         }
         if (!hasSubdir) {
           return {
             block: true,
             reason:
-              `⛔ 跟程序相关的文件必须按程序名建文件夹，不要平铺在 .SapBuddy/output/ 根目录（已拦截）：${p}\n` +
-              `请改为写入：.SapBuddy/output/${inferProgramDir(basename)}/${basename}（目录不存在会自动创建）。\n` +
-              `与程序无关的通用文件（如 README、说明文档）才可平铺在 .SapBuddy/output/ 根目录。`,
+              `⛔ 跟程序相关的文件必须按程序名建文件夹，不要平铺在 ~/.SapBuddy/output/ 根目录（已拦截）：${p}\n` +
+              `请改为写入：~/.SapBuddy/output/${inferProgramDir(basename)}/${basename}（目录不存在会自动创建）。\n` +
+              `与程序无关的通用文件（如 README、说明文档）才可平铺在 ~/.SapBuddy/output/ 根目录。`,
           }
         }
       }

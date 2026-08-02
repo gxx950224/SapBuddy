@@ -32,7 +32,7 @@ import os from "node:os"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
 const PUBLIC_DIR = path.join(HERE, "public")
-const USER_PI = path.join(process.cwd(), ".SapBuddy")
+const USER_PI = path.join(os.homedir(), ".SapBuddy")
 const OUTPUT_DIR = path.join(USER_PI, "output")
 
 const portArg = process.argv.indexOf("--port")
@@ -335,9 +335,9 @@ const server = http.createServer(async (req, res) => {
       const extensions = EXT_TOKENS
       const mcp = 0
       const conversation = usage.input + usage.output
-      // 设置读取（多路径 fallback：cwd/.SapBuddy → 项目根/.SapBuddy → 主目录）
+      // 设置读取（主目录优先 → 项目根 .SapBuddy 兼容旧版）
       let cfg = {}
-      for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json"), path.join(os.homedir(), ".SapBuddy", "settings.json")]) {
+      for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json")]) {
         try { cfg = JSON.parse(fs.readFileSync(f, "utf8").toString()); break } catch { /* 继续 */ }
       }
       const max0 = cfg.contextTokens ?? 200000

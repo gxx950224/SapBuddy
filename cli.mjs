@@ -15,7 +15,7 @@ import fs from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import net from "node:net"
-import { createAgent, loadAuth, loadSettings, ensureRuntimeFiles, ROOT } from "./src/agent-core.mjs"
+import { createAgent, loadAuth, loadSettings, ensureRuntimeFiles, ROOT, CONFIG_DIR } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
@@ -103,17 +103,17 @@ async function cmdDoctor() {
   }
   const auth = loadAuth()
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
-  console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 .SapBuddy/auth.json）"}`)
+  console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 ~/.SapBuddy/auth.json）"}`)
   const settings = loadSettings()
   console.log(`默认模型: ${settings.defaultProvider ?? "deepseek"}/${settings.defaultModel ?? "deepseek-v4-flash"}`)
-  const confPath = [path.join(process.cwd(), ".SapBuddy", "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
+  const confPath = [path.join(CONFIG_DIR, "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
   if (confPath) {
     try {
       const conf = JSON.parse(fs.readFileSync(confPath, "utf8"))
       console.log(`SAP 连接: ✅ ${conf.connections?.length ?? 0} 个已配置（${confPath}）`)
     } catch { console.log("SAP 连接: ⚠️ connections.json 格式错误") }
   } else {
-    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json 为 .SapBuddy/connections.json）")
+    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json 为 ~/.SapBuddy/connections.json）")
   }
 }
 
@@ -143,7 +143,7 @@ async function cmdChat() {
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
   if (!hasKey) {
     console.log("⚠️  未配置 AI 模型 API Key。请先：")
-    console.log("    mkdir -p .SapBuddy && cp config/auth.example.json .SapBuddy/auth.json   # 然后填入你的 API Key")
+    console.log("    mkdir -p ~/.SapBuddy && cp config/auth.example.json ~/.SapBuddy/auth.json   # 然后填入你的 API Key")
     console.log("    或运行: node cli.mjs doctor\n")
   }
   const settings = loadSettings()
@@ -157,8 +157,8 @@ async function cmdChat() {
     "--extension", path.join(ROOT, "dist", "sap-tools", "pi-extension.js"),
     "--provider", settings.defaultProvider ?? "deepseek",
     "--model", settings.defaultModel ?? "deepseek-v4-flash",
-    "--session-dir", path.join(process.cwd(), ".SapBuddy", "sessions"),
-    "--skill", path.join(process.cwd(), ".SapBuddy", "skills"),
+    "--session-dir", path.join(CONFIG_DIR, "sessions"),
+    "--skill", path.join(CONFIG_DIR, "skills"),
     "--append-system-prompt", path.join(ROOT, "SYSTEM.md"),
     "--append-system-prompt", path.join(ROOT, "Memory.md"),
   ]
@@ -169,11 +169,11 @@ async function cmdChat() {
   const tl = settings.defaultThinkingLevel
   if (tl && tl !== "off") args.push("--thinking", tl)
   // 会话目录不存在时创建（pi --session-dir 需要存在）
-  fs.mkdirSync(path.join(process.cwd(), ".SapBuddy", "sessions"), { recursive: true })
+  fs.mkdirSync(path.join(CONFIG_DIR, "sessions"), { recursive: true })
   // 复用已有 fd/rg 二进制（PI_CODING_AGENT_DIR 隔离后 bin 目录在 .SapBuddy/bin，避免内网重新下载）
   try {
     const srcBin = path.join(os.homedir(), ".pi", "agent", "bin")
-    const dstBin = path.join(process.cwd(), ".SapBuddy", "bin")
+    const dstBin = path.join(CONFIG_DIR, "bin")
     fs.mkdirSync(dstBin, { recursive: true })
     for (const f of ["fd", "fd.exe", "rg", "rg.exe"]) {
       const s = path.join(srcBin, f)
@@ -183,7 +183,7 @@ async function cmdChat() {
   } catch {}
   // quietStartup：禁用 pi 启动公告（What's New / 版本说明）
   try {
-    const sf = path.join(process.cwd(), ".SapBuddy", "settings.json")
+    const sf = path.join(CONFIG_DIR, "settings.json")
     const sc = fs.existsSync(sf) ? JSON.parse(fs.readFileSync(sf, "utf8")) : {}
     if (!sc.quietStartup) { sc.quietStartup = true; fs.writeFileSync(sf, JSON.stringify(sc, null, 2)) }
   } catch {}
@@ -214,7 +214,7 @@ async function cmdChat() {
   }
 
   // 隔离全局 ~/.pi 配置（不加载 pi-obsidian/mcp-adapter 等无关扩展/技能）
-  const env = { ...process.env, PI_CODING_AGENT_DIR: path.join(process.cwd(), ".SapBuddy") }
+  const env = { ...process.env, PI_CODING_AGENT_DIR: CONFIG_DIR }
   const child = spawn(process.execPath, args, { stdio: "inherit", cwd: ROOT, env })
   child.on("exit", (code) => {
     // 退出时关闭附带的 Web 子进程（如果还活着）
@@ -240,15 +240,8 @@ async function main() {
   if (first === "web") return cmdWeb()
   if (first === "--json") return cmdPrompt(args.slice(1).join(" "), true)
   if (first && !first.startsWith("-")) return cmdPrompt(args.join(" "), false)
-  console.log(`SapBuddy — SAP ABAP AI 助手
-
-用法:
-  sapbuddy chat                  交互式对话（全屏 TUI）
-  sapbuddy "提问"                单次提问
-  sapbuddy web [--port 7400]     启动 Web 版
-  sapbuddy tools                 列出 SAP 工具
-  sapbuddy doctor                环境自检
-`)
+  // 无参数：默认进入全屏对话（TUI）
+  return cmdChat()
 }
 
 main().catch((e) => {

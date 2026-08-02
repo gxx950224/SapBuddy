@@ -59,20 +59,20 @@ npm run build
 
 ### 首次配置（两种方式相同）
 
-> 所有配置保存在 `.SapBuddy/`（隐藏目录）：auth.json / connections.json / settings.json / sessions / skills / prompts / output。首次运行自动初始化默认技能与提示词。
+> 所有配置保存在 `~/.SapBuddy/`（主目录下隐藏目录，固定位置，无论在哪运行 sapbuddy 都用这一份）：auth.json / connections.json / settings.json / sessions / skills / prompts / output。首次运行自动初始化默认技能与提示词。
 
 ```bash
 # 1. AI 模型 API Key
-mkdir -p .SapBuddy
-cp config/auth.example.json .SapBuddy/auth.json
-#    编辑 .SapBuddy/auth.json 填入你的 Key
+mkdir -p ~/.SapBuddy
+cp config/auth.example.json ~/.SapBuddy/auth.json
+#    编辑 ~/.SapBuddy/auth.json 填入你的 Key
 
 # 2. SAP 连接（ADT 需在 SICF 激活 /sap/bc/adt）
-cp config/connections.example.json .SapBuddy/connections.json
-#    编辑 .SapBuddy/connections.json 填入系统地址/客户端/账号
+cp config/connections.example.json ~/.SapBuddy/connections.json
+#    编辑 ~/.SapBuddy/connections.json 填入系统地址/客户端/账号
 
 # 3.（可选）模型与思考级别
-cp config/settings.example.json .SapBuddy/settings.json
+cp config/settings.example.json ~/.SapBuddy/settings.json
 ```
 
 ### 开始对话
@@ -105,13 +105,13 @@ sapbuddy/
 │   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析 + 运行时初始化
 │   ├── sap-tools/          # 42 个 SAP 工具（TypeScript，基于 abap-adt-api）
 │   └── web/                # 本地 Web 服务器 + UI + MCP 客户端
-├── defaults/               # 默认技能与 models.json（随包发布，首次运行拷贝到 .SapBuddy/）
+├── defaults/               # 默认技能与 models.json（随包发布，首次运行拷贝到 ~/.SapBuddy/）
 ├── config/                 # 配置模板（不含真实凭据）
 ├── test/                   # 冒烟测试（node --test）
 └── docs/                   # 文档
 ```
 
-> 运行时配置（`.SapBuddy/`：auth/连接/会话/技能/产物/MCP）由程序自动初始化，不随仓库与 npm 包分发。
+> 运行时配置（`~/.SapBuddy/`：auth/连接/会话/技能/产物/MCP）由程序自动初始化并固定存于主目录，不随仓库与 npm 包分发。
 
 ## 🔒 安全
 
@@ -135,7 +135,7 @@ npm run check   # TypeScript 类型检查
 ADT 服务（`/sap/bc/adt`）访问权限 + 目标对象读写权限；查询类工具需要相应授权对象。
 
 **Q：如何接入自己的模型？**
-编辑 `.SapBuddy/auth.json` 配置 API Key，`.SapBuddy/models.json` 添加模型，设置页（Web）可直接切换。
+编辑 `~/.SapBuddy/auth.json` 配置 API Key，`~/.SapBuddy/models.json` 添加模型，设置页（Web）可直接切换。
 
 **Q：MCP 工具如何使用？**
 设置-MCP 添加服务器（streamable-http，兼容 SSE 响应），保存后自动连接测试并注册为 `mcp_<服务器>_<工具名>`，CLI 与 Web 双端同等可用。服务器名来自 mcp.json 的 key，引用时需全小写下划线写法（如 `mcp_sap-mcp-dev_GET_TCODE_INFO`）。

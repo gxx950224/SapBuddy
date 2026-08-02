@@ -11,12 +11,13 @@ const require = createRequire(import.meta.url)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const ROOT = path.resolve(HERE, "..")
 /**
- * 用户配置目录：<cwd>/.SapBuddy（当前工作目录下的隐藏目录）
- * 在项目根运行即数据在项目目录；auth/settings/models/connections/sessions/skills/prompts/output 都在这里
+ * 用户配置目录：固定在主目录 ~/.SapBuddy（无论在哪里运行 sapbuddy，配置都在同一个地方）
+ * auth/settings/models/connections/sessions/skills/prompts/output 都在这里
  */
-export const CONFIG_DIR = path.join(process.cwd(), ".SapBuddy")
-/** 旧迁移源：用户主目录 ~/.SapBuddy（之前版本的位置） */
-export const HOME_SAPBUDDY = path.join(os.homedir(), ".SapBuddy")
+export const CONFIG_DIR = path.join(os.homedir(), ".SapBuddy")
+/** 旧版迁移源：cwd/.SapBuddy 与项目根 .SapBuddy（之前版本配置跟随运行目录/项目根） */
+const LEGACY_CWD_CONFIG = path.join(process.cwd(), ".SapBuddy")
+const LEGACY_ROOT_CONFIG = path.join(ROOT, ".SapBuddy")
 /** 兼容旧版：cwd/.pi（历史配置，优先于包内默认） */
 export const LEGACY_PI = path.join(process.cwd(), ".pi")
 
@@ -58,8 +59,21 @@ export function loadSettings() {
 export function ensureRuntimeFiles() {
   try {
     fs.mkdirSync(CONFIG_DIR, { recursive: true })
+    // 历史配置迁移：旧版 cwd/.SapBuddy、项目根 .SapBuddy → 主目录 ~/.SapBuddy（合并不覆盖，仅补缺）
+    for (const src of [LEGACY_ROOT_CONFIG, LEGACY_CWD_CONFIG]) {
+      if (src === CONFIG_DIR || !fs.existsSync(src)) continue
+      try {
+        for (const f of fs.readdirSync(src)) {
+          const s = path.join(src, f)
+          const d = path.join(CONFIG_DIR, f)
+          if (fs.existsSync(d)) continue
+          if (fs.statSync(s).isDirectory()) fs.cpSync(s, d, { recursive: true })
+          else fs.copyFileSync(s, d)
+        }
+      } catch { /* 单个源失败不影响整体 */ }
+    }
     // 技能默认内容（来源：旧 cwd/.pi → 包内 defaults/，随 npm 包发布）。
-    // ⚠️ 不再迁移 prompts（已弃用，由技能覆盖）；绝不复制主目录 ~/.SapBuddy 整套配置（含 auth.json，曾污染目录）
+    // ⚠️ 不再迁移 prompts（已弃用，由技能覆盖）
     for (const sub of ["skills"]) {
       const dst = path.join(CONFIG_DIR, sub)
       if (fs.existsSync(dst)) continue
@@ -116,7 +130,7 @@ export function ensureRuntimeFiles() {
     }
     // MCP 配置迁移（旧 .pi/mcp.json → ~/.SapBuddy/mcp.json）
     if (!fs.existsSync(path.join(CONFIG_DIR, "mcp.json"))) {
-      for (const src of [path.join(LEGACY_PI, "mcp.json"), path.join(HOME_SAPBUDDY, "mcp.json")]) {
+      for (const src of [path.join(LEGACY_PI, "mcp.json")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "mcp.json")); break }
       }
     }

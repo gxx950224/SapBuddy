@@ -1,7 +1,7 @@
 /**
  * 轻量 MCP streamable-http 客户端（零依赖，node:https 自实现）
  * 用于：1) 设置-MCP 保存后连接测试  2) agent 加载时将 MCP 工具注册为 customTools
- * 配置来源：项目 .pi/mcp.json（优先）→ 全局 ~/.pi/agent/mcp.json
+ * 配置来源：主目录 ~/.SapBuddy/mcp.json（优先）→ 全局 ~/.pi/agent/mcp.json
  */
 import https from "node:https"
 import http from "node:http"
@@ -9,7 +9,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-export const PROJECT_MCP_FILE = path.join(process.cwd(), ".SapBuddy", "mcp.json")
+export const PROJECT_MCP_FILE = path.join(os.homedir(), ".SapBuddy", "mcp.json")
 export const GLOBAL_MCP_FILE = path.join(os.homedir(), ".pi", "agent", "mcp.json")
 
 /** 读取 MCP 服务器配置（项目优先，回退全局），返回 Record<name, server> */

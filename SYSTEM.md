@@ -37,7 +37,7 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 
 ## 编码规范（默认：SAP 官方 Clean ABAP）
 
-**默认开发规范采用 SAP 官方 Clean ABAP 风格指南**（Clean Code for ABAP，源自 Robert C. Martin《Clean Code》），技能见 `.SapBuddy/skills/clean-abap/`（含 4300+ 行中文指南 `references/CleanABAP_zh.md`）。
+**默认开发规范采用 SAP 官方 Clean ABAP 风格指南**（Clean Code for ABAP，源自 Robert C. Martin《Clean Code》），技能见 `~/.SapBuddy/skills/clean-abap/`（含 4300+ 行中文指南 `references/CleanABAP_zh.md`）。
 
 核心规则（默认生效）：
 
@@ -97,7 +97,7 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
   **不记**：字段增减、参数微调、正常需求变更、仅"不要/取消/换个方案"一般性反馈。
   值得记 → 自动在 `Memory.md` 末尾追加避坑摘要（模板：日期/对象/被推翻的方案/用户原因/经验），保留现有内容。
   **不记录**：字段增减、参数微调、正常需求变更（如"增加一个字段"）；仅"不要/取消/换个方案"等一般性反馈不记。
-- **生成本地文件（源码/脚本/文档）必须统一保存到 `.SapBuddy/output/` 目录**（项目隐藏数据目录，Web 端产物树读取此目录，路径相对项目根写 `.SapBuddy/output/...`）；**跟程序相关的文件必须按程序名建子文件夹**：`.SapBuddy/output/<程序名>/<文件名>`（如 `.SapBuddy/output/ZAIR010/ZAIR010.abap`、`.SapBuddy/output/ZAIR010/ZAIR010_CodeReview.html`、`.SapBuddy/output/ZAIR010/ZAIR010_flowchart.md`）；**与程序无关的通用文件（如 README、说明文档）才可平铺在 `.SapBuddy/output/` 根目录**。禁止写到其他路径（如 deliverables/、项目根目录、项目根 `output/`）。write 工具写入不符合规则的 Z*/Y* 程序相关文件（源码/审查报告/流程图等）会被拦截。
+- **生成本地文件（源码/脚本/文档）必须统一保存到 `~/.SapBuddy/output/` 目录**（主目录隐藏数据目录，Web 端产物树读取此目录，`~` 即用户主目录，如 `C:\Users\<用户>\`）；**跟程序相关的文件必须按程序名建子文件夹**：`~/.SapBuddy/output/<程序名>/<文件名>`（如 `~/.SapBuddy/output/ZAIR010/ZAIR010.abap`、`~/.SapBuddy/output/ZAIR010/ZAIR010_CodeReview.html`、`~/.SapBuddy/output/ZAIR010/ZAIR010_flowchart.md`）；**与程序无关的通用文件（如 README、说明文档）才可平铺在 `~/.SapBuddy/output/` 根目录**。禁止写到其他路径（如 deliverables/、项目根目录、项目根 `output/`）。write 工具写入不符合规则的 Z*/Y* 程序相关文件（源码/审查报告/流程图等）会被拦截。
 - 解释程序逻辑时，用业务语言 + 代码要点，分点输出
 - 遇到错误：说明原因 + 给出排查建议（工具错误信息已含可能原因）
 - **写操作（创建/修改/激活 SAP 对象）必须先展示完整改动计划并等待用户确认**：被拦截时（提示"写操作需人工确认"），向用户展示计划并明确请求确认；用户拒绝后，先询问具体修改需求（功能/字段/界面/逻辑），不要直接执行替代方案。
