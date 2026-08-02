@@ -13,6 +13,7 @@
 
   // ── 智能滚动 ──
   let autoScroll = true;
+  let scrollRaf = 0;
 
   function isNearBottom() {
     return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
@@ -22,9 +23,14 @@
     autoScroll = isNearBottom();
   });
 
+  // 滚动跟随合并到每帧一次：流式高频更新时避免反复强制 scrollTop 造成抖动/卡死
   App.scrollToBottom = function(force) {
     if (!force && !autoScroll) return;
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      if (force || autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
   };
 
   // ── 用户气泡 ──
@@ -198,23 +204,26 @@
           state.currentTextDiv._renderedLen = 0;
         }
         const div = state.currentTextDiv;
-        // 保存完整原始 markdown 文本（后续碎片追加会导致 textContent 丢失标记）
+        // 保存完整原始 markdown 文本（流结束后用全文做一次完整渲染）
         div._fullText = part.text;
-        // 流式输出中：只追加增量文本（轻量），流结束后才做完整 markdown 渲染
-        if (state.streaming && div._renderedLen > 0 && part.text.length > div._renderedLen) {
-          const newText = part.text.slice(div._renderedLen);
-          // 追加纯文本节点，不做 markdown
-          div.appendChild(document.createTextNode(newText));
-          div._renderedLen = part.text.length;
-        } else if (state.streaming && div._renderedLen === 0) {
-          // 第一次收到文本，直接 markdown（保证代码块等初始格式正确）
+        if (!state.streaming) {
+          // 非流式：直接全量渲染
           div.innerHTML = renderMarkdown(part.text);
           div._renderedLen = part.text.length;
-        } else {
-          // 非流式或文本变短了（重置），全量渲染
+        } else if (div._renderedLen === 0) {
+          // 流式首段：markdown 渲染，保证代码块等初始格式正确
           div.innerHTML = renderMarkdown(part.text);
           div._renderedLen = part.text.length;
+        } else if (part.text.length > div._renderedLen) {
+          // 流式增长：只追加增量纯文本（轻量），避免全量重绘
+          div.appendChild(document.createTextNode(part.text.slice(div._renderedLen)));
+          div._renderedLen = part.text.length;
+        } else if (part.text.length < div._renderedLen) {
+          // 文本变短（模型改写）：重置偏移，下一轮从首段重渲，避免切片错位；
+          // 不在这里直接重渲，防止流式中反复全量 innerHTML 让滚动高度振荡
+          div._renderedLen = 0;
         }
+        // 流式中文本持平：不动作，等流结束统一渲染（div._fullText 已更新）
     }
     updateBubbleVisibility(container);
     App.scrollToBottom();
