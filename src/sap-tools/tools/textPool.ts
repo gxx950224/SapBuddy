@@ -25,18 +25,14 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
   const progUpper = opts.prog.toUpperCase()
   const L: string[] = []
   L.push("  METHOD if_oo_adt_classrun~main.")
-  // READ/INSERT TEXTPOOL 要求行结构与 text pool 兼容：ID、KEY、ENTRY、LENGTH（缺字段报 row type 不兼容）
-  L.push("    TYPES: BEGIN OF ty_tp, id TYPE c LENGTH 2, key TYPE c LENGTH 20, entry TYPE c LENGTH 132, length TYPE i, END OF ty_tp.")
-  L.push("    DATA: lt_tp TYPE STANDARD TABLE OF ty_tp, ls_tp TYPE ty_tp, lv_ins TYPE i, lv_upd TYPE i.")
+  // READ/INSERT TEXTPOOL 要求行结构与 text pool 兼容：用系统类型 TABLE OF textpool；
+  // INSERT TEXTPOOL ... FROM 接收整个内表（不是逐行）；计数用字符串模板（CONCATENATE 不接受数字）
+  L.push("    DATA: lt_tp TYPE TABLE OF textpool, ls_tp LIKE LINE OF lt_tp, lv_ins TYPE i, lv_upd TYPE i.")
 
   if (mode === "copy") {
-    L.push(`    DELETE FROM TEXTPOOL ${abapStr(progUpper)} LANGUAGE ${abapStr(opts.tgtLang)}.`)
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.srcLang ?? "1")}.`)
-    L.push("    LOOP AT lt_tp INTO ls_tp.")
-    L.push(`      INSERT TEXTPOOL ${abapStr(progUpper)} FROM ls_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
-    L.push("      IF sy-subrc = 0. lv_ins = lv_ins + 1. ENDIF.")
-    L.push("    ENDLOOP.")
-    L.push("    CONCATENATE 'copied' lv_ins 'entries' INTO DATA(lv_msg) SEPARATED BY space.")
+    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push("    DATA(lv_msg) = |copied { lines( lt_tp ) } entries|.")
     L.push("    out->write( lv_msg ).")
   } else {
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
@@ -49,11 +45,8 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
       L.push(`      CLEAR ls_tp. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
       L.push("    ENDIF.")
     }
-    L.push(`    DELETE FROM TEXTPOOL ${abapStr(progUpper)} LANGUAGE ${abapStr(opts.tgtLang)}.`)
-    L.push("    LOOP AT lt_tp INTO ls_tp.")
-    L.push(`      INSERT TEXTPOOL ${abapStr(progUpper)} FROM ls_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
-    L.push("    ENDLOOP.")
-    L.push("    CONCATENATE 'added' lv_ins 'updated' lv_upd INTO DATA(lv_msg2) SEPARATED BY space.")
+    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push("    DATA(lv_msg2) = |added { lv_ins } updated { lv_upd }|.")
     L.push("    out->write( lv_msg2 ).")
   }
   L.push("    COMMIT WORK.")

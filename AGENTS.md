@@ -35,9 +35,8 @@ cli.mjs ──► src/agent-core.mjs ──► pi SDK (AgentSession)
    │    │     └─ Web：block + 提示 AI 展示计划 → 用户手动输入「确认」
    │    └─ replace_string 额外：scanCodeViolations（硬编码中文/裸内置类型）
    │
-   ├─ ② execute 层（每个工具）
-   │    ├─ assertDevClient（T000.CCCATEGORY）→ 非开发客户端拒绝一切写
-   │    └─ 工具输出截断（truncateHead 8KB/120 行）
+   ├─ ② execute 层（每个写工具）
+   │    └─ assertDevClient（T000.CCCATEGORY）→ 非开发客户端拒绝一切写
    │
    └─ ③ handleUserMessage（before_agent_start 每轮）
         ├─ 确认词（确认/同意/可以…）→ 2h 授权窗口（同一需求不重复授权）
@@ -71,12 +70,12 @@ node cli.mjs tools   # 工具列表
 
 ## 安全
 
-- `connections.json`（SAP 凭据）与 `.pi/auth.json`（API Key）**已被 .gitignore 排除**，绝不提交
+- `connections.json`（SAP 凭据）与 `.SapBuddy/auth.json`（API Key）**已被 .gitignore 排除**，绝不提交
 - 配置模板在 `config/*.example.json`
 - 默认 `security.readOnly: true`，写操作需显式开启
 
 ## 提交
 
 - 提交前 `npm run build` 确保编译通过
-- 不提交：node_modules/、dist/、connections.json、.pi/auth.json、.pi/sessions/
+- 不提交：node_modules/、dist/、connections.json、.pi/（旧版目录）、.SapBuddy/ 下个人配置（auth/connections/settings/sessions/output/mcp/memory 等）
 - 提交信息简洁中文或英文均可
