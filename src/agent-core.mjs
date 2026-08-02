@@ -32,7 +32,7 @@ const {
 
 /** 读取认证（.pi/auth.json） */
 export function loadAuth() {
-  for (const f of [path.join(CONFIG_DIR, "auth.json"), path.join(LEGACY_PI, "auth.json"), path.join(ROOT, ".pi", "auth.json")]) {
+  for (const f of [path.join(CONFIG_DIR, "auth.json"), path.join(LEGACY_PI, "auth.json"), path.join(ROOT, ".SapBuddy", "auth.json")]) {
     try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
   }
   return {}
@@ -85,7 +85,7 @@ async function registerMcpTools(pi) {
 /** 读取设置（默认模型等） */
 export function loadSettings() {
   try {
-    for (const f of [path.join(CONFIG_DIR, "settings.json"), path.join(LEGACY_PI, "settings.json"), path.join(ROOT, ".pi", "settings.json")]) {
+    for (const f of [path.join(CONFIG_DIR, "settings.json"), path.join(LEGACY_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json")]) {
       try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
     }
     return {}
@@ -107,7 +107,7 @@ export function ensureRuntimeFiles() {
       if (fs.existsSync(dst)) continue
       const legacy = path.join(LEGACY_PI, sub)
       const home = path.join(HOME_SAPBUDDY, sub)
-      const pkg = path.join(ROOT, ".pi", sub)
+      const pkg = path.join(ROOT, ".SapBuddy", sub)
       if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
       else if (fs.existsSync(home)) fs.cpSync(home, dst, { recursive: true })
       else if (fs.existsSync(pkg)) fs.cpSync(pkg, dst, { recursive: true })
@@ -115,7 +115,7 @@ export function ensureRuntimeFiles() {
     for (const f of ["models.json", "auth.json", "settings.json"]) {
       const dst = path.join(CONFIG_DIR, f)
       if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, f), path.join(HOME_SAPBUDDY, f), path.join(ROOT, ".pi", f)]) {
+      for (const src of [path.join(LEGACY_PI, f), path.join(HOME_SAPBUDDY, f), path.join(ROOT, ".SapBuddy", f)]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
       }
     }

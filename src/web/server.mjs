@@ -227,7 +227,7 @@ const server = http.createServer(async (req, res) => {
       try { agents = t(fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8")) } catch {}
       try { systemMd = t(fs.readFileSync(path.join(ROOT, "SYSTEM.md"), "utf8")) } catch {}
       try { memory = t(fs.readFileSync(memoryFile, "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
-      try { for (const base of [skillsDir, path.join(ROOT, ".pi", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
+      try { for (const base of [skillsDir, path.join(ROOT, ".SapBuddy", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
       const piAgent = 1500
       const extensions = 8000
       const mcp = 0
@@ -530,7 +530,7 @@ const ids = models.map((m) => m.id)
     const promptsDir = path.join(USER_PI, "prompts")
     if (p === "/api/prompt" && req.method === "GET") {
       const file = url.searchParams.get("file") || "AGENTS.md"
-      const candidates = [path.join(ROOT, file), path.join(promptsDir, file), path.join(ROOT, ".pi", "prompts", file), path.join(ROOT, ".pi", "skills", file)]
+      const candidates = [path.join(ROOT, file), path.join(promptsDir, file), path.join(ROOT, ".SapBuddy", "prompts", file), path.join(ROOT, ".SapBuddy", "skills", file)]
       for (const c of candidates) {
         if (fs.existsSync(c)) return json(res, 200, { success: true, data: { content: fs.readFileSync(c, "utf8"), path: c } })
       }

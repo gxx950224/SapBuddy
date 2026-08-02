@@ -1,23 +1,27 @@
 # 依赖
 node_modules/
+package-lock.json
 
 # 编译产物
 dist/
-
-# 运行时配置（含敏感信息，不提交）
-.pi/auth.json
-.pi/sessions/
-.pi/models-store.json
-connections.json
 
 # 日志与临时
 *.log
 *.pid
 .DS_Store
 Thumbs.db
-# 产物目录（AI 生成的文件，不提交）
-output/
-.pi/mcp.json
-.pi/memory.md
-.pi/settings.json
-.SapBuddy/
+
+# 用户运行时配置（含敏感信息，不提交）
+# .SapBuddy/skills、prompts、models.json 为默认内容随仓库跟踪；个人文件忽略
+.SapBuddy/auth.json
+.SapBuddy/settings.json
+.SapBuddy/connections.json
+.SapBuddy/sessions/
+.SapBuddy/output/
+.SapBuddy/mcp.json
+.SapBuddy/memory.md
+.SapBuddy/models-store.json
+.SapBuddy/agent
+
+# 旧版 .pi 配置目录（已废弃，git 内容迁移到 .SapBuddy 后整个忽略）
+.pi/
