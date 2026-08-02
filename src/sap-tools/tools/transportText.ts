@@ -13,8 +13,8 @@ export const transportTool = {
     "查询和管理传输请求（CTS）：列出用户的传输请求/任务、查看请求详情（对象列表）、按传输号查详情、修改请求描述。用于了解变更内容和发布准备。",
   inputSchema: z.object({
     action: z
-      .enum(["list_user_transports", "get_transport_details", "get_object_transport", "update_description"])
-      .describe("操作：list_user_transports=列出用户的请求; get_transport_details=按请求号查详情; get_object_transport=查对象所在请求; update_description=修改请求描述（需人工确认）"),
+      .enum(["list_user_transports", "get_transport_details", "get_object_transport", "update_description", "release"])
+      .describe("操作：list_user_transports=列出用户的请求; get_transport_details=按请求号查详情; get_object_transport=查对象所在请求; update_description=修改请求描述; release=释放请求（均需人工确认）"),
     transportNumber: z.string().optional().describe("传输请求/任务号，如 DEVK900001（get_transport_details/update_description 必填）"),
     description: z.string().optional().describe("新描述文本（update_description 必填）"),
     userName: z.string().optional().describe("用户名（list_user_transports 默认当前连接用户）"),
@@ -104,6 +104,18 @@ export const transportTool = {
             body,
           })
           return `✅ 传输请求 ${args.transportNumber} 描述已改为: ${args.description}`
+        }
+        case "release": {
+          if (!args.transportNumber) return "release 需要 transportNumber 参数。"
+          const reports = await client.transportRelease(args.transportNumber)
+          const lines = [`✅ 传输请求 ${args.transportNumber} 已释放。`, ""]
+          for (const r of reports ?? []) {
+            lines.push(`- ${r["chkrun:reporter"] ?? "?"} [${r["chkrun:status"] ?? "?"}] ${r["chkrun:statusText"] ?? ""}`)
+            for (const m of r.messages ?? []) {
+              lines.push(`    ${String(m?.["chkrun:severity"] ?? "")} ${String(m?.["chkrun:text"] ?? "").slice(0, 120)}`)
+            }
+          }
+          return lines.join("\n")
         }
         default:
           return `未知操作: ${args.action}`
