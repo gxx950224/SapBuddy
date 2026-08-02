@@ -242,9 +242,23 @@ export async function createAgent(opts = {}) {
 ### 【创建流程 — 你正在处理创建请求】
 
 1. 只调一次 \`search_abap_objects\` 精确查用户给的对象名（不带 *）。
-2. 已存在 → 告知用户；不存在且需求不明确 → **直接向用户提问**要实现什么（业务场景/数据来源/输入输出），不要创建空壳。
-3. 需求明确 → 展示改动计划 → 等用户确认 → 才允许调用写工具。
-4. **创建可执行报表用 \`PROG/P\`（主程序），不要用 \`PROG/I\`（include）**；函数模块用 \`FUGR/FF\` + parentName 函数组。
+2. 已存在 → 告知用户走修改流程；不存在且需求不明确 → **直接向用户提问**要实现什么（业务场景/数据来源/输入输出），不要创建空壳。
+3. **创建前必须收集齐以下信息（缺失则提问，不要默认 $TMP）**：
+   - **开发包**（packageName，正式包，不是 $TMP）
+   - **程序/对象名**（Z*/Y*）
+   - **程序描述**
+   - **传输请求**：新建请求的描述名，或指定放入哪个现有请求号
+4. 把完整计划（包名/对象名/描述/请求）展示给用户 → 等用户确认 → 才调用写工具。
+5. **创建可执行报表用 \`PROG/P\`（主程序），不要用 \`PROG/I\`（include）**；函数模块用 \`FUGR/FF\` + parentName 函数组。
+`
+          const MODIFY_FLOW_RULES = `
+
+### 【修改流程 — 你正在处理修改请求】
+
+1. 先用 \`get_abap_object_lines\` 读当前源码，并用 \`manage_transport_requests(action=get_object_transport)\` 查该对象所在的**未释放传输请求**。
+2. 若已有未释放请求 → **直接沿用**（不新建、不询问）。
+3. 若无未释放请求 → **向用户询问请求信息**：新建请求的描述名，或指定放入某个现有请求号。
+4. 展示改动计划（改什么 + 放入哪个请求）→ 等用户确认 → 才调用写工具。
 `
           pi.on("before_agent_start", async (event, _ctx) => {
             try {
@@ -255,6 +269,9 @@ export async function createAgent(opts = {}) {
               let inject = GLOBAL_TOOL_RULES
               if (/创建|新建|开发|生成|写.*程序|create|new|开发一个/.test(prompt)) {
                 inject += CREATE_FLOW_RULES
+              }
+              if (/修改|改|更新|编辑|modify|change|update/.test(prompt)) {
+                inject += MODIFY_FLOW_RULES
               }
               // 避坑记录：仅用户明确推翻/纠错（方向性错误）时触发；字段增减等正常需求调整不记
               const REJECT_STRONG_RE = /推翻|方向不对|搞错了|白做了|重新设计|别这么搞|这样不行|思路不对|改错了|越改越糟|完全不对|根本不对|反了|弄错了/i
