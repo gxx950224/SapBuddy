@@ -146,9 +146,17 @@ async function cmdChat() {
   if (tl && tl !== "off") args.push("--thinking", tl)
   // 会话目录不存在时创建（pi --session-dir 需要存在）
   fs.mkdirSync(path.join(process.cwd(), ".SapBuddy", "sessions"), { recursive: true })
+  // quietStartup：禁用 pi 启动公告（What's New / 版本说明）
+  try {
+    const sf = path.join(process.cwd(), ".SapBuddy", "settings.json")
+    const sc = fs.existsSync(sf) ? JSON.parse(fs.readFileSync(sf, "utf8")) : {}
+    if (!sc.quietStartup) { sc.quietStartup = true; fs.writeFileSync(sf, JSON.stringify(sc, null, 2)) }
+  } catch {}
 
   const { spawn } = await import("node:child_process")
-  const child = spawn(process.execPath, args, { stdio: "inherit", cwd: ROOT, env: process.env })
+  // 隔离全局 ~/.pi 配置（不加载 pi-obsidian/mcp-adapter 等无关扩展/技能）
+  const env = { ...process.env, PI_CODING_AGENT_DIR: path.join(process.cwd(), ".SapBuddy") }
+  const child = spawn(process.execPath, args, { stdio: "inherit", cwd: ROOT, env })
   child.on("exit", (code) => process.exit(code ?? 0))
   child.on("error", (e) => { console.error("❌ 启动失败: " + e.message); process.exit(1) })
 }
