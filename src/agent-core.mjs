@@ -120,6 +120,43 @@ export function ensureRuntimeFiles() {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
       }
     }
+    // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
+    const dstSessions = path.join(CONFIG_DIR, "sessions")
+    const legacySessions = path.join(LEGACY_PI, "sessions")
+    fs.mkdirSync(dstSessions, { recursive: true })
+    if (fs.existsSync(legacySessions)) {
+      for (const f of fs.readdirSync(legacySessions)) {
+        const dst = path.join(dstSessions, f)
+        if (!fs.existsSync(dst)) {
+          try { fs.copyFileSync(path.join(legacySessions, f), dst) } catch { /* 忽略 */ }
+        }
+      }
+    }
+    // 产物迁移（旧项目根 output / cwd/output → ~/.SapBuddy/output，补复制不覆盖）
+    const dstOut = path.join(CONFIG_DIR, "output")
+    fs.mkdirSync(dstOut, { recursive: true })
+    for (const srcOut of [path.join(ROOT, "output"), path.join(process.cwd(), "output")]) {
+      if (fs.existsSync(srcOut)) {
+        for (const f of fs.readdirSync(srcOut)) {
+          const dst = path.join(dstOut, f)
+          if (!fs.existsSync(dst)) {
+            try { fs.copyFileSync(path.join(srcOut, f), dst) } catch { /* 忽略 */ }
+          }
+        }
+      }
+    }
+    // MCP 配置迁移（旧 .pi/mcp.json → ~/.SapBuddy/mcp.json）
+    if (!fs.existsSync(path.join(CONFIG_DIR, "mcp.json"))) {
+      for (const src of [path.join(LEGACY_PI, "mcp.json")]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "mcp.json")); break }
+      }
+    }
+    // 记忆文件迁移（旧 .pi/memory.md / 根 Memory.md → ~/.SapBuddy/memory.md）
+    if (!fs.existsSync(path.join(CONFIG_DIR, "memory.md"))) {
+      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(ROOT, "Memory.md")]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "memory.md")); break }
+      }
+    }
   } catch { /* 初始化失败不影响运行 */ }
 }
 

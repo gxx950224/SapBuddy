@@ -438,7 +438,7 @@ const server = http.createServer(async (req, res) => {
         const cfg = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
         let apiKey = ""
         try {
-          const auth = JSON.parse(fs.readFileSync(path.join(ROOT, ".pi", "auth.json"), "utf8"))
+          const auth = JSON.parse(fs.readFileSync(path.join(USER_PI, "auth.json"), "utf8"))
           const k = Object.values(auth).find((v) => v?.type === "api_key" && v.key)
           apiKey = k?.key ?? ""
         } catch {}
@@ -465,7 +465,7 @@ const server = http.createServer(async (req, res) => {
         if (body.thinkingLevel) next.defaultThinkingLevel = body.thinkingLevel
         fs.writeFileSync(settingsFile, JSON.stringify(next, null, 2))
         if (body.apiKey) {
-          const authFile = path.join(ROOT, ".pi", "auth.json")
+          const authFile = path.join(USER_PI, "auth.json")
           const auth = fs.existsSync(authFile) ? JSON.parse(fs.readFileSync(authFile, "utf8")) : {}
           auth[next.defaultProvider ?? "deepseek"] = { type: "api_key", key: body.apiKey }
           fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
@@ -476,7 +476,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/models" && req.method === "GET") {
       try {
         const sdk = await import(pathToFileURL(path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js")).href)
-        const mr = await sdk.ModelRuntime.create({ authPath: path.join(ROOT, ".pi", "auth.json"), modelsPath: path.join(ROOT, ".pi", "models.json") })
+        const mr = await sdk.ModelRuntime.create({ authPath: path.join(USER_PI, "auth.json"), modelsPath: path.join(USER_PI, "models.json") })
         const provider = url.searchParams.get("provider")
         const available = await mr.getAvailable()
         const models = available.filter((m) => !provider || m.provider === provider)
