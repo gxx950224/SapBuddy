@@ -162,8 +162,21 @@
   App.renderAssistantContent = function(container, contentParts) {
     const bubbleEl = container.closest(".msg");
     const parts = typeof contentParts === "string" ? [{ type: "text", text: contentParts }] : (contentParts || []);
+    // 固定渲染顺序：思考 → 工具 → 文本（不依赖消息原始 parts 顺序，工具卡必在回复文本前）
+    const thinkParts = [], toolParts = [], textParts = [];
     for (const part of parts) {
-      if (part.type === "text" && part.text) {
+      if (part.type === "text" && part.text) textParts.push(part);
+      else if (part.type === "thinking" && part.thinking) thinkParts.push(part);
+      else if (part.type === "toolCall") toolParts.push(part);
+    }
+    for (const part of thinkParts) App.addThinking(part.thinking, bubbleEl);
+    for (const part of toolParts) {
+      const card = App.createToolCard(part.id, part.name, part.arguments);
+      const summary = App.summarizeArgs(part.arguments);
+      if (summary) card.querySelector(".tool-args").textContent = summary;
+      ensureToolsWrap(container).appendChild(card);
+    }
+    for (const part of textParts) {
         if (!state.currentTextDiv) {
           state.currentTextDiv = document.createElement("div");
           container.appendChild(state.currentTextDiv);
@@ -188,14 +201,6 @@
           div.innerHTML = renderMarkdown(part.text);
           div._renderedLen = part.text.length;
         }
-      } else if (part.type === "thinking" && part.thinking) {
-        App.addThinking(part.thinking, bubbleEl);
-      } else if (part.type === "toolCall") {
-        const card = App.createToolCard(part.id, part.name, part.arguments);
-        const summary = App.summarizeArgs(part.arguments);
-        if (summary) card.querySelector(".tool-args").textContent = summary;
-        ensureToolsWrap(container).appendChild(card);
-      }
     }
     updateBubbleVisibility(container);
     App.scrollToBottom();
@@ -304,6 +309,10 @@
           state.processEl = null;
         }
       } else if (msg.role === "assistant") {
+        // 跳过空 assistant 消息（无内容不产生气泡）
+        if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) continue;
+        // 历史渲染：每条 assistant 消息独立气泡（避免多条消息堆叠到同一气泡）
+        state.currentAssistantEl = null;
         state.currentTextDiv = null;
         state.currentThinkSeg = null;
         const body = App.ensureAssistantBubble();

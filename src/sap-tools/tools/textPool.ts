@@ -25,8 +25,8 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
   const progUpper = opts.prog.toUpperCase()
   const L: string[] = []
   L.push("  METHOD if_oo_adt_classrun~main.")
-  // textpool 内表类型在部分系统不可用，自定义结构（READ/INSERT TEXTPOOL 需要 key/entry 字段）
-  L.push("    TYPES: BEGIN OF ty_tp, key TYPE c LENGTH 20, entry TYPE c LENGTH 132, END OF ty_tp.")
+  // READ/INSERT TEXTPOOL 要求行结构与 text pool 兼容：ID、KEY、ENTRY、LENGTH（缺字段报 row type 不兼容）
+  L.push("    TYPES: BEGIN OF ty_tp, id TYPE c LENGTH 2, key TYPE c LENGTH 20, entry TYPE c LENGTH 132, length TYPE i, END OF ty_tp.")
   L.push("    DATA: lt_tp TYPE STANDARD TABLE OF ty_tp, ls_tp TYPE ty_tp, lv_ins TYPE i, lv_upd TYPE i.")
 
   if (mode === "copy") {
