@@ -632,7 +632,6 @@ const server = http.createServer(async (req, res) => {
             apiKey,
             contextTokens: cfg.contextTokens ?? 200000,
             thinkingLevel: cfg.defaultThinkingLevel ?? "off",
-            approvalWindowMinutes: cfg.approvalWindowMinutes ?? 15,
           },
         })
       } catch { return json(res, 200, { success: true, data: {} }) }
@@ -646,7 +645,6 @@ const server = http.createServer(async (req, res) => {
         if (body.model) next.defaultModel = body.model
         if (body.contextTokens) next.contextTokens = Number(body.contextTokens)
         if (body.thinkingLevel) next.defaultThinkingLevel = body.thinkingLevel
-        if (body.approvalWindowMinutes !== undefined) next.approvalWindowMinutes = Number(body.approvalWindowMinutes) || 15
         fs.writeFileSync(settingsFile, JSON.stringify(next, null, 2))
         if (body.apiKey) {
           const authFile = path.join(USER_PI, "auth.json")

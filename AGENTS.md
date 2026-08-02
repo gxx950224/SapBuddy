@@ -75,6 +75,8 @@ node cli.mjs tools   # 工具列表
 |---|---|---|
 | 写工具名单 / 授权窗口 / 只读模式 | `src/sap-tools/register.ts`（isWriteTool/handleUserMessage/isReadOnly）| 硬强制 |
 | 写操作拦截（确认/路径/HTML 确认/查询放行）| `register.ts` `installWriteGate`（挂 pi.on("tool_call")）| 硬强制 |
+| 敏感配置禁止 AI 读写（connections/auth/settings/models/mcp）| `register.ts` `installWriteGate`（read/glob/grep 拦读取、write/edit 拦写入，防泄露密钥/放开只读绕过总闸）| 硬强制 |
+| SapBuddy 自身源码/规则文件禁止 AI 读写（src/、cli.mjs、test/、AGENTS.md、SYSTEM.md 等）| `register.ts` `installWriteGate`（保留 Memory.md、.SapBuddy/skills、output/ 可编辑区）| 硬强制 |
 | 代码规则扫描（硬编码中文/裸类型 d/t）| `register.ts` `scanCodeViolations` | 硬强制 |
 | 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |
 | 创建：包名/描述必填、禁 $TMP、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically | 硬强制 |

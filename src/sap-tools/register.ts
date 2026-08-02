@@ -97,54 +97,96 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
   pi.on("tool_call" as never, async (event: { toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
     const name = event?.toolName
     if (!name) return
-    // ── 生成源码路径强制规则：ABAP 源码必须保存到 output/<程序名>/ 子目录（按程序建文件夹，不平铺）──
+    const input = (event.input ?? {}) as Record<string, unknown>
+    const p = String(input.path ?? input.file ?? input.filePath ?? input.pattern ?? "").replace(/\\/g, "/")
+    const lower = p.toLowerCase()
+    // ── 敏感配置文件禁止由 AI 读写：防 AI 读出 API Key/凭据，或自行放开只读绕过总闸 ──
+    const PROTECTED_CONFIG = ["connections.json", "auth.json", "settings.json", "models.json", "models-store.json", "mcp.json"]
+    if (PROTECTED_CONFIG.some((f) => lower.includes(f))) {
+      if (["read", "glob", "grep"].includes(name)) {
+        return {
+          block: true,
+          reason:
+            `⛔ 敏感配置文件禁止由 AI 读取（已拦截）：${p}\n` +
+            `安全配置（连接凭据 / API 密钥 / 模型 / MCP）仅限你本人手动查看 .SapBuddy/ 目录。`,
+        }
+      }
+      if (name === "write" || name === "edit") {
+        return {
+          block: true,
+          reason:
+            `⛔ 配置文件禁止由 AI 直接修改（已拦截，未写入）：${p}\n` +
+            `安全配置（连接凭据 / API 密钥 / 只读开关 / 模型 / MCP）只能由你在 .SapBuddy/ 目录手动编辑，改完重启服务生效。`,
+        }
+      }
+    }
+    // ── SapBuddy 自身源码/规则文件禁止由 AI 读写：运行中的助手不得改自己的代码 ──
+    // 保留可编辑区：Memory.md（避坑记录）、.SapBuddy/（skills/output/sessions）、output/ 产物
+    const SELF_CODE = [
+      /(^|\/)src[\/$]/, /(^|\/)dist[\/$]/, /(^|\/)test[\/$]/, /(^|\/)docs[\/$]/,
+      /(^|\/)config[\/$]/, /(^|\/)\.claude[\/$]/,
+      /(^|\/)cli\.mjs$/, /(^|\/)package\.(json|lock)$/, /(^|\/)tsconfig[^/]*\.json$/,
+      /(^|\/)agents\.md$/, /(^|\/)system\.md$/, /(^|\/)readme\.md$/, /(^|\/)license$/,
+      /(^|\/)credits\.md$/, /(^|\/)contributing\.md$/, /(^|\/)\.gitignore$/,
+    ]
+    if (!lower.includes("/node_modules/") && SELF_CODE.some((re) => re.test(lower))) {
+      if (["read", "glob", "grep", "write", "edit"].includes(name)) {
+        return {
+          block: true,
+          reason:
+            `⛔ SapBuddy 自身源码/规则文件禁止由 AI 读写（已拦截）：${p}\n` +
+            `仅限开发者本人手动修改（或通过外部编辑器）。运行时对话中的助手不能改自己的代码。`,
+        }
+      }
+    }
+    // ── 生成产物路径强制规则：程序相关文件（Z*/Y* 开头：源码/审查报告/流程图等）必须保存到 output/<程序名>/ 子目录，通用文件才可平铺 ──
     if ((name === "write" || name === "edit")) {
-      const input = (event.input ?? {}) as Record<string, unknown>
-      const p = String(input.path ?? input.file ?? "").replace(/\\/g, "/")
-      const lower = p.toLowerCase()
       const isAbap = lower.endsWith(".abap")
+      const isReviewHtml = /_CodeReview\.html$/i.test(lower) || /_code_review\.html$/i.test(lower)
       const inOutput =
         lower.startsWith("output/") || lower.includes("/output/") || lower.includes(".sapbuddy/output")
-      if (isAbap) {
-        // output 后必须带程序名子目录（如 output/ZAIR010/ZAIR010.abap），禁止平铺 output/根
-        const after = lower.includes("/output/")
-          ? lower.split("/output/").pop() || ""
-          : lower.replace(/^output\//, "")
-        const hasSubdir = after.includes("/")
+      // output 后必须带程序名子目录（如 output/ZAIR010/ZAIR010.abap），禁止平铺 output/根
+      const after = lower.includes("/output/")
+        ? lower.split("/output/").pop() || ""
+        : lower.replace(/^output\//, "")
+      const hasSubdir = after.includes("/")
+      const basename = after.split("/").pop() || ""
+      // 程序相关 = 文件名以 Z*/Y* 开头（程序源码、审查报告、流程图等）；与程序无关的通用文件（README 等）才可平铺
+      const programRelated = /^[ZY][a-z0-9_]*/i.test(basename) || isAbap
+      if (programRelated) {
         if (!inOutput) {
           return {
             block: true,
             reason:
-              `⛔ 生成的 ABAP 源码必须统一保存到 output/ 目录（相对路径 .SapBuddy/output/），不要写到其他位置（如 ${p || "当前路径"}）。\n` +
-              `请用 write 工具写入 output/<程序名>/<程序名>.abap（文件不存在会自动创建）。`,
+              `⛔ 跟程序相关的文件必须统一保存到 output/ 目录（相对路径 .SapBuddy/output/），不要写到其他位置（如 ${p || "当前路径"}）。\n` +
+              `请用 write 工具写入 output/<程序名>/<文件名>（目录不存在会自动创建）。`,
           }
         }
         if (!hasSubdir) {
           return {
             block: true,
             reason:
-              `⛔ 生成的 ABAP 源码必须按程序名建文件夹：output/<程序名>/<程序名>.abap（如 output/ZAIR010/ZAIR010.abap），不要平铺在 output/ 根目录。\n` +
-              `请用 write 工具写入 output/<程序名>/<程序名>.abap（目录不存在会自动创建）。`,
+              `⛔ 跟程序相关的文件必须按程序名建文件夹：output/<程序名>/<文件名>（如 output/ZAIR010/ZAIR010.abap、output/ZAIR010/ZAIR010_CodeReview.html），不要平铺在 output/ 根目录。\n` +
+              `与程序无关的通用文件（如 README、说明文档）才可平铺在 output/ 根目录。`,
           }
         }
       }
-      // ── 审查 HTML 报告需人工确认（代码审查产物，先展示结论再生成）──
-      const isReviewHtml = /_CodeReview\.html$/i.test(lower) || /_code_review\.html$/i.test(lower)
+      // ── 审查 HTML 报告：人工确认（路径强制已由上面 programRelated 覆盖）──
       if (isReviewHtml && !isWriteApproved()) {
-        if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
-          const ok = await ctx.ui.confirm("SapBuddy 审查报告确认", `AI 请求生成代码审查 HTML 报告：${p}\n\n允许生成吗？`)
-          if (ok) return
-          return { block: true, reason: "⛔ 用户拒绝了审查报告生成。请向用户说明审查结论（不生成文件）。" }
-        }
-        opts?.onBlocked?.({ toolName: name, input: event.input })
-        return {
-          block: true,
-          reason:
-            `⛔ 生成代码审查 HTML 报告需人工确认（已拦截，未生成）：${p}\n` +
-            `请先把审查结论摘要展示给用户（发现的问题/风险/建议），并明确请求确认。\n` +
-            `用户在对话中输入"确认"后重试即可生成报告文件。`,
-        }
-      }
+          if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+            const ok = await ctx.ui.confirm("SapBuddy 审查报告确认", `AI 请求生成代码审查 HTML 报告：${p}\n\n允许生成吗？`)
+            if (ok) return
+            return { block: true, reason: "⛔ 用户拒绝了审查报告生成。请向用户说明审查结论（不生成文件）。" }
+          }
+          opts?.onBlocked?.({ toolName: name, input: event.input })
+          return {
+            block: true,
+            reason:
+              `⛔ 生成代码审查 HTML 报告需人工确认（已拦截，未生成）：${p}\n` +
+              `请先把审查结论摘要展示给用户（发现的问题/风险/建议），并明确请求确认。\n` +
+              `用户在对话中输入"确认"后重试即可生成报告文件。`,
+          }
+    }
     }
     if (!isWriteTool(name)) return
     // 混合工具：只读 action 不拦截（manage_transport_requests 的查询、manage_text_elements 的 read）

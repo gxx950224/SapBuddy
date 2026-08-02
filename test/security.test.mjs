@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
 const register = require("../dist/sap-tools/register.js")
 const shared = require("../dist/sap-tools/tools/shared.js")
 
-const { scanCodeViolations, handleUserMessage, clearWriteApproval, isWriteApproved, namespaceViolation } = register
+const { scanCodeViolations, handleUserMessage, clearWriteApproval, isWriteApproved, namespaceViolation, installWriteGate } = register
 const { escapeXmlAttr } = shared
 
 before(() => clearWriteApproval())
@@ -111,4 +111,95 @@ test("escapeXmlAttr：& 先转义，避免二次转义", () => {
   // 含引号时不产生 &amp;quot;（旧 bug 的回归用例）
   assert.equal(escapeXmlAttr('AB"C'), "AB&quot;C")
   assert.equal(escapeXmlAttr('A & B'), "A &amp; B")
+})
+
+// ── 敏感配置文件读写拦截（installWriteGate：AI 不得读写安全配置）────
+async function triggerWriteGate(input, toolName = "write") {
+  let cb
+  const pi = { on: (evt, handler) => { if (evt === "tool_call") cb = handler } }
+  installWriteGate(pi)
+  return cb({ toolName, input }, {})
+}
+
+test("配置文件禁止 AI 修改：connections.json 被拦截", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/connections.json" })
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes("禁止由 AI 直接修改"), `应报写入拦截，实际: ${r?.reason?.slice(0, 80)}`)
+})
+
+test("配置文件禁止 AI 修改：auth.json / mcp.json 也被拦截", async () => {
+  for (const f of [".SapBuddy/auth.json", ".SapBuddy/mcp.json"]) {
+    const r = await triggerWriteGate({ path: f })
+    assert.equal(r?.block, true, `${f} 应被拦截`)
+  }
+})
+
+test("配置文件禁止 AI 读取：read auth.json 被拦截", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/auth.json" }, "read")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes("禁止由 AI 读取"), `应报读取拦截，实际: ${r?.reason?.slice(0, 80)}`)
+})
+
+test("配置文件禁止 AI 读取：glob/grep 命中敏感文件名也被拦截", async () => {
+  for (const [tool, arg] of [["glob", "pattern"], ["grep", "path"]]) {
+    const r = await triggerWriteGate({ [arg]: ".SapBuddy/connections.json" }, tool)
+    assert.equal(r?.block, true, `${tool} 应拦截敏感配置读取`)
+  }
+})
+
+test("配置文件拦截：普通 output 文件不受影响", async () => {
+  const r = await triggerWriteGate({ path: "output/ZAIR010/ZAIR010.abap" })
+  // 配置文件拦截不触发；但 .abap 平铺/目录规则可能拦，这里断言不是"配置文件"拦截即可
+  assert.ok(!(r?.reason ?? "").includes("配置文件"), "普通输出文件不应报配置文件拦截")
+})
+
+// ── 自身源码禁读写（installWriteGate：运行中的 AI 不得读写 SapBuddy 自身代码）────
+test("自身源码禁止 AI 读写：write src/register.ts 被拦截", async () => {
+  const r = await triggerWriteGate({ path: "src/register.ts" })
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes("自身源码"), `应报自身代码拦截，实际: ${r?.reason?.slice(0, 80)}`)
+})
+
+test("自身源码禁止 AI 读写：read cli.mjs / AGENTS.md / SYSTEM.md 被拦截", async () => {
+  for (const f of ["cli.mjs", "AGENTS.md", "SYSTEM.md", "test/security.test.mjs"]) {
+    const r = await triggerWriteGate({ path: f }, "read")
+    assert.equal(r?.block, true, `${f} 读取应被拦截`)
+  }
+})
+
+test("自身源码拦截：Memory.md 避坑记录仍允许写", async () => {
+  const r = await triggerWriteGate({ path: "Memory.md" })
+  const reason = r?.reason ?? ""
+  assert.ok(!reason.includes("自身源码") && !reason.includes("配置文件"), `Memory.md 不应被拦截，实际: ${reason.slice(0, 60)}`)
+})
+
+test("自身源码拦截：output 产物与 .SapBuddy/skills 不受影响", async () => {
+  for (const f of ["output/ZAIR010/ZAIR010.abap", ".SapBuddy/skills/clean-abap/rule.md"]) {
+    const r = await triggerWriteGate({ path: f })
+    assert.ok(!(r?.reason ?? "").includes("自身源码"), `${f} 不应被自身代码拦截`)
+  }
+})
+
+// ── 程序相关文件路径强制（installWriteGate：Z*/Y* 程序相关文件须按程序名建子目录）────
+test("审查报告平铺被拦截：output/ZAIR004_CodeReview.html", async () => {
+  const r = await triggerWriteGate({ path: "output/ZAIR004_CodeReview.html" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes("按程序名建文件夹"), `实际: ${r?.reason?.slice(0, 80)}`)
+})
+
+test("审查报告带子目录放行到确认环节", async () => {
+  const r = await triggerWriteGate({ path: "output/ZAIR004/ZAIR004_CodeReview.html" }, "write")
+  assert.ok((r?.reason ?? "").includes("人工确认"), `应进入确认环节，实际: ${r?.reason?.slice(0, 80)}`)
+  assert.ok(!(r?.reason ?? "").includes("建文件夹"), "带子目录不应报路径拦截")
+})
+
+test("程序相关文档平铺被拦截：output/ZAIR004_flowchart.md", async () => {
+  const r = await triggerWriteGate({ path: "output/ZAIR004_flowchart.md" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes("按程序名建文件夹"), `实际: ${r?.reason?.slice(0, 80)}`)
+})
+
+test("程序无关通用文件允许平铺：output/README.md", async () => {
+  const r = await triggerWriteGate({ path: "output/README.md" }, "write")
+  assert.ok(!(r?.reason ?? "").includes("按程序名建文件夹"), "通用文件不应被程序目录规则拦截")
 })

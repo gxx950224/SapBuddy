@@ -12,9 +12,16 @@
 
   const DEFAULT_SETTINGS = { provider: "deepseek", model: "", apiKey: "", contextTokens: 200000 };
 
-  // 模型供应商清单（与后端 server.mjs 的 DOMESTIC_PROVIDERS 对应）
+  // 模型供应商清单（对应 .SapBuddy/models.json 的 providers，即 pi SDK 支持的全部厂商）
   const DOMESTIC_PROVIDERS = {
-    deepseek: { label: "DeepSeek（深度求索）", defaultModel: "deepseek-v4-flash", models: ["deepseek-v4-flash", "deepseek-v4-pro"] },
+    qwen: { label: "通义千问（Qwen）", defaultModel: "qwen-plus" },
+    moonshot: { label: "Moonshot（Kimi）", defaultModel: "moonshot-v1-8k" },
+    zhipu: { label: "智谱（GLM）", defaultModel: "glm-4-plus" },
+    doubao: { label: "豆包（Doubao）", defaultModel: "doubao-pro-32k" },
+    minimax: { label: "MiniMax", defaultModel: "MiniMax-M2.7" },
+    hunyuan: { label: "腾讯混元", defaultModel: "hunyuan-turbo" },
+    ernie: { label: "百度文心（ERNIE）", defaultModel: "ernie-4.5" },
+    deepseek: { label: "DeepSeek（深度求索）", defaultModel: "deepseek-v4-flash" },
   };
 
   // ── 从后端读取大模型配置 ──
@@ -40,82 +47,13 @@
   }
   populateProviderSelect();
 
-  // ── 填充模型下拉框 ──
-  function populateModelSelect(provider, currentModel, modelsOverride) {
-    const sel = $("#llm-model-select");
-    const custom = $("#llm-model-custom");
-    const p = DOMESTIC_PROVIDERS[provider] || { models: [] };
-    sel.innerHTML = "";
-    const models = modelsOverride || p.models || [];
-    let matched = false;
-    for (const m of models) {
-      const opt = document.createElement("option");
-      opt.value = m;
-      opt.textContent = m;
-      sel.appendChild(opt);
-      if (m === currentModel) matched = true;
-    }
-    const customOpt = document.createElement("option");
-    customOpt.value = "__custom__";
-    customOpt.textContent = "自定义模型…";
-    sel.appendChild(customOpt);
-
-    if (currentModel && matched) {
-      sel.value = currentModel;
-      custom.style.display = "none";
-      custom.value = "";
-    } else if (currentModel) {
-      sel.value = "__custom__";
-      custom.style.display = "";
-      custom.value = currentModel;
-    } else {
-      sel.value = models[0] || "__custom__";
-      custom.style.display = "none";
-      custom.value = "";
-    }
-  }
-  populateModelSelect($("#llm-provider").value, "");
-
-  // ── 切换提供商时刷新模型 ──
-  $("#llm-provider").addEventListener("change", () => {
-    const provider = $("#llm-provider").value;
-    populateModelSelect(provider, "");
-    fetchLiveModels(provider, "");
-  });
-
-  // ── 异步拉取真实模型列表 ──
-  async function fetchLiveModels(provider, currentModel) {
-    try {
-      const r = await fetch(`/api/models?provider=${encodeURIComponent(provider)}`);
-      if (!r.ok) return;
-      const j = await r.json();
-      if (!j.success || !Array.isArray(j.models) || !j.models.length) return;
-      populateModelSelect(provider, currentModel, j.models);
-    } catch (e) { /* 拉取失败不影响兜底清单 */ }
-  }
-
-  // ── 自定义模型输入 ──
-  $("#llm-model-select").addEventListener("change", () => {
-    const custom = $("#llm-model-custom");
-    if ($("#llm-model-select").value === "__custom__") {
-      custom.style.display = "";
-      custom.focus();
-    } else {
-      custom.style.display = "none";
-      custom.value = "";
-    }
-  });
-
   // ── 获取表单值 ──
   function getSettingsFormValues() {
-    const sel = $("#llm-model-select");
-    const model = sel.value === "__custom__" ? $("#llm-model-custom").value.trim() : sel.value;
     return {
       provider: $("#llm-provider").value,
-      model,
+      model: $("#llm-model").value.trim(),
       apiKey: $("#llm-key").value,
       contextTokens: parseInt($("#llm-context-tokens").value, 10) || 200000,
-      approvalWindowMinutes: parseInt($("#llm-approval-window").value, 10) || 15,
     };
   }
 
@@ -134,10 +72,7 @@
     const s = settings || DEFAULT_SETTINGS;
     ensureProviderOption(s.provider);
     $("#llm-provider").value = s.provider || "deepseek";
-    const provider = s.provider || "deepseek";
-    const model = s.model || "";
-    populateModelSelect(provider, model);
-    fetchLiveModels(provider, model);
+    $("#llm-model").value = s.model || "";
     const keyInput = $("#llm-key");
     const keyToggle = $("#llm-key-toggle");
     if (s.apiKey) {
@@ -157,7 +92,6 @@
       keyToggle.title = isPlaceholder ? "隐藏 Key" : "显示 Key";
     }
     $("#llm-context-tokens").value = s.contextTokens || 200000;
-    $("#llm-approval-window").value = s.approvalWindowMinutes || 15;
   }
 
   // ── 打开/关闭设置 ──
