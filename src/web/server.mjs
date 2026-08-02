@@ -328,10 +328,11 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/state" && req.method === "GET") {
       const a = agent
       const model = a?.session?.model
+      // ready：服务在线即就绪（agent 懒创建，首次对话才建；连接一次成功即绿灯常驻）
       return json(res, 200, {
         success: true,
         data: {
-          ready: !!session,
+          ready: true,
           isStreaming: busy,
           messageCount: session?.agent?.state?.messages?.length ?? 0,
           model: model ? `${model.provider}/${model.id}` : "-",
