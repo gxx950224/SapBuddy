@@ -62,8 +62,26 @@
       bodyEl.style.display = expanded ? "block" : "none"; // JS 直接控制展开/折叠
     });
     if (id) state.toolCards.set(id, card);
+    // 强制兜底：非展开状态 body 必隐藏（定时扫描也兜底）
+    bodyEl.style.display = "none";
     return card;
   };
+
+  // ── 全局强制：非展开卡片 body 一律隐藏（防任何 CSS/JS 意外）──
+  function enforceToolCollapse() {
+    document.querySelectorAll(".tool-card").forEach((c) => {
+      const b = c.querySelector(".tool-body");
+      if (!b) return;
+      if (c.classList.contains("expanded")) {
+        b.style.display = "block";
+      } else {
+        b.style.display = "none";
+      }
+    });
+  }
+  App.enforceToolCollapse = enforceToolCollapse;
+  // 渲染完成后立即执行 + 定时扫描兜底
+  setInterval(enforceToolCollapse, 1200);
 
   // ── 完成工具卡片 ──
   App.finishToolCard = function(id, resultContent, isError) {
