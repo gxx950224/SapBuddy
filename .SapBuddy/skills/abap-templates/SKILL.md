@@ -80,7 +80,7 @@ DATA: lt_fieldcat TYPE lvc_t_fcat,
 " 字段目录必须显式逐字段定义，禁止用 FORM 或宏自动生成
 CLEAR ls_fieldcat.
 ls_fieldcat-fieldname = 'VBELN'.
-ls_fieldcat-coltext   = '销售订单'.
+ls_fieldcat-coltext   = TEXT-001.  " 列文本在文本池维护（TEXT-001），禁止硬编码中文
 APPEND ls_fieldcat TO lt_fieldcat.
 
 CLEAR ls_fieldcat.
@@ -466,9 +466,9 @@ CALL FUNCTION 'Z_MM_FM_GET_MATERIAL'
     OTHERS             = 3.
 
 CASE sy-subrc.
-  WHEN 1. MESSAGE e001(zmm) WITH '物料不存在'.
-  WHEN 2. MESSAGE e002(zmm) WITH '输入无效'.
-  WHEN 3. MESSAGE e003(zmm) WITH '未知错误'.
+  WHEN 1. MESSAGE e001(zmm) WITH lv_msg1.  " 消息文本在消息类 ZMM 维护，禁止 WITH 硬编码中文
+  WHEN 2. MESSAGE e002(zmm) WITH lv_msg2.
+  WHEN 3. MESSAGE e003(zmm) WITH lv_msg3.
 ENDCASE.
 ```
 
@@ -747,7 +747,7 @@ CLASS ltc_material IMPLEMENTATION.
   METHOD test_get_material_raises.
     TRY.
         mo_cut->get_material( '000000000000009999' ).
-        cl_abap_unit_assert=>fail( '应抛出异常' ).
+        cl_abap_unit_assert=>fail( 'expected exception was not raised' ).
       CATCH zcx_mm_material_error.
         " 预期异常，测试通过
     ENDTRY.

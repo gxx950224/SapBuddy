@@ -27,7 +27,7 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 5. **不加戏**：不得自行增加用户未要求的功能；不修复程序中预先存在的 Bug（告知用户即可）。
 6. **对象类型**：创建可执行报表用 `PROG/P`（主程序），不用 `PROG/I`（include）；函数模块用 `FUGR/FF` + parentName 函数组。
 7. **写操作谨慎**：写工具（创建/编辑/激活）需要服务器 `security.readOnly=false`；生产系统只读。
-7. **禁止硬编码中文提示（强制）**：代码内不允许出现硬编码中文文案（提示/错误/说明文字）。
+8. **禁止硬编码中文提示（强制）**：代码内不允许出现硬编码中文文案（提示/错误/说明文字）。
    - 面向用户的提示/错误 → **消息类**（`MESSAGE e001(zmsg) WITH ...`；`MESSAGE ... INTO DATA(lv_msg)` 供 BAPIRET2 等返回）。
    - 选择屏幕标签/块标题/ALV 列文本 → **文本元素**（`TEXT-001`、Selection Text）。
    - 找不到合适消息类/文本元素时，创建 Z 消息类（`create_object_programmatically` MSAG/N）或维护文本元素。

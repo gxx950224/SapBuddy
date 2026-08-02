@@ -37,3 +37,6 @@ deliverables/
 
 # 平台二进制（fd/rg，本地用，不入库）
 .SapBuddy/bin/
+
+# 遗留镜像目录（含敏感配置，整体忽略）
+.SapBuddy/prompts/

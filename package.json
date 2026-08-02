@@ -58,7 +58,6 @@
     "config/",
     "docs/",
     "test/",
-    ".SapBuddy/prompts/",
     ".SapBuddy/skills/",
     ".SapBuddy/models.json",
     "README.md",
