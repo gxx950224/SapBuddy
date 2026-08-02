@@ -8,16 +8,15 @@
     "sapbuddy": "cli.mjs"
   },
   "scripts": {
-    "build": "tsc && node scripts/build-copy.mjs && node scripts/obfuscate.mjs",
+    "build": "tsc",
     "start": "node cli.mjs",
     "chat": "node cli.mjs chat",
     "web": "node cli.mjs web",
     "tools": "node cli.mjs tools",
     "doctor": "node cli.mjs doctor",
-    "prepublishOnly": "npm test",
+    "prepublishOnly": "npm run build && npm test",
     "test": "node --test",
-    "check": "tsc --noEmit",
-    "obfuscate": "node scripts/obfuscate.mjs"
+    "check": "tsc --noEmit"
   },
   "keywords": [
     "sap",
@@ -55,6 +54,7 @@
   "homepage": "https://github.com/yourname/sapbuddy#readme",
   "files": [
     "cli.mjs",
+    "src/",
     "dist/",
     "config/",
     "docs/",

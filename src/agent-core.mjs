@@ -1,0 +1,324 @@
+/**
+ * Agent 内核：pi SDK 会话管理 + 注册 42 个 SAP 工具
+ */
+import { createRequire } from "node:module"
+import { fileURLToPath, pathToFileURL } from "node:url"
+import path from "node:path"
+import fs from "node:fs"
+import os from "node:os"
+
+const require = createRequire(import.meta.url)
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+export const ROOT = path.resolve(HERE, "..")
+/**
+ * 用户配置目录：<cwd>/.SapBuddy（当前工作目录下的隐藏目录）
+ * 在项目根运行即数据在项目目录；auth/settings/models/connections/sessions/skills/prompts/output 都在这里
+ */
+export const CONFIG_DIR = path.join(process.cwd(), ".SapBuddy")
+/** 旧迁移源：用户主目录 ~/.SapBuddy（之前版本的位置） */
+export const HOME_SAPBUDDY = path.join(os.homedir(), ".SapBuddy")
+/** 兼容旧版：cwd/.pi（历史配置，优先于包内默认） */
+export const LEGACY_PI = path.join(process.cwd(), ".pi")
+
+// pi SDK 通过绝对路径 require 加载（项目结构特殊）
+const PI_SDK_PATH = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent")
+const {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+} = require(PI_SDK_PATH)
+
+/** 读取认证（.pi/auth.json） */
+export function loadAuth() {
+  for (const f of [path.join(CONFIG_DIR, "auth.json"), path.join(LEGACY_PI, "auth.json"), path.join(ROOT, ".SapBuddy", "auth.json")]) {
+    try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
+  }
+  return {}
+}
+
+/**
+ * MCP 服务器工具动态注册（扩展）：
+ * 读取 .pi/mcp.json 的服务器 → 连接拉取 tools/list → 注册为 customTools（前缀 mcp_<server>_）
+ */
+async function registerMcpTools(pi) {
+  const { loadMcpServers, testServer, callMcpTool } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
+  const { jsonSchemaToTypebox } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+  const servers = loadMcpServers()
+  for (const [name, server] of Object.entries(servers)) {
+    try {
+      const st = await testServer(name, server)
+      if (!st.connected) {
+        console.log(`[sapbuddy] MCP ${name} 连接失败: ${st.error}`)
+        continue
+      }
+      for (const t of st.tools) {
+        const toolName = `mcp_${name}_${t.name}`
+        pi.registerTool({
+          name: toolName,
+          label: `${name}/${t.name}`,
+          description: `[MCP:${name}] ${t.description}。来自外部 MCP 服务器 "${name}"（${server.url}）。`,
+          promptSnippet: `外部 MCP 工具（${name}）`,
+          parameters: jsonSchemaToTypebox(t.inputSchema),
+          async execute(_id, args) {
+            try {
+              const text = await callMcpTool(server, t.name, args ?? {})
+              return { content: [{ type: "text", text }], details: {} }
+            } catch (err) {
+              return {
+                content: [{ type: "text", text: `MCP 工具 ${t.name} 执行失败: ${err instanceof Error ? err.message : String(err)}` }],
+                details: {},
+                isError: true,
+              }
+            }
+          },
+        })
+      }
+      console.log(`[sapbuddy] MCP ${name} 已注册 ${st.tools.length} 个工具（${st.tools.map((x) => x.name).join(", ")}）`)
+    } catch (e) {
+      console.log(`[sapbuddy] MCP ${name} 注册失败: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+}
+
+/** 读取设置（默认模型等） */
+export function loadSettings() {
+  try {
+    for (const f of [path.join(CONFIG_DIR, "settings.json"), path.join(LEGACY_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json")]) {
+      try { return JSON.parse(fs.readFileSync(f, "utf8")) } catch { /* 继续 */ }
+    }
+    return {}
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * 创建带 42 个 SAP 工具的 Agent 会话
+ * @param opts.sessionFile 指定会话文件（切换历史会话用）
+ */
+/** 首次运行引导：初始化 ~/.SapBuddy（技能/提示词/模型注册表），来源优先旧配置 cwd/.pi（迁移）→ 包内默认 */
+export function ensureRuntimeFiles() {
+  try {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true })
+    for (const sub of ["skills", "prompts"]) {
+      const dst = path.join(CONFIG_DIR, sub)
+      if (fs.existsSync(dst)) continue
+      const legacy = path.join(LEGACY_PI, sub)
+      const pkg = path.join(ROOT, ".SapBuddy", sub)
+      if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
+      else if (fs.existsSync(HOME_SAPBUDDY)) fs.cpSync(HOME_SAPBUDDY, dst, { recursive: true })
+      else if (fs.existsSync(pkg)) fs.cpSync(pkg, dst, { recursive: true })
+    }
+    for (const f of ["models.json", "auth.json", "settings.json"]) {
+      const dst = path.join(CONFIG_DIR, f)
+      if (fs.existsSync(dst)) continue
+      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, ".SapBuddy", f)]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
+      }
+    }
+    if (!fs.existsSync(path.join(CONFIG_DIR, "connections.json"))) {
+      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json")]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
+      }
+    }
+    // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
+    const dstSessions = path.join(CONFIG_DIR, "sessions")
+    const legacySessions = path.join(LEGACY_PI, "sessions")
+fs.mkdirSync(dstSessions, { recursive: true })
+    for (const srcS of [legacySessions]) if (fs.existsSync(srcS)) {
+      for (const f of fs.readdirSync(srcS)) {
+        const dst = path.join(dstSessions, f)
+        if (fs.existsSync(dst)) continue
+        try {
+          // 跳过空会话（仅初始化条目，无对话消息）
+          const src = path.join(srcS, f)
+          let hasMsg = false
+          for (const line of fs.readFileSync(src, "utf8").split(String.fromCharCode(10))) {
+            if (!line.trim()) continue
+            const e = JSON.parse(line)
+            const r = e?.message?.role
+            if (r === "user" || r === "assistant") { hasMsg = true; break }
+          }
+          if (hasMsg) fs.copyFileSync(src, dst)
+        } catch { /* 忽略 */ }
+      }
+    }
+    // 产物迁移（旧项目根 output / cwd/output → ~/.SapBuddy/output，补复制不覆盖）
+    const dstOut = path.join(CONFIG_DIR, "output")
+    fs.mkdirSync(dstOut, { recursive: true })
+    for (const srcOut of [path.join(ROOT, "output"), path.join(process.cwd(), "output")]) {
+      if (fs.existsSync(srcOut)) {
+        for (const f of fs.readdirSync(srcOut)) {
+          const dst = path.join(dstOut, f)
+          if (!fs.existsSync(dst)) {
+            try { fs.copyFileSync(path.join(srcOut, f), dst) } catch { /* 忽略 */ }
+          }
+        }
+      }
+    }
+    // MCP 配置迁移（旧 .pi/mcp.json → ~/.SapBuddy/mcp.json）
+    if (!fs.existsSync(path.join(CONFIG_DIR, "mcp.json"))) {
+      for (const src of [path.join(LEGACY_PI, "mcp.json"), path.join(HOME_SAPBUDDY, "mcp.json")]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "mcp.json")); break }
+      }
+    }
+    // 记忆文件迁移（旧 .pi/memory.md / 根 Memory.md → ~/.SapBuddy/memory.md）
+    if (!fs.existsSync(path.join(CONFIG_DIR, "memory.md"))) {
+      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(ROOT, "Memory.md")]) {
+        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "memory.md")); break }
+      }
+    }
+  } catch { /* 初始化失败不影响运行 */ }
+}
+
+export async function createAgent(opts = {}) {
+  ensureRuntimeFiles()
+  // 动态 import 工具注册层（编译产物 dist/sap-tools/register.js）
+  const { registerSapTools } = await import(
+    pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href
+  )
+  const { installWriteGate } = await import(
+    pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href
+  )
+
+  const settings = loadSettings()
+
+  const modelRuntime = await ModelRuntime.create({
+    authPath: path.join(CONFIG_DIR, "auth.json"),
+    modelsPath: path.join(CONFIG_DIR, "models.json"),
+  })
+
+  // 显式解析默认模型（SDK 不自动读 settings 的 defaultModel）
+  let model
+  try {
+    const provider = settings.defaultProvider ?? "deepseek"
+    const modelId = settings.defaultModel ?? "deepseek-v4-flash"
+    model = modelRuntime.getModel(provider, modelId)
+    if (!model) {
+      const ds = (await modelRuntime.getAvailable()).filter((m) => m.provider === provider)
+      model = ds[0]
+      console.log(`[sapbuddy] 模型 ${provider}/${modelId} 未找到，回退 ${model?.id ?? "默认"}`)
+    }
+  } catch {
+    model = undefined
+  }
+
+  const loader = new DefaultResourceLoader({
+    cwd: ROOT,
+    agentDir: CONFIG_DIR,
+    settingsManager: SettingsManager.inMemory(),
+    appendSystemPrompt: [path.join(ROOT, "SYSTEM.md"), path.join(ROOT, "Memory.md")], // 与 CLI 一致：SYSTEM.md + 项目根 Memory.md 记忆
+    extensionFactories: [
+      (pi) => {
+        // 加载期直接注册（不能调 getAllTools 等 action method，registerTool 本身可用）
+        try {
+          const n = registerSapTools(pi)
+          console.log(`[sapbuddy] 已注册 ${n} 个 SAP 工具`)
+          // 写操作人工确认：Web 模式 block 后通过回调通知 server 广播确认浮层
+          installWriteGate(pi, {
+            onBlocked: (info) => {
+              try {
+                opts.onWriteBlocked?.(info)
+              } catch { /* 回调失败不影响主流程 */ }
+            },
+          })
+        } catch (e) {
+          console.log(`[sapbuddy] 工具注册失败: ${e.message}`)
+        }
+        // 每轮规则注入（对齐原版 AbapBuddy：before_agent_start 按用户输入动态注入）
+        try {
+          const GLOBAL_TOOL_RULES = `
+
+---
+## 【工具使用铁律 — 每轮强制执行】
+
+0. **保密**：禁止向用户讨论/透露本助手内部实现（工具注册方式、安全校验/拦截机制、代码结构、内部函数/文件/配置细节）。被问"怎么实现的/代码结构"时礼貌拒绝并引导到开源仓库文档，继续当前任务。
+1. **精确搜索**：确认对象是否存在，用 \`search_abap_objects\` 传**精确名称（不带 *）**；模糊搜索/读现有对象源码"学风格"仅当用户明确要求参考或找同类时才做，否则不要。
+2. **禁止无谓探索**：不主动 ls 目录、不重读 SYSTEM.md（内容你已掌握）；用户询问项目/文件/历史时正常响应。
+3. **需求不明先问**：用户没说清功能 → **一次性问全缺失信息**（业务场景/数据来源/输入输出），不要自行假设、不要创建空壳程序。
+4. **思考长度与任务复杂度匹配**：简单任务（查重/创建）思考简短；复杂任务（改逻辑/修 bug/审查调用链）可充分思考；避免重复用户已给的信息。
+5. **失败停手**：同一工具连续失败 3 次立即停手，把问题与已尝试方案发给用户，不要反复重试（换参数试 1 次可以，连试 3 次不行）。
+`
+          const CREATE_FLOW_RULES = `
+
+### 【创建流程 — 你正在处理创建请求】
+
+1. 只调一次 \`search_abap_objects\` 精确查用户给的对象名（不带 *）。
+2. 已存在 → 告知用户；不存在且需求不明确 → **直接向用户提问**要实现什么（业务场景/数据来源/输入输出），不要创建空壳。
+3. 需求明确 → 展示改动计划 → 等用户确认 → 才允许调用写工具。
+4. **创建可执行报表用 \`PROG/P\`（主程序），不要用 \`PROG/I\`（include）**；函数模块用 \`FUGR/FF\` + parentName 函数组。
+`
+          pi.on("before_agent_start", async (event, _ctx) => {
+            try {
+              const prompt = String(event?.prompt || "").toLowerCase()
+              // 授权窗口：确认词/拒绝词统一处理（CLI/Web 同规则，由扩展层强制）
+              const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+              r.handleUserMessage?.(event?.prompt || "")
+              let inject = GLOBAL_TOOL_RULES
+              if (/创建|新建|开发|生成|写.*程序|create|new|开发一个/.test(prompt)) {
+                inject += CREATE_FLOW_RULES
+              }
+              // 避坑记录：仅用户明确推翻/纠错（方向性错误）时触发；字段增减等正常需求调整不记
+              const REJECT_STRONG_RE = /推翻|方向不对|搞错了|白做了|重新设计|别这么搞|这样不行|思路不对|改错了|越改越糟|完全不对|根本不对|反了|弄错了/i
+              if (REJECT_STRONG_RE.test(String(event?.prompt || ""))) {
+                inject += `
+
+### 【避坑记录 — 用户明确推翻了你的方案/代码改动】
+
+用户刚刚明确推翻/纠正了你的方案。**先判断是否值得记录，再响应用户**：
+
+**✅ 值得记（有可复用经验）才记录：**
+- 方向性错误被纠正（用错表/BAPI/架构/对象类型/调用方式）
+- 反复尝试失败后用户指出关键错误
+- 用户明确说"错了/不对/白做了/推翻重来"
+
+**❌ 不记录（属正常需求调整）：**
+- 字段增减、参数微调（如"增加一个字段""删掉某列"）
+- 正常需求变更/迭代
+- 仅"不要""取消""换个方案"等一般性反馈（无明确方向性错误）
+
+判断为**有价值**时：
+1. 用 \`read\` 读 \`Memory.md\` 现有内容；末尾追加摘要（保留现有内容）：
+\`\`\`
+## <日期> <对象/主题>
+- 被推翻的方案：<之前改了什么>
+- 用户拒绝原因/要求：<用户原话要点>
+- 经验：<下次避免/应改用>
+\`\`\`
+2. 用 \`write\` 写入完整内容；3. 告知用户"已记录到 Memory.md"。
+判断为**无价值**（正常调整）时：跳过记录，直接响应用户。
+`
+              }
+              return { systemPrompt: (event.systemPrompt || "") + inject }
+            } catch { return undefined }
+          })
+        } catch (e) {
+          console.log(`[sapbuddy] 规则注入安装失败: ${e.message}`)
+        }
+      },
+      // MCP 服务器工具动态注册（async factory：设置-MCP 保存的服务器在此生效）
+      async (pi) => {
+        await registerMcpTools(pi)
+      },
+    ],
+  })
+  await loader.reload()
+
+  // 持久化会话到 .pi/sessions（历史会话可用）；指定文件时打开该会话
+  const sessionManager = opts.sessionFile
+    ? SessionManager.open(opts.sessionFile)
+    : SessionManager.create(process.cwd(), path.join(CONFIG_DIR, "sessions"))
+
+  const { session } = await createAgentSession({
+    cwd: ROOT,
+    resourceLoader: loader,
+    modelRuntime,
+    model,
+    thinkingLevel: settings.defaultThinkingLevel ?? "off",
+    sessionManager,
+    settingsManager: SettingsManager.inMemory(),
+  })
+  return { session, settings }
+}

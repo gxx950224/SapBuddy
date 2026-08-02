@@ -14,15 +14,7 @@ import path from "node:path"
 import fs from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
-// 发布版优先用 dist/agent-core.mjs（混淆产物），本地开发 fallback 到 src 明文版
-let agentCore
-const distCore = new URL("./dist/agent-core.mjs", import.meta.url)
-try {
-  agentCore = await import(distCore.href)
-} catch {
-  agentCore = await import("./src/agent-core.mjs")
-}
-const { createAgent, loadAuth, loadSettings, ROOT } = agentCore
+import { createAgent, loadAuth, loadSettings, ROOT } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)

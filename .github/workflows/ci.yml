@@ -22,7 +22,7 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      # dist/ 混淆产物已入库（扩展代码加密，src/sap-tools 源码不入库），无需 build
+      - run: npm run build
       - run: npm test
 
   publish:
@@ -37,7 +37,7 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: npm ci
-      # 发布物使用已入库的混淆 dist（prepublishOnly 仅跑测试）
+      - run: npm run build
       - run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
