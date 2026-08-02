@@ -160,20 +160,27 @@ async function cmdChat() {
       lines.push("", sepLine(), ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset)
       lines.push(mdToAnsi(reply))
     }
-    const rows = (process.stdout.rows || 30) - 6
-    if (lines.length > rows) return lines.slice(-rows).join("\n")
-    return lines.join("\n")
+    return lines
   }
 
   function render() {
+    const rows = process.stdout.rows || 30
+    const cols = process.stdout.columns || 100
     let out = "\x1b[2J\x1b[H"
-    out += statusBar() + "\n"
-    out += ANSI.dim + "  Ctrl+C 停止/退出 · ↑↓ 历史 · /help 帮助 · /tools 工具 · /compact 压缩 · /clear 清屏" + ANSI.reset + "\n\n"
-    out += messagesBlock() + "\n\n"
-    out += sepLine() + "\n"
-    out += "❯ " + inputBuf
+    // 顶部：SAPBUDDY 图标
+    out += renderBanner()
+    // 消息区（logo 下方 → 输入行上方，视口裁剪）
+    const all = messagesBlock()
+    const avail = Math.max(3, rows - 12) // logo 7 + 输入 1 + 状态 1 + 分隔 1 + 边距
+    if (all.length > avail) out += all.slice(-avail).join("\n") + "\n"
+    else out += all.join("\n") + "\n"
+    out += "\n" + sepLine() + "\n"
+    // 输入行（倒数第 2 行）
+    out += "❯ " + inputBuf + "\n"
+    // 最底部：状态栏
+    out += statusBar()
     process.stdout.write(out)
-    const row = process.stdout.rows || 30
+    const row = rows - 1
     const col = 3 + visibleLen(inputBuf).length
     process.stdout.write("\x1b[" + row + ";" + col + "H")
   }
