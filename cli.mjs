@@ -12,6 +12,7 @@
  */
 import path from "node:path"
 import fs from "node:fs"
+import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { createAgent, loadAuth, loadSettings } from "./src/agent-core.mjs"
 
@@ -44,14 +45,15 @@ async function cmdDoctor() {
   console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 ~/.SapBuddy/auth.json）"}`)
   const settings = loadSettings()
   console.log(`默认模型: ${settings.defaultProvider ?? "deepseek"}/${settings.defaultModel ?? "deepseek-v4-flash"}`)
-  const confPath = path.join(process.cwd(), "connections.json")
-  if (fs.existsSync(confPath)) {
+  // 连接检查：~/.SapBuddy/connections.json 优先，兼容项目根
+  const confPath = [path.join(os.homedir(), ".SapBuddy", "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
+  if (confPath) {
     try {
       const conf = JSON.parse(fs.readFileSync(confPath, "utf8"))
-      console.log(`SAP 连接: ✅ ${conf.connections?.length ?? 0} 个已配置`)
+      console.log(`SAP 连接: ✅ ${conf.connections?.length ?? 0} 个已配置（${confPath}）`)
     } catch { console.log("SAP 连接: ⚠️ connections.json 格式错误") }
   } else {
-    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json）")
+    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json 为 ~/.SapBuddy/connections.json）")
   }
 }
 
