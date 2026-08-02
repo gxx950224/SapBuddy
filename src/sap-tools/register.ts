@@ -80,7 +80,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
   pi.on("tool_call" as never, async (event: { toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
     const name = event?.toolName
     if (!name) return
-    // ── 生成源码路径强制规则：ABAP 源码必须保存到 .SapBuddy/output/（相对路径 output/）──
+    // ── 生成源码路径强制规则：ABAP 源码必须保存到 output/<程序名>/ 子目录（按程序建文件夹，不平铺）──
     if ((name === "write" || name === "edit")) {
       const input = (event.input ?? {}) as Record<string, unknown>
       const p = String(input.path ?? input.file ?? "").replace(/\\/g, "/")
@@ -88,12 +88,27 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       const isAbap = lower.endsWith(".abap")
       const inOutput =
         lower.startsWith("output/") || lower.includes("/output/") || lower.includes(".sapbuddy/output")
-      if (isAbap && !inOutput) {
-        return {
-          block: true,
-          reason:
-            `⛔ 生成的 ABAP 源码必须统一保存到 output/ 目录（相对路径 .SapBuddy/output/），不要写到其他位置（如 ${p || "当前路径"}）。\n` +
-            `请用 write 工具写入 output/<程序名>.abap（文件不存在会自动创建）。`,
+      if (isAbap) {
+        // output 后必须带程序名子目录（如 output/ZAIR010/ZAIR010.abap），禁止平铺 output/根
+        const after = lower.includes("/output/")
+          ? lower.split("/output/").pop() || ""
+          : lower.replace(/^output\//, "")
+        const hasSubdir = after.includes("/")
+        if (!inOutput) {
+          return {
+            block: true,
+            reason:
+              `⛔ 生成的 ABAP 源码必须统一保存到 output/ 目录（相对路径 .SapBuddy/output/），不要写到其他位置（如 ${p || "当前路径"}）。\n` +
+              `请用 write 工具写入 output/<程序名>/<程序名>.abap（文件不存在会自动创建）。`,
+          }
+        }
+        if (!hasSubdir) {
+          return {
+            block: true,
+            reason:
+              `⛔ 生成的 ABAP 源码必须按程序名建文件夹：output/<程序名>/<程序名>.abap（如 output/ZAIR010/ZAIR010.abap），不要平铺在 output/ 根目录。\n` +
+              `请用 write 工具写入 output/<程序名>/<程序名>.abap（目录不存在会自动创建）。`,
+          }
         }
       }
       // ── 审查 HTML 报告需人工确认（代码审查产物，先展示结论再生成）──
