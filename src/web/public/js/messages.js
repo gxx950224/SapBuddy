@@ -67,15 +67,35 @@
     return state.currentAssistantEl;
   };
 
-  // 思考折叠区（Claude 风格：灰块可折叠）
+  // 思考折叠区（Claude 风格：灰块可折叠，默认收起）
   function ensureThinkWrap(container) {
     if (container._thinkWrap) return container._thinkWrap;
     const det = document.createElement("details");
     det.className = "agent-think";
     det.innerHTML = "<summary>💭 思考过程</summary><div class='agent-think-body'></div>";
+    det.open = false;
     container.prepend(det);
     container._thinkWrap = det;
+    container._thinkLen = 0;
     return det;
+  }
+
+  // 思考字数（中英混合估算）
+  function countChars(s) {
+    if (!s) return 0;
+    const cjk = (s.match(/[\u4e00-\u9fa5]/g) || []).length;
+    return cjk + Math.round((s.length - cjk) / 3);
+  }
+
+  function updateThinkSummary(det) {
+    const n = countChars(containerText(det));
+    det.querySelector("summary").textContent =
+      "💭 思考过程" + (n > 0 ? " · " + (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n) + " 字（点击展开）" : "");
+  }
+  function containerText(det) {
+    let t = "";
+    det.querySelectorAll(".think-seg").forEach((s) => { t += s.textContent });
+    return t;
   }
 
   // 工具调用链（Claude 风格：内联在回复前）
@@ -113,6 +133,7 @@
       body.appendChild(state.currentThinkSeg);
     }
     state.currentThinkSeg.textContent = text;
+    updateThinkSummary(det);
     App.scrollToBottom();
   };
 
