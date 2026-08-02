@@ -148,7 +148,7 @@ test("配置文件禁止 AI 读取：glob/grep 命中敏感文件名也被拦截
 })
 
 test("配置文件拦截：普通 output 文件不受影响", async () => {
-  const r = await triggerWriteGate({ path: "output/ZAIR010/ZAIR010.abap" })
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR010/ZAIR010.abap" })
   // 配置文件拦截不触发；但 .abap 平铺/目录规则可能拦，这里断言不是"配置文件"拦截即可
   assert.ok(!(r?.reason ?? "").includes("配置文件"), "普通输出文件不应报配置文件拦截")
 })
@@ -174,32 +174,69 @@ test("自身源码拦截：Memory.md 避坑记录仍允许写", async () => {
 })
 
 test("自身源码拦截：output 产物与 .SapBuddy/skills 不受影响", async () => {
-  for (const f of ["output/ZAIR010/ZAIR010.abap", ".SapBuddy/skills/clean-abap/rule.md"]) {
+  for (const f of [".SapBuddy/output/ZAIR010/ZAIR010.abap", ".SapBuddy/skills/clean-abap/rule.md"]) {
     const r = await triggerWriteGate({ path: f })
     assert.ok(!(r?.reason ?? "").includes("自身源码"), `${f} 不应被自身代码拦截`)
   }
 })
 
 // ── 程序相关文件路径强制（installWriteGate：Z*/Y* 程序相关文件须按程序名建子目录）────
-test("审查报告平铺被拦截：output/ZAIR004_CodeReview.html", async () => {
-  const r = await triggerWriteGate({ path: "output/ZAIR004_CodeReview.html" }, "write")
+test("审查报告平铺被拦截：.SapBuddy/output/ZAIR004_CodeReview.html", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR004_CodeReview.html" }, "write")
   assert.equal(r?.block, true)
   assert.ok((r?.reason ?? "").includes("按程序名建文件夹"), `实际: ${r?.reason?.slice(0, 80)}`)
 })
 
 test("审查报告带子目录放行到确认环节", async () => {
-  const r = await triggerWriteGate({ path: "output/ZAIR004/ZAIR004_CodeReview.html" }, "write")
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR004/ZAIR004_CodeReview.html" }, "write")
   assert.ok((r?.reason ?? "").includes("人工确认"), `应进入确认环节，实际: ${r?.reason?.slice(0, 80)}`)
   assert.ok(!(r?.reason ?? "").includes("建文件夹"), "带子目录不应报路径拦截")
 })
 
-test("程序相关文档平铺被拦截：output/ZAIR004_flowchart.md", async () => {
-  const r = await triggerWriteGate({ path: "output/ZAIR004_flowchart.md" }, "write")
+test("程序相关文档平铺被拦截：.SapBuddy/output/ZAIR004_flowchart.md", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR004_flowchart.md" }, "write")
   assert.equal(r?.block, true)
   assert.ok((r?.reason ?? "").includes("按程序名建文件夹"), `实际: ${r?.reason?.slice(0, 80)}`)
 })
 
-test("程序无关通用文件允许平铺：output/README.md", async () => {
-  const r = await triggerWriteGate({ path: "output/README.md" }, "write")
+test("程序无关通用文件允许平铺：.SapBuddy/output/README.md", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/README.md" }, "write")
   assert.ok(!(r?.reason ?? "").includes("按程序名建文件夹"), "通用文件不应被程序目录规则拦截")
+})
+
+// ── 路径拦截提示必须直接给出正确目标路径（避免 AI 反复猜路径影响体验）────
+test("审查报告平铺拦截：提示给出正确路径 .SapBuddy/output/ZPPR085/ZPPR085_CodeReview.html", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZPPR085_CodeReview.html" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZPPR085/ZPPR085_CodeReview.html"), `应给出正确路径，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("源码平铺拦截：提示给出正确路径 .SapBuddy/output/ZAIR010/ZAIR010.abap", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR010.abap" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZAIR010/ZAIR010.abap"), `应给出正确路径，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("流程图平铺拦截：提示给出正确路径 .SapBuddy/output/ZAIR004/ZAIR004_flowchart.md", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR004_flowchart.md" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZAIR004/ZAIR004_flowchart.md"), `应给出正确路径，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("类文件平铺拦截：下划线类名不误拆 .SapBuddy/output/ZCL_FOO/ZCL_FOO.abap", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/output/ZCL_FOO.abap" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZCL_FOO/ZCL_FOO.abap"), `类名应整体作为子目录，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("写错目录（非 .SapBuddy/output）拦截：提示给出正确路径", async () => {
+  const r = await triggerWriteGate({ path: "deliverables/ZPPR085_CodeReview.html" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZPPR085/ZPPR085_CodeReview.html"), `应给出正确路径，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("项目根 output/ 不再接受：要求改到 .SapBuddy/output（统一唯一输出目录）", async () => {
+  const r = await triggerWriteGate({ path: "output/ZPPR085_CodeReview.html" }, "write")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZPPR085/ZPPR085_CodeReview.html"), `应提示改到 .SapBuddy/output，实际: ${r?.reason?.slice(0, 120)}`)
 })

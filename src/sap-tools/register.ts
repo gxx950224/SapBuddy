@@ -87,6 +87,14 @@ export function namespaceViolation(input: unknown): string {
   return ""
 }
 
+/** 从文件名推断程序名（用于 output/<程序名>/ 子目录提示，让拦截后可直接照抄正确路径）：
+ * ZPPR085_CodeReview.html → ZPPR085；ZAIR010.abap → ZAIR010；ZCL_FOO.abap → ZCL_FOO */
+function inferProgramDir(basename: string): string {
+  let stem = basename.replace(/\.(abap|md|html|txt|json|xml|yaml|yml)$/i, "")
+  stem = stem.replace(/_(CodeReview|code_review|flowchart|flow_chart|review)(_\d+)?$/i, "")
+  return stem
+}
+
 /**
  * 安装写操作拦截器（pi tool_call 事件）
  * - TUI/CLI：ctx.ui.confirm 原生确认弹窗
@@ -143,14 +151,14 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     if ((name === "write" || name === "edit")) {
       const isAbap = lower.endsWith(".abap")
       const isReviewHtml = /_CodeReview\.html$/i.test(lower) || /_code_review\.html$/i.test(lower)
-      const inOutput =
-        lower.startsWith("output/") || lower.includes("/output/") || lower.includes(".sapbuddy/output")
-      // output 后必须带程序名子目录（如 output/ZAIR010/ZAIR010.abap），禁止平铺 output/根
-      const after = lower.includes("/output/")
-        ? lower.split("/output/").pop() || ""
-        : lower.replace(/^output\//, "")
-      const hasSubdir = after.includes("/")
-      const basename = after.split("/").pop() || ""
+      // 唯一输出目录：.SapBuddy/output（Web 产物树读此目录；项目根 output/ 是旧位置，不再接受）
+      const inOutput = lower.includes(".sapbuddy/output/")
+      // .SapBuddy/output 后必须带程序名子目录（如 .SapBuddy/output/ZAIR010/ZAIR010.abap），禁止平铺根目录
+      const afterLower = lower.split(".sapbuddy/output/").pop() || ""
+      const hasSubdir = afterLower.includes("/")
+      // 提示用原始大小写 basename，确保建议路径保留程序名大小写（ZPPR085 而非 zppr085）
+      const afterOrig = p.split(".SapBuddy/output/").pop() || p.split(".sapbuddy/output/").pop() || ""
+      const basename = afterOrig.split("/").pop() || ""
       // 程序相关 = 文件名以 Z*/Y* 开头（程序源码、审查报告、流程图等）；与程序无关的通用文件（README 等）才可平铺
       const programRelated = /^[ZY][a-z0-9_]*/i.test(basename) || isAbap
       if (programRelated) {
@@ -158,16 +166,17 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
           return {
             block: true,
             reason:
-              `⛔ 跟程序相关的文件必须统一保存到 output/ 目录（相对路径 .SapBuddy/output/），不要写到其他位置（如 ${p || "当前路径"}）。\n` +
-              `请用 write 工具写入 output/<程序名>/<文件名>（目录不存在会自动创建）。`,
+              `⛔ 跟程序相关的文件必须统一保存到 .SapBuddy/output/ 目录，不要写到其他位置（如 ${p || "当前路径"}）。\n` +
+              `请用 write 工具直接写入正确路径：.SapBuddy/output/${inferProgramDir(basename)}/${basename}（目录不存在会自动创建）。`,
           }
         }
         if (!hasSubdir) {
           return {
             block: true,
             reason:
-              `⛔ 跟程序相关的文件必须按程序名建文件夹：output/<程序名>/<文件名>（如 output/ZAIR010/ZAIR010.abap、output/ZAIR010/ZAIR010_CodeReview.html），不要平铺在 output/ 根目录。\n` +
-              `与程序无关的通用文件（如 README、说明文档）才可平铺在 output/ 根目录。`,
+              `⛔ 跟程序相关的文件必须按程序名建文件夹，不要平铺在 .SapBuddy/output/ 根目录（已拦截）：${p}\n` +
+              `请改为写入：.SapBuddy/output/${inferProgramDir(basename)}/${basename}（目录不存在会自动创建）。\n` +
+              `与程序无关的通用文件（如 README、说明文档）才可平铺在 .SapBuddy/output/ 根目录。`,
           }
         }
       }
