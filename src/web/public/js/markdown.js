@@ -13,6 +13,12 @@
 
     let text = src.replace(/\r\n/g, "\n");
 
+    // Mermaid 图：```mermaid\n...``` → 渲染为图表（由 App.renderMermaid 异步渲染）
+    text = text.replace(/^```mermaid\s*\n([\s\S]*?)^```\s*$/gm, (m, code) => {
+      const clean = code.replace(/\n$/, "");
+      return "\n\n" + stashBlock('<div class="mermaid" data-code="' + encodeURIComponent(clean) + '"><pre><code>' + escapeHtml(clean) + '</code></pre></div>') + "\n\n";
+    });
+
     // 代码块 ```lang\n...```
     text = text.replace(/^```(\w*)\n([\s\S]*?)^```\s*$/gm, (m, lang, code) => {
       const blockId = 'code-' + Math.random().toString(36).slice(2, 8);
@@ -63,6 +69,11 @@
 
     // 还原块
     text = text.replace(/\x01(\d+)\x02/g, (m, i) => blocks[+i]);
+
+    // 渲染 Mermaid 图（DOM 插入后异步执行）
+    if (/class="mermaid"/.test(text)) {
+      setTimeout(() => App.renderMermaid(document.body), 0);
+    }
     return text;
 
     function inlineMd(s) {
@@ -73,5 +84,43 @@
       r = r.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
       return r;
     }
+  };
+
+  /**
+   * 渲染容器内所有未渲染的 .mermaid 节点
+   * 首次调用初始化 mermaid（theme 跟随页面主题），渲染失败降级显示源码
+   */
+  App.renderMermaid = function(container) {
+    if (!container) return;
+    if (typeof window.mermaid === "undefined") return;
+    const nodes = container.querySelectorAll(".mermaid[data-code]:not([data-rendered])");
+    if (!nodes.length) return;
+    try {
+      if (!window.mermaid.initialize) {
+        // v10+：mermaid 自动初始化，设置主题
+        window.mermaid.initialize({ startOnLoad: false, theme: App.isDark?.() ? "dark" : "default", securityLevel: "loose", flowchart: { useMaxWidth: true } });
+      }
+    } catch { /* 忽略 */ }
+    nodes.forEach((el) => {
+      const code = decodeURIComponent(el.dataset.code || "");
+      try {
+        window.mermaid.parse(code);
+        const id = "mermaid-" + Math.random().toString(36).slice(2, 8);
+        window.mermaid.render(id, code).then(({ svg }) => {
+          if (svg) {
+            el.innerHTML = svg;
+            el.dataset.rendered = "1";
+          }
+        }).catch((err) => {
+          el.dataset.rendered = "1";
+          el.classList.add("mermaid-error");
+          el.setAttribute("title", "Mermaid 渲染失败: " + (err && err.message ? err.message : String(err)));
+        });
+      } catch (err) {
+        el.dataset.rendered = "1";
+        el.classList.add("mermaid-error");
+        el.setAttribute("title", "Mermaid 渲染失败: " + (err && err.message ? err.message : String(err)));
+      }
+    });
   };
 })();

@@ -1540,3 +1540,28 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   color: #fff; background: var(--error); border-color: var(--error);
 }
 #confirm-ok.danger:hover { background: var(--error-hover, #dc2626); border-color: var(--error-hover, #dc2626); }
+
+/* ── Mermaid 图 ── */
+.mermaid {
+  margin: 10px 0;
+  text-align: center;
+  overflow-x: auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.04);
+}
+.mermaid pre {
+  text-align: left;
+  font-size: 12px;
+  opacity: 0.8;
+}
+.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.mermaid-error {
+  border: 1px dashed var(--err, #e5484d);
+  border-radius: 6px;
+  cursor: help;
+}
+.mermaid-error pre { margin: 0; }
