@@ -817,14 +817,16 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card.expanded .tool-caret { transform: rotate(90deg); }
  .tool-card .tool-body {
   border-top: 1px solid var(--border);
-  padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
+  padding: 2px 8px; font-family: var(--font-mono); font-size: 11px; line-height: 1.4;
   white-space: pre-wrap; word-break: break-word;
-  max-height: 50px; overflow-y: auto; color: var(--text-dim);
+  max-height: 100px; overflow-y: auto; color: var(--text-dim);
   display: none;
 }
 .tool-card.expanded .tool-body { display: block; }
+.tool-card .tool-body:empty { display: none; }
+.tool-card.expanded .tool-body { display: block; }
 .tool-code { margin: 0; padding: 0; background: transparent; border: none; white-space: pre; color: var(--text); }
-.tool-code code { font-family: var(--font-mono); font-size: 12px; line-height: 1.6; }
+.tool-code code { font-family: var(--font-mono); font-size: 11px; line-height: 1.4; }
 
 .spinner {
   display: inline-block; width: 10px; height: 10px;
@@ -1754,13 +1756,13 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   white-space: pre-wrap;
   max-height: 520px; overflow-y: auto;
 }
-.agent-think-body .agent-tools { margin-top: 8px; }
-.agent-think-body .agent-tools .tool-card { margin-bottom: 4px; }
+.agent-think-body .agent-tools { margin-top: 4px; }
+.agent-think-body .agent-tools .tool-card { margin-bottom: 2px; }
 
 /* 工具调用链（助手消息内，回复文本前） */
 .agent-tools {
-  display: flex; flex-direction: column; gap: 6px;
-  margin: 6px 0 10px;
+  display: flex; flex-direction: column; gap: 4px;
+  margin: 4px 0 6px;
   max-width: 880px;
 }
 .agent-tools .tool-card {
