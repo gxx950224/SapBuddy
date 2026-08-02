@@ -1576,7 +1576,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   gap: 6px;
   opacity: 0;
   transition: opacity 0.15s ease;
-  z-index: 5;
+  z-index: 50;
 }
 .mermaid:hover .mermaid-toolbar { opacity: 1; }
 .mermaid-toolbar button {
@@ -1592,21 +1592,21 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 
 #mermaid-overlay {
   position: fixed; inset: 0; z-index: 20000;
-  background: rgba(0,0,0,0.65);
+  background: rgba(0,0,0,0.85);
   display: none;
   align-items: center; justify-content: center;
-  padding: 24px;
+  padding: 0;
 }
 #mermaid-overlay.open { display: flex; }
 #mermaid-lightbox {
   background: var(--bg-panel, #1e1e2e);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  max-width: 94vw;
-  max-height: 90vh;
+  border: none;
+  border-radius: 0;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  box-shadow: none;
 }
 #mermaid-lightbox-head {
   display: flex; align-items: center; gap: 10px;
@@ -1616,10 +1616,11 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   color: var(--text);
 }
 #mermaid-lightbox-body {
-  padding: 18px;
+  flex: 1;
+  padding: 24px;
   overflow: auto;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
 }
 #mermaid-lightbox-body svg { max-width: 100%; height: auto; }

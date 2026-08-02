@@ -197,31 +197,28 @@
     }
   }
 
-  // lightbox 关闭
+  // lightbox 关闭/复制：事件委托（markdown.js 先于 overlay div 加载，委托不受 DOM 顺序影响）
   document.addEventListener("click", (e) => {
     const overlay = document.getElementById("mermaid-overlay");
     if (!overlay) return;
-    if (e.target === overlay) overlay.classList.remove("open");
-  });
-  const closeBtn = document.getElementById("mermaid-lightbox-close");
-  if (closeBtn) closeBtn.addEventListener("click", () => {
-    const o = document.getElementById("mermaid-overlay");
-    if (o) o.classList.remove("open");
-  });
-  const copyBtn = document.getElementById("mermaid-lightbox-copy");
-  if (copyBtn) copyBtn.addEventListener("click", () => {
-    const overlay = document.getElementById("mermaid-overlay");
-    const body = document.getElementById("mermaid-lightbox-body");
-    const svgEl = body?.querySelector("svg");
-    // 从 lightbox 的 svg 回找源码：存于 sourceEl 引用
-    const src = overlay?._mermaidRaw;
-    if (src) {
+    if (e.target === overlay) { overlay.classList.remove("open"); return; }
+    // 关闭按钮
+    if (e.target.closest("#mermaid-lightbox-close")) {
+      overlay.classList.remove("open");
+      return;
+    }
+    // 复制按钮
+    if (e.target.closest("#mermaid-lightbox-copy")) {
+      const src = overlay._mermaidRaw;
+      if (!src) return;
       App.copyText(src).then(() => {
-        const old = copyBtn.textContent;
-        copyBtn.textContent = "\u2713 \u5DF2\u590D\u5236";
-        setTimeout(() => { copyBtn.textContent = old; }, 1500);
+        const btn = document.getElementById("mermaid-lightbox-copy");
+        if (!btn) return;
+        const old = btn.innerHTML;
+        btn.innerHTML = "\u2713 \u5DF2\u590D\u5236";
+        setTimeout(() => { btn.innerHTML = old; }, 1500);
       });
-    } else if (svgEl) { /* 无源码时忽略 */ }
+    }
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
