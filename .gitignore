@@ -29,3 +29,4 @@ Thumbs.db
 # 旧版项目根产物与连接（已迁移到 .SapBuddy，防误提交）
 output/
 connections.json
+.SapBuddy/sessions-test/
