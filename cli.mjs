@@ -97,6 +97,32 @@ function renderBanner() {
   return "\n" + rows.join("\n") + "\n"
 }
 
+// ── pi 风格：markdown → ANSI 彩色（无状态，安全闭合） ──
+const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", magenta: "\x1b[35m", red: "\x1b[31m", blue: "\x1b[34m" }
+function esc(s) { return String(s ?? "").replace(/\x1b/g, "") }
+function mdToAnsi(text) {
+  let out = esc(text)
+  // 代码块 → 青色 + 缩进标记
+  out = out.replace(/^```[\w-]*\n?([\s\S]*?)\n?```$/gm, (m, code) => ANSI.cyan + code.replace(/^/gm, "  │ ") + ANSI.reset)
+  out = out.replace(/^```[\w-]*$/gm, "")
+  // 标题 → 青色粗体
+  out = out.replace(/^(#{1,4})\s+(.+)$/gm, (m, h, t) => ANSI.cyan + ANSI.bold + t + ANSI.reset)
+  // 粗体
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, ANSI.bold + "$1" + ANSI.reset)
+  // 行内代码 → 绿色
+  out = out.replace(/`([^`\n]+)`/g, ANSI.green + "$1" + ANSI.reset)
+  // 列表
+  out = out.replace(/^\s*[-*]\s+(.+)$/gm, "  " + ANSI.yellow + "•" + ANSI.reset + " $1")
+  // 引用
+  out = out.replace(/^>\s?(.+)$/gm, ANSI.dim + "│ $1" + ANSI.reset)
+  return out
+}
+// 轮次分隔线（终端宽度）
+function sepLine() {
+  const w = process.stdout.columns || 80
+  return ANSI.dim + "─".repeat(Math.min(w, 100)) + ANSI.reset
+}
+
 
 async function cmdChat() {
   // 启动页：ASCII art + 作者/模型/当前目录
@@ -120,6 +146,12 @@ async function cmdChat() {
     m.createInterface({ input: process.stdin, output: process.stdout })
   )
   let streaming = false
+
+  // stdin 关闭（管道 EOF）：优雅退出
+  readline.on("close", () => {
+    process.stdout.write("\n👋 再见\n")
+    process.exit(0)
+  })
 
   // Ctrl+C：流式中停止当前生成；空闲时退出
   readline.on("SIGINT", async () => {
@@ -146,8 +178,39 @@ async function cmdChat() {
     /help       帮助
   `
 
+  // 会话历史（用于重绘）
+  const history = []
+  let promptPrefix = "❯"
+
+  // 全屏重绘：标题 + 历史消息 + 分隔 + 输入提示
+  function drawAll() {
+    process.stdout.write("\x1bc")
+    console.log(renderBanner())
+    console.log("  models: " + ((loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash")))
+    console.log(ANSI.dim + "  " + process.cwd() + ANSI.reset)
+    for (const h of history) {
+      if (h.role === "user") {
+        console.log()
+        console.log(sepLine())
+        console.log(ANSI.bold + "❯ " + ANSI.reset + esc(h.text))
+      } else {
+        console.log()
+        console.log(sepLine())
+        console.log(ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset)
+        console.log(mdToAnsi(h.text))
+      }
+    }
+    console.log()
+    console.log(sepLine())
+    const stat = ANSI.dim + " 模型: " + ((loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash")) +
+      " · 消息: " + history.length + " · 上下文: /compact" + ANSI.reset
+    console.log(stat)
+    console.log()
+  }
+
   const ask = () => {
-    readline.question("\n❯ ", async (input) => {
+    if (readline.closed) return
+    readline.question(promptPrefix + " ", async (input) => {
       const t = input.trim()
       if (!t) return ask()
 
@@ -163,6 +226,8 @@ async function cmdChat() {
           await cmdTools()
           return ask()
         case "/help":
+        case "--help":
+        case "-h":
           console.log(helpText)
           return ask()
         case "/clear":
