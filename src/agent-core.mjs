@@ -120,12 +120,6 @@ export function ensureRuntimeFiles() {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "mcp.json")); break }
       }
     }
-    // 记忆文件迁移（旧 .pi/memory.md / 根 Memory.md → ~/.SapBuddy/memory.md）
-    if (!fs.existsSync(path.join(CONFIG_DIR, "memory.md"))) {
-      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(ROOT, "Memory.md")]) {
-        if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "memory.md")); break }
-      }
-    }
   } catch { /* 初始化失败不影响运行 */ }
 }
 
