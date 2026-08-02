@@ -168,25 +168,24 @@ export function scanCodeViolations(code: string): string[] {
 
     // 2) 裸内置类型：TYPE string / TYPE i / TYPE char1 / TYPE c / TYPE n / TYPE p / TYPE int4 等
     //    排除：TYPE REF TO、TYPE TABLE OF、TYPE LINE OF、TYPE abap_*（ABAP 内建元素）、TYPE sy-*
-    const typeMatches = noComment.match(/TYPE\s+(REF\s+TO|TABLE\s+OF|LINE\s+OF|STANDARD\s+TABLE|SORTED\s+TABLE|HASHED\s+TABLE)/i)
-    if (typeMatches) {
-      // 复合类型声明，跳过（行内可能有多个 TYPE）
-    }
-    const bareType = noComment.match(/TYPE\s+([a-z]\w*)/i)
-    if (bareType && !noComment.match(/TYPE\s+(REF|TABLE|LINE|STANDARD|SORTED|HASHED)\s+/i)) {
-      const t = bareType[1].toLowerCase()
-      const banned = new Set([
-        "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
-        "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
-        "char10", "char12", "char20", "char30", "char40", "char50", "char60",
-        "char80", "char100", "char120", "char132", "char133", "char200", "char255",
-        "numc2", "numc3", "numc4", "numc5", "numc6", "numc8", "numc10",
-        "dats", "tims", "tstmp", "raw", "rawstring", "unit", "curr", "quan",
-      ])
+    const compositeRe = /TYPE\s+(REF|TABLE|LINE|STANDARD|SORTED|HASHED)\s+/i
+    const banned = new Set([
+      "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
+      "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
+      "char10", "char12", "char20", "char30", "char40", "char50", "char60",
+      "char80", "char100", "char120", "char132", "char133", "char200", "char255",
+      "numc2", "numc3", "numc4", "numc5", "numc6", "numc8", "numc10",
+      "dats", "tims", "tstmp", "raw", "rawstring", "unit", "curr", "quan",
+    ])
+    // 一行内可能有多个 TYPE（如 DATA: a TYPE i, b TYPE string.）→ 全部检查
+    const typeTokens = noComment.matchAll(/TYPE\s+([a-z]\w*)/gi)
+    for (const m of typeTokens) {
+      const t = m[1].toLowerCase()
       if (banned.has(t)) {
         violations.push(`第 ${i + 1} 行：裸内置类型 TYPE ${t.toUpperCase()}（必须使用 DDIC 数据元素/结构，找不到标准元素时创建 Z 数据元素 + 域）`)
       }
     }
+    // 复合类型声明行单独跳过（避免误报 TYPE 后跟 REF/TABLE 等）——matchAll 已按 token 判断，此处无需额外处理
   }
   return violations
 }

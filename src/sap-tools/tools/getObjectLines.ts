@@ -50,8 +50,8 @@ export const getObjectLinesTool = {
       let content = source
       let header = ""
 
-      // 方法提取（仅当 methodName 提供）
-      if (args.methodName && obj["adtcore:type"] === "CLAS") {
+      // 方法提取（仅当 methodName 提供；ADT 类型码为 CLAS/OC 带子类型）
+      if (args.methodName && String(obj["adtcore:type"]).startsWith("CLAS")) {
         const upper = args.methodName.toUpperCase()
         const startIdx = lines.findIndex((l) => l.trim().toUpperCase() === `METHOD ${upper}.`)
         if (startIdx === -1) {

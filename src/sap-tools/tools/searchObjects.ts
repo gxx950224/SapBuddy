@@ -40,24 +40,41 @@ export const searchObjectsTool = {
       const pattern = args.pattern.toUpperCase()
       const types = args.types && args.types.length > 0 ? args.types : [...DEFAULT_SEARCH_TYPES]
       const max = args.maxResults ?? 20
+      // 性能：常用类型优先并行查，命中即返回；未命中再并行查剩余类型（原串行最多 42 次往返）
+      const COMMON_TYPES = ["PROG", "CLAS", "INTF", "FUGR", "TABL", "DTEL", "DDLS", "DOMA", "TTYP", "MSAG", "DEVC", "FUNC"]
+      const ordered = COMMON_TYPES.filter((t) => types.includes(t)).concat(types.filter((t) => !COMMON_TYPES.includes(t)))
 
-      const results: string[] = []
-      const seen = new Set<string>()
-
-      for (const type of types) {
-        try {
-          const hits = await client.searchObject(pattern, type, max)
-          for (const r of hits) {
-            const key = `${r["adtcore:type"]}:${r["adtcore:name"]}`
-            if (seen.has(key)) continue
-            seen.add(key)
-            results.push(formatSearchResult(r))
-            if (results.length >= max) break
+      async function searchBatch(batch: string[]): Promise<string[]> {
+        const found: string[] = []
+        const batchSeen = new Set<string>()
+        const batchResults = await Promise.allSettled(
+          batch.map(async (type) => {
+            try {
+              const hits = await client.searchObject(pattern, type, max)
+              return { type, hits }
+            } catch {
+              return { type, hits: [] as never[] }
+            }
+          }),
+        )
+        for (const r of batchResults) {
+          const hits = r.status === "fulfilled" ? (r.value.hits as never[]) : []
+          for (const hit of hits) {
+            const key = `${(hit as Record<string, string>)["adtcore:type"]}:${(hit as Record<string, string>)["adtcore:name"]}`
+            if (batchSeen.has(key)) continue
+            batchSeen.add(key)
+            found.push(formatSearchResult(hit as never))
+            if (found.length >= max) break
           }
-        } catch {
-          // 该类型搜索失败则跳过（部分系统不支持某些类型）
+          if (found.length >= max) break
         }
-        if (results.length >= max) break
+        return found
+      }
+
+      // 阶段 1：常用类型并行（最多 12 个并发）；阶段 2：未命中再查剩余
+      let results = await searchBatch(ordered.slice(0, 12))
+      if (results.length === 0 && ordered.length > 12) {
+        results = await searchBatch(ordered.slice(12))
       }
 
       if (results.length === 0) {

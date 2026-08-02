@@ -134,7 +134,7 @@ export const activateTool = {
       for (const m of (result.messages ?? []).slice(0, 50)) {
         lines.push(`  [${m.type}] 行 ${m.line}: ${m.shortText}`)
       }
-      if (result.messages.length > 50) lines.push(`  ... 其余 ${result.messages.length - 50} 条省略`)
+      if ((result.messages ?? []).length > 50) lines.push(`  ... 其余 ${result.messages.length - 50} 条省略`)
       return lines.join("\n")
     } catch (err) {
       return toToolError(err)
@@ -332,10 +332,14 @@ export const updateDescriptionTool = {
           const xml = await client.getObjectSource(uri)
           // 替换 adtcore:description 属性（XML 中可能带转义字符）
           const escaped = args.description.replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;")
-          const newXml = xml.replace(
+          let newXml = xml.replace(
             /adtcore:description="[^"]*"/,
             `adtcore:description="${escaped}"`
           )
+          // 容错：部分 ADT 版本用无前缀 description 属性
+          if (newXml === xml) {
+            newXml = xml.replace(/description="[^"]*"/, `description="${escaped}"`)
+          }
           if (newXml === xml) {
             return `描述未变化（当前已是 \"${args.description}\"）`
           }
