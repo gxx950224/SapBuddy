@@ -50,7 +50,20 @@ let busy = false
 async function ensureAgent() {
   if (agent) return agent
   const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-  agent = await createAgent()
+  // 有历史会话时打开最近的（避免每次启动/首次聊天都新建空会话文件）
+  const dir = sessionsDir()
+  let lastFile
+  try {
+    if (fs.existsSync(dir)) {
+      const files = fs.readdirSync(dir)
+        .filter((f) => f.endsWith(".jsonl"))
+        .map((f) => path.join(dir, f))
+        .filter((f) => { try { return fs.statSync(f).size > 0 } catch { return false } })
+        .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
+      lastFile = files[0]
+    }
+  } catch { /* 忽略 */ }
+  agent = lastFile ? await createAgent({ sessionFile: lastFile }) : await createAgent()
   session = agent.session
   attachStreaming(session)
   return agent
