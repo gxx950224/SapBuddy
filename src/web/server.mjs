@@ -209,7 +209,8 @@ const server = http.createServer(async (req, res) => {
         // 手动确认机制：用户输入含确认词 → 开启批准窗口（AI 重试写工具放行）；否则重置
         const CONFIRM_RE = /确认|同意|允许|批准|可以|好的|好，|好、|好 |ok|okay|yes|继续|执行|就这么办|没问题|没问题|行，|行 |行$|行，就|go ahead/i
         if (CONFIRM_RE.test(text.trim())) {
-          r.setWriteApprovalWindow()
+          // 授权保持：确认后 1 小时内该需求所有写操作不再重复授权（用户提新需求自动重置）
+          r.setWriteApprovalWindow(60 * 60 * 1000)
         } else {
           r.clearWriteApproval()
         }

@@ -52,7 +52,7 @@ export const createObjectTool = {
         "TABL/DT", "TABL/DS", "DTEL/DE", "DOMA/DD", "MSAG/N", "DEVC/K",
         "DDLS/DF", "DDLX/EX", "DDLA/ADF", "SRVD/SRV", "AUTH", "SUSO/B", "SRVB/SVB",
       ])
-      .describe("对象类型 ID，如 CLAS/OC(类) INTF/OI(接口) PROG/P(报表) TABL/DT(表) DEVC/K(包)"),
+      .describe("对象类型 ID：CLAS/OC(类) INTF/OI(接口) PROG/P(可执行报表/主程序) PROG/I(Include，少用) FUGR/FF(函数模块,需 parentName) TABL/DT(表) DEVC/K(包)"),
     name: z.string().describe("对象名称（大写，如 ZCL_MY_CLASS）"),
     description: z.string().describe("对象描述"),
     packageName: z.string().optional().describe("所属包，默认 $TMP"),
