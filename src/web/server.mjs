@@ -43,6 +43,15 @@ const START_TS = Date.now() // 静态资源版本号（重启变化，强制刷�
 /** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
 let mcpStatusCache = null
 
+/** 工具定义实际 token 估算（启动时算一次，替代硬编码 8000） */
+let EXT_TOKENS = 8000
+try {
+  const { tools } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "tools", "index.js")).href)
+  const chars = tools.reduce((a, t) => a + JSON.stringify(t.inputSchema || {}).length + String(t.description || "").length + String(t.title || "").length, 0)
+  // 英文为主 /3.5，中文混合保守 /3
+  EXT_TOKENS = Math.max(1000, Math.round(chars / 3.5))
+} catch { /* 保持 8000 */ }
+
 // ─── Agent 会话 ────────────────────────────────────────────────────────────
 let agent = null
 let session = null
@@ -297,7 +306,7 @@ const server = http.createServer(async (req, res) => {
       try { memory = t(fs.readFileSync(memoryFile, "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
       try { for (const base of [skillsDir, path.join(ROOT, ".SapBuddy", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
       const piAgent = 1500
-      const extensions = 8000
+      const extensions = EXT_TOKENS
       const mcp = 0
       const conversation = usage.input + usage.output
       // 设置读取（多路径 fallback：cwd/.SapBuddy → 项目根/.SapBuddy → 主目录）
