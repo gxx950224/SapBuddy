@@ -107,12 +107,23 @@ export const transportTool = {
         }
         case "release": {
           if (!args.transportNumber) return "release 需要 transportNumber 参数。"
+          const lines = [`传输请求 ${args.transportNumber} 释放:`]
+          // SAP 规则：释放请求前必须先释放其所有任务（subtasks）
+          const details = await client.transportDetails(args.transportNumber)
+          const tasks = (details.tasks ?? []).map((t) => (t as unknown as Record<string, string>)["tm:number"]).filter(Boolean)
+          for (const t of tasks) {
+            try {
+              const tr = await client.transportRelease(t)
+              lines.push(`  ✅ 任务 ${t}: ${tr?.[0]?.["chkrun:status"] ?? "released"}`)
+            } catch (e) {
+              lines.push(`  ⚠️ 任务 ${t} 释放失败: ${e instanceof Error ? e.message.slice(0, 100) : e}`)
+            }
+          }
           const reports = await client.transportRelease(args.transportNumber)
-          const lines = [`✅ 传输请求 ${args.transportNumber} 已释放。`, ""]
           for (const r of reports ?? []) {
-            lines.push(`- ${r["chkrun:reporter"] ?? "?"} [${r["chkrun:status"] ?? "?"}] ${r["chkrun:statusText"] ?? ""}`)
+            lines.push(`  ${r["chkrun:status"] === "released" ? "✅" : "❌"} ${r["chkrun:statusText"] ?? ""}`)
             for (const m of r.messages ?? []) {
-              lines.push(`    ${String(m?.["chkrun:type"] ?? "")} ${String(m?.["chkrun:shortText"] ?? "").slice(0, 120)}`)
+              lines.push(`    [${String(m?.["chkrun:type"] ?? "")}] ${String(m?.["chkrun:shortText"] ?? "").slice(0, 150)}`)
             }
           }
           return lines.join("\n")
