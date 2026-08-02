@@ -1535,6 +1535,48 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   transition: opacity 0.15s ease, visibility 0.15s ease;
 }
 #confirm-overlay.open { visibility: visible; opacity: 1; pointer-events: auto; }
+
+/* 重命名会话弹窗（与确认弹窗同风格） */
+#rename-overlay {
+  display: flex;
+  visibility: hidden; opacity: 0;
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 120; align-items: center; justify-content: center;
+  pointer-events: none;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+}
+#rename-overlay.open { visibility: visible; opacity: 1; pointer-events: auto; }
+#rename-dialog {
+  width: min(420px, 90vw);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-lg);
+}
+#rename-header {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 15px; font-weight: 600; color: var(--text);
+  margin-bottom: 12px;
+}
+#rename-header svg { color: var(--accent); }
+#rename-input {
+  width: 100%; box-sizing: border-box;
+  padding: 9px 12px;
+  font-size: 13px; color: var(--text);
+  background: var(--bg-app);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color var(--ease), box-shadow var(--ease);
+}
+#rename-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+#rename-actions {
+  display: flex; justify-content: flex-end; gap: 10px;
+  margin-top: 16px;
+}
+
 #confirm-dialog {
   width: min(400px, 90vw);
   background: var(--bg-surface);

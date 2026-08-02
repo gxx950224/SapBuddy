@@ -8,6 +8,25 @@
   const state = App.state;
   const $ = App.$;
   const escapeHtml = App.escapeHtml;
+
+  // ── 重命名弹窗（居中模态，替代 prompt）──
+  App.promptRename = function(initialValue) {
+    return new Promise((resolve) => {
+      const overlay = document.getElementById("rename-overlay");
+      const input = document.getElementById("rename-input");
+      const ok = document.getElementById("rename-ok");
+      const cancel = document.getElementById("rename-cancel");
+      if (!overlay || !input) { resolve(null); return; }
+      input.value = initialValue || "";
+      overlay.classList.add("open");
+      setTimeout(() => { input.focus(); input.select(); }, 60);
+      let done = false;
+      const finish = (val) => { if (done) return; done = true; overlay.classList.remove("open"); resolve(val); };
+      ok.onclick = () => finish(input.value);
+      cancel.onclick = () => finish(null);
+      input.onkeydown = (e) => { if (e.key === "Enter") finish(input.value); if (e.key === "Escape") finish(null); };
+    });
+  };
   const formatTime = App.formatTime;
 
   // ── 删除对话 ──
@@ -154,7 +173,7 @@
         ren.addEventListener("click", async (ev) => {
           ev.stopPropagation();
           const old = s.name || s.firstMessage || "";
-          const nn = prompt("重命名会话（留空清除自定义名称）：", old);
+          const nn = await App.promptRename(old);
           if (nn === null) return;
           try {
             await fetch("/api/session/rename", {
