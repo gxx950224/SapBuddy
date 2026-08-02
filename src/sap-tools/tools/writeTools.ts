@@ -43,7 +43,10 @@ export const createObjectTool = {
   name: "create_object_programmatically",
   title: "Create ABAP Object",
   description:
-    "在 SAP 系统中创建新的 ABAP 对象（类、报表、接口、表、包等）。需要目标包（packageName，默认 $TMP）。创建后对象处于未激活状态，可用 abap_activate 激活。",
+    "在 SAP 系统中创建新的 ABAP 对象（类、报表、接口、表、包等）。\n" +
+    "强制规则：必须提供正式开发包（packageName，非 $TMP）、对象名、描述；\n" +
+    "创建前必须先向用户收集这些信息（包名/对象名/描述/请求描述），缺少即拦截。\n" +
+    "requestText 提供时自动创建传输请求并挂载对象。创建后对象未激活，用 abap_activate 激活。",
   write: true,
   inputSchema: z.object({
     objectType: z
@@ -55,7 +58,8 @@ export const createObjectTool = {
       .describe("对象类型 ID：CLAS/OC(类) INTF/OI(接口) PROG/P(可执行报表/主程序) PROG/I(Include，少用) FUGR/FF(函数模块,需 parentName) TABL/DT(表) DEVC/K(包)"),
     name: z.string().describe("对象名称（大写，如 ZCL_MY_CLASS）"),
     description: z.string().describe("对象描述"),
-    packageName: z.string().optional().describe("所属包，默认 $TMP"),
+    packageName: z.string().describe("所属开发包（正式包，禁止 $TMP；先向用户收集）"),
+    requestText: z.string().optional().describe("传输请求描述（可选；提供时自动创建请求并挂载对象，推荐格式 sapbuddy_<摘要>_<YYYYMMDD>）"),
     parentName: z.string().optional().describe("父对象名（函数组/FUGR 需要）"),
     connectionId: connectionIdSchema,
   }),
@@ -63,32 +67,53 @@ export const createObjectTool = {
     objectType: string
     name: string
     description: string
-    packageName?: string
+    packageName: string
+    requestText?: string
     parentName?: string
     connectionId?: string
   }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
+      // ── 强制规则：创建必须提供正式包名/描述（写死，不允许自由发挥）──
+      const pkg = (args.packageName || "").trim()
+      if (!pkg || pkg.toUpperCase() === "$TMP") {
+        return "⛔ 强制规则拦截：创建对象必须提供正式开发包（packageName，禁止 $TMP）。请先向用户收集开发包名称。"
+      }
+      if (!args.description || !args.description.trim()) {
+        return "⛔ 强制规则拦截：创建对象必须提供描述（description）。请先向用户收集。"
+      }
       const client = await getClient(connId)
       const { objectPath } = await import("abap-adt-api")
-      const devClass = args.packageName ?? "$TMP"
+      const devClass = pkg
       const parentName = args.parentName ?? devClass
       const parentPath = objectPath(
         args.objectType as never,
         args.name.toUpperCase(),
         parentName
       )
+      // 请求：requestText 提供则自动创建传输请求并挂载；否则创建后由激活/后续写入自动建
+      let transport: string | undefined
+      if (args.requestText && String(args.requestText).trim()) {
+        try {
+          const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+          const desc = String(args.requestText).trim() || `sapbuddy_创建${args.name.toUpperCase()}_${ymd}`
+          transport = await client.createTransport(parentPath, desc, devClass)
+        } catch (e) {
+          return `⚠️ 自动创建传输请求失败：${e instanceof Error ? e.message.slice(0, 120) : e}。请确认对象放到哪个请求。`
+        }
+      }
       await client.createObject({
         objtype: args.objectType as never,
         name: args.name.toUpperCase(),
         parentName,
         description: args.description,
         parentPath,
-        transport: undefined,
+        transport,
       })
       return (
         `✅ 对象创建成功: ${args.objectType} ${args.name.toUpperCase()}\n` +
         `包: ${devClass}\n` +
+        (transport ? `传输请求: ${transport}（自动新建）\n` : `传输请求: 未指定（后续写入/激活时自动建）\n`) +
         `状态: 未激活（请用 abap_activate 激活）\n` +
         `注意: 大型对象（类、函数组）创建后可能需补充 includes 内容。`
       )
