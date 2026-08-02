@@ -1619,11 +1619,16 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   flex: 1;
   padding: 24px;
   overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  text-align: center;
 }
-#mermaid-lightbox-body svg { max-width: 100%; height: auto; }
+#mermaid-lightbox-body svg {
+  max-width: 100%;
+  height: auto;
+  display: inline-block;
+  margin: auto;
+  vertical-align: top;
+}
 .mermaid-lightbox-loading { color: var(--text-dim); padding: 30px; }
 .mermaid-lightbox-fallback {
   max-width: 70vw;
