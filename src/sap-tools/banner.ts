@@ -13,10 +13,14 @@ const RAW = `
 ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝    ╚═╝
 `.trimEnd()
 
-// "SAP" 三个字母 = 每行前 21 字符（█ 块），"BUDDY" 保持终端默认色
+// "SAP" 三个字母块在各行的字符宽度（S 8 + A 8 + P 8 = 24；行1 的 A/P 较窄带空格 = 23）
+const SAP_LEN = [23, 24, 24, 24, 24, 24]
+
+// "SAP" 上品牌色，"BUDDY" 保持终端默认色
 export const SAPBUDDY_BANNER = RAW.split("\n")
-  .map((line) => {
+  .map((line, i) => {
     if (!line.trim()) return line
-    return PURPLE + line.slice(0, 21) + RESET + line.slice(21)
+    const n = SAP_LEN[i] ?? 21
+    return PURPLE + line.slice(0, n) + RESET + line.slice(n)
   })
   .join("\n")
