@@ -145,6 +145,27 @@
         del.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.5 9a1 1 0 0 0 1 .9h5a1 1 0 0 0 1-.9l.5-9M6.5 7v4M9.5 7v4"/></svg>';
         del.addEventListener("click", (ev) => App.deleteChat(s.path, ev));
         item.appendChild(del);
+        // 重命名按钮（写 session_info，与 pi Ctrl+R 同一机制）
+        const ren = document.createElement("button");
+        ren.className = "session-ren";
+        ren.title = "重命名该对话";
+        ren.setAttribute("aria-label", "重命名该对话");
+        ren.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 2.5a1.8 1.8 0 0 1 2.5 2.5L6 13l-3.5 1L3.5 10.5l8-8Z"/></svg>';
+        ren.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const old = s.name || s.firstMessage || "";
+          const nn = prompt("重命名会话（留空清除自定义名称）：", old);
+          if (nn === null) return;
+          try {
+            await fetch("/api/session/rename", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ path: s.path, name: nn.trim() }),
+            });
+            App.refreshSessions();
+          } catch { /* 忽略 */ }
+        });
+        item.appendChild(ren);
         item.addEventListener("click", () => App.switchChat(s.path));
         list.appendChild(item);
       }

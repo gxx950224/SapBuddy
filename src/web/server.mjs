@@ -395,7 +395,13 @@ const server = http.createServer(async (req, res) => {
                 title = (m?.content ?? []).map((c) => c.text || "").join("").slice(0, 40)
               } catch { /* 忽略坏行 */ }
             }
-            list.push({ path: full, name: title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: lineCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
+            // 自定义名称（session_info 事件，pi /name、Ctrl+R 同机制）
+            let customName = ""
+            try {
+              const infoLine = head.split("\n").filter((l) => l.includes('"type":"session_info"')).pop()
+              if (infoLine) { const i = JSON.parse(infoLine); customName = (i.name || "").trim() }
+            } catch { /* 忽略 */ }
+            list.push({ path: full, name: customName || title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: lineCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
           } catch { /* 忽略 */ }
         }
       }
@@ -408,6 +414,20 @@ const server = http.createServer(async (req, res) => {
       const { path: file } = await readBody(req)
       try { if (file && fs.existsSync(file)) fs.unlinkSync(file) } catch {}
       return json(res, 200, { success: true })
+    }
+
+    // 重命名会话（写 session_info 事件，与 pi 的 /name、Ctrl+R 同一机制，CLI/Web 共享）
+    if (p === "/api/session/rename" && req.method === "POST") {
+      const { path: file, name } = await readBody(req)
+      if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      try {
+        const { SessionManager } = await import("@earendil-works/pi-coding-agent")
+        const sm = await SessionManager.open(file)
+        sm.appendSessionInfo(String(name || "").replace(/[\r\n]+/g, " ").trim().slice(0, 100))
+        return json(res, 200, { success: true })
+      } catch (e) {
+        return json(res, 500, { error: e.message })
+      }
     }
 
     // 切换会话（重建 agent 到指定历史文件）
