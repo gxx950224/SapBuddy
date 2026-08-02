@@ -1687,3 +1687,35 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   font-family: var(--mono, Consolas, monospace);
 }
 #mermaid-lightbox { position: relative; }
+
+/* ── 附件 chips ── */
+#attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 0;
+}
+.attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-hover, #26263a);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--text);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attach-remove {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.attach-remove:hover { color: var(--error, #e5484d); }

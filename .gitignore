@@ -30,3 +30,4 @@ Thumbs.db
 output/
 connections.json
 .SapBuddy/sessions-test/
+.SapBuddy/uploads/

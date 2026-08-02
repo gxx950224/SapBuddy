@@ -41,11 +41,19 @@
 
   // ── 发送消息 ──
   App.sendMessage = async function() {
-    const text = inputEl.value.trim();
-    if (!text || state.streaming) return;
+    let text = inputEl.value.trim();
+    if ((!text && (!state.attachments || !state.attachments.length)) || state.streaming) return;
+
+    // 拼接附件引用（文件已保存，AI 用 read 工具读取）
+    const atts = state.attachments || [];
+    if (atts.length) {
+      const ref = atts.map((a) => "- " + a.name + " → " + a.path).join("\n");
+      text = (text ? text + "\n\n" : "") + "【用户附带的文件（已保存到本地，请用 read 工具读取内容）】\n" + ref;
+    }
 
     App.addUserBubble(text);
     inputEl.value = "";
+    App.clearAttachments();
     autoGrow();
     App.setStreaming(true);
     if (state.rebuilding) {

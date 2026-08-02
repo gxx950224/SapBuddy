@@ -81,56 +81,56 @@
     }
   });
 
-  // ── 快捷指令弹出菜单 ──
-  const cmdMenuOverlay = document.getElementById("cmd-menu-overlay");
-  const toolbarCmdBtn = document.getElementById("toolbar-cmd");
-
-  if (toolbarCmdBtn) {
-    toolbarCmdBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const rect = toolbarCmdBtn.getBoundingClientRect();
-      const menu = document.getElementById("cmd-menu");
-      if (menu) {
-        const menuHeight = Math.min(menu.offsetHeight || 260, 360);
-        const spaceAbove = rect.top - 12;
-        const spaceBelow = window.innerHeight - rect.bottom - 12;
-        let left = Math.max(12, Math.min(rect.left, window.innerWidth - (menu.offsetWidth || 240) - 12));
-        menu.style.left = left + "px";
-        menu.style.right = "auto";
-        if (spaceAbove >= menuHeight || spaceAbove >= spaceBelow) {
-          menu.style.top = "auto";
-          menu.style.bottom = (window.innerHeight - rect.top + 8) + "px";
-          menu.style.transformOrigin = "bottom left";
-        } else {
-          menu.style.top = (rect.bottom + 8) + "px";
-          menu.style.bottom = "auto";
-          menu.style.transformOrigin = "top left";
-        }
-      }
-      cmdMenuOverlay.classList.toggle("open");
+  // ── 上传文件（AI 可读取）──
+  const attachBtn = document.getElementById("attach-btn");
+  const fileInput = document.getElementById("file-input");
+  if (attachBtn && fileInput) {
+    attachBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", async () => {
+      const files = Array.from(fileInput.files || []);
+      fileInput.value = "";
+      for (const f of files) await App.attachFile(f);
     });
   }
 
-  if (cmdMenuOverlay) {
-    cmdMenuOverlay.addEventListener("click", (e) => {
-      if (e.target === cmdMenuOverlay) cmdMenuOverlay.classList.remove("open");
-    });
-    cmdMenuOverlay.querySelectorAll(".cmd-menu-item").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const cmd = btn.dataset.cmd || btn.dataset.fill || "";
-        $("#input").value = cmd;
-        App.autoGrow();
-        cmdMenuOverlay.classList.remove("open");
-        $("#input").focus();
+  // 附件状态与渲染
+  App.state.attachments = App.state.attachments || [];
+  App.attachFile = async function(file) {
+    const MAX = 2 * 1024 * 1024; // 2MB
+    if (file.size > MAX) { App.addSystemNote("文件过大（>2MB）：" + file.name); return; }
+    try {
+      const text = await file.text();
+      const r = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, content: text }),
       });
-    });
-  }
-
-  document.addEventListener("click", (e) => {
-    if (cmdMenuOverlay && !cmdMenuOverlay.contains(e.target) && e.target !== toolbarCmdBtn) {
-      cmdMenuOverlay.classList.remove("open");
+      const j = await r.json();
+      if (!j.success) { App.addSystemNote("上传失败：" + (j.error || r.status)); return; }
+      App.state.attachments.push({ name: file.name, path: j.path });
+      renderAttachments();
+      App.addSystemNote("已上传：" + file.name);
+    } catch (e) { App.addSystemNote("上传失败：" + e.message); }
+  };
+  App.clearAttachments = function() {
+    App.state.attachments = [];
+    renderAttachments();
+  };
+  function renderAttachments() {
+    const wrap = document.getElementById("attachments");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    for (const a of App.state.attachments) {
+      const chip = document.createElement("span");
+      chip.className = "attach-chip";
+      chip.innerHTML = "📎 " + App.escapeHtml(a.name) + " <button class='attach-remove' title='移除'>×</button>";
+      chip.querySelector(".attach-remove").addEventListener("click", () => {
+        App.state.attachments = App.state.attachments.filter((x) => x !== a);
+        renderAttachments();
+      });
+      wrap.appendChild(chip);
     }
-  });
+  }
 
   // ── 会话 ID 复制（点击状态栏） ──
   const sessionIdEl = document.getElementById("chat-session-id");

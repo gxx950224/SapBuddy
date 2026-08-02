@@ -422,6 +422,22 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    // ── 文件上传（用户附件，AI 用 read 读取）──
+    if (p === "/api/upload" && req.method === "POST") {
+      const { name, content } = await readBody(req)
+      try {
+        if (typeof name !== "string" || typeof content !== "string") return json(res, 400, { error: "参数错误" })
+        const clean = path.basename(String(name).replace(/[\\/]/g, "/")).replace(/[^\w.\-\u4e00-\u9fa5]/g, "_").slice(0, 80)
+        if (!clean) return json(res, 400, { error: "文件名无效" })
+        if (Buffer.byteLength(content, "utf8") > 2 * 1024 * 1024) return json(res, 400, { error: "文件超过 2MB" })
+        const dir = path.join(USER_PI, "uploads")
+        fs.mkdirSync(dir, { recursive: true })
+        const file = path.join(dir, clean)
+        fs.writeFileSync(file, content, "utf8")
+        return json(res, 200, { success: true, path: file, name: clean })
+      } catch (e) { return json(res, 500, { error: e.message }) }
+    }
+
     // ── 产物 output/ ──
     if (p === "/api/output-tree" && req.method === "GET") {
       fs.mkdirSync(OUTPUT_DIR, { recursive: true })
