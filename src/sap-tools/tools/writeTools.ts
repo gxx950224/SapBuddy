@@ -161,9 +161,10 @@ export const replaceStringTool = {
       .describe("对象的 adt:// 工作区 URI（先用 get_abap_object_workspace_uri 获取）或 ADT 对象 URI"),
     oldString: z.string().describe("要替换的原文（必须恰好匹配一处，含缩进）"),
     newString: z.string().describe("替换后的文本"),
+    requestText: z.string().optional().describe("对象无未释放传输请求时自动新建请求的描述（可选，默认 'AI 修改 <对象>'）"),
     connectionId: connectionIdSchema,
   }),
-  async execute(args: { fileUri: string; oldString: string; newString: string; connectionId?: string }): Promise<string> {
+  async execute(args: { fileUri: string; oldString: string; newString: string; requestText?: string; connectionId?: string }): Promise<string> {
     try {
       // 解析 URI -> 连接与对象 URI
       let connId = args.connectionId
@@ -188,15 +189,31 @@ export const replaceStringTool = {
           const content = await client.getObjectSource(sourceUri)
           const { findAndReplace } = await import("./replaceLogic.js")
           const updated = findAndReplace(content, args.oldString, args.newString)
-          // 传输请求：直接用 lock 返回的 CORRNR（$TMP 对象 IS_LOCAL=X 无需传输）
+          // 传输请求：优先沿用 lock 返回的 CORRNR；无未释放请求时自动创建新请求（ADT 不会自动创建）
           const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
-          const transport = lockInfo.IS_LOCAL === "X" ? undefined : lockInfo.CORRNR
+          let transport = lockInfo.IS_LOCAL === "X" ? undefined : (lockInfo.CORRNR || undefined)
+          let autoCreated = false
+          if (!transport) {
+            try {
+              const { getClient: gc } = await import("../adtManager.js")
+              const info = await gc(finalConnId).then((c) => c.transportInfo(sourceUri))
+              const devclass = String(info?.DEVCLASS || info?.PDEVCLASS || "$TMP").trim()
+              const desc = (args.requestText && String(args.requestText).trim()) || `AI 修改 ${args.fileUri.split("/").pop()}`
+              const newReq = await client.createTransport(sourceUri, desc, devclass)
+              if (newReq && newReq !== "") {
+                transport = newReq
+                autoCreated = true
+              }
+            } catch (e) {
+              return `⚠️ 对象无未释放传输请求且自动创建失败（${e instanceof Error ? e.message.slice(0, 120) : e}）。请先创建传输请求或将对象加入现有请求。`
+            }
+          }
           await client.setObjectSource(sourceUri, updated, lock.LOCK_HANDLE, transport)
           await client.unLock(sourceUri, lock.LOCK_HANDLE)
           return (
             `✅ 替换成功并已保存到 SAP\n` +
             `URI: ${sourceUri}\n` +
-            (transport ? `传输请求: ${transport}\n` : `传输请求: (无，$TMP 对象)\n`) +
+            (transport ? `传输请求: ${transport}${autoCreated ? "（自动新建）" : "（沿用）"}\n` : `传输请求: (无，$TMP 对象)\n`) +
             `建议下一步: 调用 get_abap_diagnostics 检查语法，然后 abap_activate 激活。`
           )
         } catch (err) {
