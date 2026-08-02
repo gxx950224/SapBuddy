@@ -112,7 +112,7 @@ export const transportTool = {
           for (const r of reports ?? []) {
             lines.push(`- ${r["chkrun:reporter"] ?? "?"} [${r["chkrun:status"] ?? "?"}] ${r["chkrun:statusText"] ?? ""}`)
             for (const m of r.messages ?? []) {
-              lines.push(`    ${String(m?.["chkrun:severity"] ?? "")} ${String(m?.["chkrun:text"] ?? "").slice(0, 120)}`)
+              lines.push(`    ${String(m?.["chkrun:type"] ?? "")} ${String(m?.["chkrun:shortText"] ?? "").slice(0, 120)}`)
             }
           }
           return lines.join("\n")
