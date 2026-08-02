@@ -106,7 +106,6 @@ export function ensureRuntimeFiles() {
       const dst = path.join(CONFIG_DIR, sub)
       if (fs.existsSync(dst)) continue
       const legacy = path.join(LEGACY_PI, sub)
-      const home = path.join(HOME_SAPBUDDY, sub)
       const pkg = path.join(ROOT, ".SapBuddy", sub)
       if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
       else if (fs.existsSync(home)) fs.cpSync(home, dst, { recursive: true })
@@ -115,32 +114,41 @@ export function ensureRuntimeFiles() {
     for (const f of ["models.json", "auth.json", "settings.json"]) {
       const dst = path.join(CONFIG_DIR, f)
       if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, f), path.join(HOME_SAPBUDDY, f), path.join(ROOT, ".SapBuddy", f)]) {
+      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, ".SapBuddy", f)]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
       }
     }
     if (!fs.existsSync(path.join(CONFIG_DIR, "connections.json"))) {
-      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(HOME_SAPBUDDY, "connections.json"), path.join(process.cwd(), "connections.json")]) {
+      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
       }
     }
     // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
     const dstSessions = path.join(CONFIG_DIR, "sessions")
     const legacySessions = path.join(LEGACY_PI, "sessions")
-    const homeSessions = path.join(HOME_SAPBUDDY, "sessions")
-    fs.mkdirSync(dstSessions, { recursive: true })
-    for (const srcS of [legacySessions, homeSessions]) if (fs.existsSync(srcS)) {
+fs.mkdirSync(dstSessions, { recursive: true })
+    for (const srcS of [legacySessions]) if (fs.existsSync(srcS)) {
       for (const f of fs.readdirSync(srcS)) {
         const dst = path.join(dstSessions, f)
-        if (!fs.existsSync(dst)) {
-          try { fs.copyFileSync(path.join(srcS, f), dst) } catch { /* 忽略 */ }
-        }
+        if (fs.existsSync(dst)) continue
+        try {
+          // 跳过空会话（仅初始化条目，无对话消息）
+          const src = path.join(srcS, f)
+          let hasMsg = false
+          for (const line of fs.readFileSync(src, "utf8").split(String.fromCharCode(10))) {
+            if (!line.trim()) continue
+            const e = JSON.parse(line)
+            const r = e?.message?.role
+            if (r === "user" || r === "assistant") { hasMsg = true; break }
+          }
+          if (hasMsg) fs.copyFileSync(src, dst)
+        } catch { /* 忽略 */ }
       }
     }
     // 产物迁移（旧项目根 output / cwd/output → ~/.SapBuddy/output，补复制不覆盖）
     const dstOut = path.join(CONFIG_DIR, "output")
     fs.mkdirSync(dstOut, { recursive: true })
-    for (const srcOut of [path.join(ROOT, "output"), path.join(HOME_SAPBUDDY, "output"), path.join(process.cwd(), "output")]) {
+    for (const srcOut of [path.join(ROOT, "output"), path.join(process.cwd(), "output")]) {
       if (fs.existsSync(srcOut)) {
         for (const f of fs.readdirSync(srcOut)) {
           const dst = path.join(dstOut, f)
@@ -158,7 +166,7 @@ export function ensureRuntimeFiles() {
     }
     // 记忆文件迁移（旧 .pi/memory.md / 根 Memory.md → ~/.SapBuddy/memory.md）
     if (!fs.existsSync(path.join(CONFIG_DIR, "memory.md"))) {
-      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(HOME_SAPBUDDY, "memory.md"), path.join(ROOT, "Memory.md")]) {
+      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(ROOT, "Memory.md")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "memory.md")); break }
       }
     }

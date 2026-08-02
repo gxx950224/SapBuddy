@@ -683,9 +683,11 @@ server.on("error", (err) => {
 server.listen(PORT, HOST, () => {
   // 首次运行：初始化 .SapBuddy（技能/提示词/模型/连接迁移）
   import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-    .then((m) => m.ensureRuntimeFiles?.())
-    .catch(() => undefined)
-  cleanEmptySessions()
+    .then((m) => {
+      m.ensureRuntimeFiles?.()
+      cleanEmptySessions()
+    })
+    .catch(() => cleanEmptySessions())
   console.log(`\n  🚀 SapBuddy Web 版已启动`)
   console.log(`  📍 http://${HOST}:${PORT}\n`)
 })
