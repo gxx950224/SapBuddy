@@ -822,8 +822,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   max-height: 100px; overflow-y: auto; color: var(--text-dim);
   display: none;
 }
+.tool-card:not(.expanded) .tool-body { display: none !important; }
 .tool-card.expanded .tool-body { display: block; }
-.tool-card .tool-body:empty { display: none; }
 .tool-card.expanded .tool-body { display: block; }
 .tool-code { margin: 0; padding: 0; background: transparent; border: none; white-space: pre; color: var(--text); }
 .tool-code code { font-family: var(--font-mono); font-size: 11px; line-height: 1.4; }
@@ -1771,7 +1771,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border-left: 3px solid var(--accent);
   border-radius: 10px;
 }
-.agent-tools .tool-card .tool-head { padding: 2px 8px; }
+.agent-tools .tool-card .tool-head { padding: 3px 10px; }
 .agent-tools .tool-card .tool-body {
   background: rgba(0,0,0,0.15);
   border-radius: 0 0 10px 10px;
