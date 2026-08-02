@@ -159,6 +159,7 @@ ADT 服务（`/sap/bc/adt`）访问权限 + 目标对象读写权限；查询类
 
 ## 🙏 致谢
 
+Agent 会话/模型/工具框架基于 [pi-coding-agent](https://github.com/badlogic/pi-mono)（`@earendil-works/pi-coding-agent`）构建；
 SAP 工具设计与 ADT 交互参考 [marcellourbani/vscode_abap_remote_fs](https://github.com/marcellourbani/vscode_abap_remote_fs) 及其 LM Tools，基于 [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) 实现。详见 [CREDITS.md](./CREDITS.md)。
 
 ## 📄 License
