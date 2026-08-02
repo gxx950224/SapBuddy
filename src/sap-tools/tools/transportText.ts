@@ -8,13 +8,15 @@ import { requireObject, resolveConnectionId, toToolError, connectionIdSchema } f
 export const transportTool = {
   name: "manage_transport_requests",
   title: "Manage Transport Requests",
+  write: true,
   description:
-    "查询和管理传输请求（CTS）：列出用户的传输请求/任务、查看请求详情（对象列表）、按传输号查详情。用于了解变更内容和发布准备。",
+    "查询和管理传输请求（CTS）：列出用户的传输请求/任务、查看请求详情（对象列表）、按传输号查详情、修改请求描述。用于了解变更内容和发布准备。",
   inputSchema: z.object({
     action: z
-      .enum(["list_user_transports", "get_transport_details", "get_object_transport"])
-      .describe("操作：list_user_transports=列出用户的请求; get_transport_details=按请求号查详情; get_object_transport=查对象所在请求"),
-    transportNumber: z.string().optional().describe("传输请求/任务号，如 DEVK900001（get_transport_details 必填）"),
+      .enum(["list_user_transports", "get_transport_details", "get_object_transport", "update_description"])
+      .describe("操作：list_user_transports=列出用户的请求; get_transport_details=按请求号查详情; get_object_transport=查对象所在请求; update_description=修改请求描述（需人工确认）"),
+    transportNumber: z.string().optional().describe("传输请求/任务号，如 DEVK900001（get_transport_details/update_description 必填）"),
+    description: z.string().optional().describe("新描述文本（update_description 必填）"),
     userName: z.string().optional().describe("用户名（list_user_transports 默认当前连接用户）"),
     objectName: z.string().optional().describe("对象名称（get_object_transport 必填）"),
     objectType: z.string().optional(),
@@ -23,6 +25,7 @@ export const transportTool = {
   async execute(args: {
     action: string
     transportNumber?: string
+    description?: string
     userName?: string
     objectName?: string
     objectType?: string
@@ -83,6 +86,24 @@ export const transportTool = {
             lines.push("（无传输信息，对象可能无需传输）")
           }
           return lines.join("\n")
+        }
+        case "update_description": {
+          if (!args.transportNumber) return "update_description 需要 transportNumber 参数。"
+          if (!args.description) return "update_description 需要 description（新描述）参数。"
+          // 读详情拿请求属性，再 PUT 完整 tm:request（实测 ADT 支持，未释放请求可改描述）
+          const details = await client.transportDetails(args.transportNumber)
+          const d = details as unknown as Record<string, string>
+          const esc = String(args.description).replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          const body = `<?xml version="1.0" encoding="ASCII"?><tm:root xmlns:tm="http://www.sap.com/cts/adt/tm"><tm:request tm:number="${args.transportNumber}" tm:owner="${d["tm:owner"] ?? ""}" tm:desc="${esc}" tm:type="${d["tm:type"] ?? "K"}" tm:status="${d["tm:status"] ?? "D"}" tm:target="${d["tm:target"] ?? ""}"/></tm:root>`
+          await client.httpClient.request(`/sap/bc/adt/cts/transportrequests/${args.transportNumber}`, {
+            method: "PUT",
+            headers: {
+              Accept: "application/vnd.sap.adt.transportorganizer.v1+xml",
+              "Content-Type": "application/vnd.sap.adt.transportorganizer.v1+xml",
+            },
+            body,
+          })
+          return `✅ 传输请求 ${args.transportNumber} 描述已改为: ${args.description}`
         }
         default:
           return `未知操作: ${args.action}`
