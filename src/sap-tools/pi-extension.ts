@@ -11,8 +11,7 @@ export default function (pi: ExtensionAPI): void {
   console.log(SAPBUDDY_BANNER)
   console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具")
   try {
-    const n = registerSapTools(pi)
-    console.log(`  [sapbuddy] 已注册 ${n} 个 SAP 工具`)
+    registerSapTools(pi)
   } catch (e) {
     console.log(`  [sapbuddy] 工具注册失败: ${e instanceof Error ? e.message : e}`)
   }
