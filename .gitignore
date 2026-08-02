@@ -31,3 +31,4 @@ output/
 connections.json
 .SapBuddy/sessions-test/
 .SapBuddy/uploads/
+.tmp_*
