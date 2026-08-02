@@ -157,8 +157,8 @@
     const bar = document.createElement("div");
     bar.className = "mermaid-toolbar";
     bar.innerHTML =
-      '<button class="mermaid-zoom-btn" title="放大查看">\u26F0\uFE0F \u653E\u5927</button>' +
-      '<button class="mermaid-copy-btn" title="复制 Mermaid 源码">\u{1F4CB} \u590D\u5236\u4EE3\u7801</button>';
+      '<button class="mermaid-zoom-btn" title="放大查看">放大</button>' +
+      '<button class="mermaid-copy-btn" title="复制 Mermaid 源码">复制代码</button>';
     el.prepend(bar);
     bar.querySelector(".mermaid-zoom-btn").addEventListener("click", (e) => {
       e.stopPropagation();
