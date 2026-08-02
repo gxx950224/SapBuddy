@@ -76,6 +76,7 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
 
 export const translateTextPoolTool = {
   name: "translate_text_pool",
+  write: true,
   title: "Translate Text Pool (Program Text Elements)",
   description:
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +

@@ -96,6 +96,7 @@ export const transportTool = {
 // ─── manage_text_elements ───────────────────────────────────────────────────
 export const textElementsTool = {
   name: "manage_text_elements",
+  write: true,
   title: "Manage Text Elements",
   description:
     "读取或修改对象的文本元素（text elements）：标题/文本符号（symbols）、选择文本（selections）、表头（headings）。" +
@@ -151,7 +152,6 @@ export const textElementsTool = {
       if (!args.elements || args.elements.length === 0) {
         return "update 需要提供 elements 列表，如 [{id:'001', text:'场景'}]（id 为 3 字符符号键）。"
       }
-      // symbols 必须带 @MaxLength（SAP 校验，缺失报 DS512 文本池不一致）
       // symbols 必须带 @MaxLength（SAP 校验，缺失报 DS512 文本池不一致）
       // ⚠️ ADT setTextElements 是全量替换语义：先读取现有 symbols 合并（新条目覆盖/新增，旧条目保留），
       // 避免只传新增条目导致原有 TEXT-001/002/003 等被删除

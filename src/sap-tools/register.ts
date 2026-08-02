@@ -21,7 +21,7 @@ import { resolveConnectionId } from "./tools/shared.js"
 // 批准后有一个时间窗口，让 AI 一轮内连续完成多个写操作（create→replace→activate）无需逐次确认。
 let writeApprovalUntil = 0
 const WRITE_TOOL_NAMES = new Set(
-  tools.filter((t) => t.write).map((t) => t.name).concat(["translate_text_pool", "manage_text_elements"]),
+  tools.filter((t) => t.write).map((t) => t.name),
 )
 export function isWriteTool(name: string): boolean {
   return WRITE_TOOL_NAMES.has(name)
@@ -61,12 +61,12 @@ export function handleUserMessage(text: string): void {
   // 中性/继续类消息不清除窗口，避免同一需求反复授权
 }
 
-/** 只读模式开关：connections.json 的 security.readOnly=true 时拒绝一切写工具
- * （网页端保存 SAP 配置写的就是 connections.json，两处一致） */
+/** 只读模式开关：connections.json 的 security.readOnly 未明确为 false 即只读
+ * （与网页端默认显示"已锁定"一致：没写该项 = 只读保护开启） */
 function isReadOnly(): boolean {
   try {
     const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "connections.json"), "utf8").toString())
-    return cfg.security?.readOnly === true
+    return cfg.security?.readOnly !== false
   } catch { return false }
 }
 

@@ -9,6 +9,7 @@ import { resolveConnectionId, toToolError, connectionIdSchema } from "./shared.j
 
 export const updateDomainTool = {
   name: "update_domain_properties",
+  write: true,
   title: "Update Domain Properties",
   description:
     "修改 ABAP 域的属性：符号（sign，数值域允许正负号）、区分大小写（lowercase，字符域允许小写）、转换例程（conversionExit）、输出长度等。" +

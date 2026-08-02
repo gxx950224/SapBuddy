@@ -108,6 +108,7 @@ function generateClassSource(
 
 export const fixDdicTextTool = {
   name: "fix_ddic_text",
+  write: true,
   title: "Fix DDIC Text (Language)",
   description:
     "批量写入/修复 DDIC 对象（数据元素 DD04T、域 DD01T）的描述与字段标签到指定语言。" +
