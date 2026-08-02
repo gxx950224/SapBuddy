@@ -791,6 +791,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border-left: 3px solid var(--accent);
   border-radius: var(--radius-sm);
   font-size: 12.5px; overflow: hidden;
+  white-space: normal; /* 关键：防 pre-wrap 继承把模板换行渲染成空行 */
   transition: border-color var(--ease);
 }
 .tool-card:hover { border-color: var(--border-strong); }
