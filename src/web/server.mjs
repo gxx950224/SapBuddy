@@ -169,7 +169,7 @@ function readSessionMessages(file) {
       try {
         const e = JSON.parse(l)
         const m = e.message
-        if (m && m.role && (m.role === "user" || m.role === "assistant")) msgs.push(m)
+        if (m && m.role && (m.role === "user" || m.role === "assistant" || m.role === "toolResult")) msgs.push(m)
       } catch { /* 忽略坏行 */ }
     }
   } catch { /* 忽略 */ }
