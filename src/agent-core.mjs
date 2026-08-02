@@ -226,40 +226,6 @@ export async function createAgent(opts = {}) {
         } catch (e) {
           console.log(`[sapbuddy] 工具注册失败: ${e.message}`)
         }
-        // 每轮动态注入（对齐原版 AbapBuddy：before_agent_start 按用户输入注入规则）
-        try {
-          const GLOBAL_TOOL_RULES = `
-
----
-## 【工具使用铁律 — 每轮强制执行】
-
-1. **精确搜索**：确认对象是否存在，用 \`search_abap_objects\` 传**精确名称（不带 *）**；禁止模糊搜索（如 ZAIR*）、禁止读现有对象源码"学风格"。
-2. **禁止探索**：不要 ls 目录、不要重读 SYSTEM.md（内容你已掌握）、不要读历史/输出文件做参考。
-3. **需求不明先问**：用户没说清功能 → 直接提问，不要自行假设、不要创建空壳程序。
-4. **结果截断**：工具输出超过 8KB/120 行会自动截断（尾部有提示），需要更多内容时用 \`lineCount\`/\`methodName\`/精确 SQL 分页读取。
-5. **思考要短**：每步思考 ≤ 100 字，只写"结论 + 下一步"。
-`
-          const CREATE_FLOW_RULES = `
-
-### 【创建流程 — 你正在处理创建请求】
-
-1. 只调一次 \`search_abap_objects\` 精确查用户给的对象名（不带 *）。
-2. 已存在 → 告知用户；不存在且需求不明确 → **直接向用户提问**要实现什么（业务场景/数据来源/输入输出），不要创建空壳。
-3. 需求明确 → 展示改动计划 → 等用户确认 → 才允许调用写工具。
-`
-          pi.on("before_agent_start", (event, _ctx) => {
-            try {
-              const prompt = String(event?.prompt || "").toLowerCase()
-              let inject = GLOBAL_TOOL_RULES
-              if (/创建|新建|开发|生成|写.*程序|create|new|开发一个/.test(prompt)) {
-                inject += CREATE_FLOW_RULES
-              }
-              return { systemPrompt: (event.systemPrompt || "") + inject }
-            } catch { return undefined }
-          })
-        } catch (e) {
-          console.log(`[sapbuddy] 动态注入安装失败: ${e.message}`)
-        }
       },
       // MCP 服务器工具动态注册（async factory：设置-MCP 保存的服务器在此生效）
       async (pi) => {
