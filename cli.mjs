@@ -3,6 +3,7 @@
  * SapBuddy CLI — SAP ABAP AI 助手（跨平台）
  *
  * 用法:
+ *   sapbuddy                    直接进入交互式对话（全屏 TUI）
  *   sapbuddy chat               交互式对话（全屏 TUI）
  *   sapbuddy "提问内容"         单次提问
  *   sapbuddy --json "提问"      单次提问（JSON 输出）

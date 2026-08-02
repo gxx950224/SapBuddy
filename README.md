@@ -78,7 +78,8 @@ cp config/settings.example.json ~/.SapBuddy/settings.json
 ### 开始对话
 
 ```bash
-sapbuddy chat                      # 交互式对话
+sapbuddy                           # 直接进入交互式对话（全屏 TUI）
+sapbuddy chat                      # 交互式对话（同上）
 sapbuddy web                       # Web 版（http://127.0.0.1:7400）
 sapbuddy "搜索 ZCL_* 开头的类"      # 单次提问
 sapbuddy tools                     # 列出 42 个 SAP 工具 + 已配置的 MCP 工具
