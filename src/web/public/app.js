@@ -96,20 +96,30 @@
   // 附件状态与渲染
   App.state.attachments = App.state.attachments || [];
   App.attachFile = async function(file) {
-    const MAX = 2 * 1024 * 1024; // 2MB
-    if (file.size > MAX) { App.addSystemNote("文件过大（>2MB）：" + file.name); return; }
+    const isBin = /\.(docx|xlsx|pptx)$/i.test(file.name);
+    const MAX = isBin ? 10 * 1024 * 1024 : 2 * 1024 * 1024; // 二进制 10MB / 文本 2MB
+    if (file.size > MAX) { App.addSystemNote("文件过大（>" + (MAX/1024/1024) + "MB）：" + file.name); return; }
     try {
-      const text = await file.text();
+      let content, base64 = false;
+      if (isBin) {
+        const buf = new Uint8Array(await file.arrayBuffer());
+        let b = "";
+        for (let i = 0; i < buf.length; i += 0x8000) b += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+        content = btoa(b);
+        base64 = true;
+      } else {
+        content = await file.text();
+      }
       const r = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, content: text }),
+        body: JSON.stringify({ name: file.name, content, base64 }),
       });
       const j = await r.json();
       if (!j.success) { App.addSystemNote("上传失败：" + (j.error || r.status)); return; }
-      App.state.attachments.push({ name: file.name, path: j.path });
+      App.state.attachments.push({ name: file.name, path: j.path, isOffice: !!j.isOffice });
       renderAttachments();
-      App.addSystemNote("已上传：" + file.name);
+      App.addSystemNote("已上传：" + file.name + (j.isOffice ? "（已提取文本）" : ""));
     } catch (e) { App.addSystemNote("上传失败：" + e.message); }
   };
   App.clearAttachments = function() {

@@ -424,17 +424,33 @@ const server = http.createServer(async (req, res) => {
 
     // ── 文件上传（用户附件，AI 用 read 读取）──
     if (p === "/api/upload" && req.method === "POST") {
-      const { name, content } = await readBody(req)
+      const { name, content, base64 } = await readBody(req)
       try {
         if (typeof name !== "string" || typeof content !== "string") return json(res, 400, { error: "参数错误" })
         const clean = path.basename(String(name).replace(/[\\/]/g, "/")).replace(/[^\w.\-\u4e00-\u9fa5]/g, "_").slice(0, 80)
         if (!clean) return json(res, 400, { error: "文件名无效" })
-        if (Buffer.byteLength(content, "utf8") > 2 * 1024 * 1024) return json(res, 400, { error: "文件超过 2MB" })
+        const buf = base64 ? Buffer.from(content, "base64") : Buffer.from(content, "utf8")
+        if (buf.length > 20 * 1024 * 1024) return json(res, 400, { error: "文件超过 20MB" })
         const dir = path.join(USER_PI, "uploads")
         fs.mkdirSync(dir, { recursive: true })
         const file = path.join(dir, clean)
-        fs.writeFileSync(file, content, "utf8")
-        return json(res, 200, { success: true, path: file, name: clean })
+        fs.writeFileSync(file, buf)
+        // Office 文件（docx/xlsx/pptx）：提取文本供 AI 读取
+        let readPath = file
+        let isOffice = false
+        if (/\.(docx|xlsx|pptx)$/i.test(clean)) {
+          try {
+            const { extractOfficeText } = await import(pathToFileURL(path.join(ROOT, "src", "web", "office.mjs")).href)
+            const ext = extractOfficeText(buf, clean)
+            if (ext && ext.text) {
+              const txtFile = path.join(dir, clean + ".txt")
+              fs.writeFileSync(txtFile, ext.text, "utf8")
+              readPath = txtFile
+              isOffice = true
+            }
+          } catch (e) { /* 提取失败则保留原文件 */ }
+        }
+        return json(res, 200, { success: true, path: readPath, name: clean, isOffice })
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
 
