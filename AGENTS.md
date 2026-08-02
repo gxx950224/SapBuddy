@@ -72,10 +72,12 @@ node cli.mjs tools   # 工具列表
 
 - `connections.json`（SAP 凭据）与 `.SapBuddy/auth.json`（API Key）**已被 .gitignore 排除**，绝不提交
 - 配置模板在 `config/*.example.json`
-- 默认 `security.readOnly: true`，写操作需显式开启
+- **默认只读**：connections.json 未显式设置 `security.readOnly: false` 即视为只读（所有写工具拒绝）；要允许写操作需在 connections.json 显式 `"security": { "readOnly": false }`
+- 写操作另有双层保护：**人工确认**（拦截 → 用户输入"确认"放行）+ **开发客户端守卫**（T000.CCCATEGORY 非 C 类拒绝）
 
 ## 提交
 
 - 提交前 `npm run build` 确保编译通过
 - 不提交：node_modules/、dist/、connections.json、.pi/（旧版目录）、.SapBuddy/ 下个人配置（auth/connections/settings/sessions/output/mcp/memory 等）
+- `.SapBuddy/skills/`、`.SapBuddy/models.json` 为默认内容**随仓库跟踪**（供安装包分发）
 - 提交信息简洁中文或英文均可
