@@ -1776,3 +1776,16 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   background: rgba(0,0,0,0.15);
   border-radius: 0 0 10px 10px;
 }
+
+/* Skill 调用卡（绿色系，与普通工具卡区分） */
+.tool-card.skill-card {
+  border-left-color: var(--success, #22c55e);
+  background: rgba(34, 197, 94, 0.08);
+}
+.tool-card.skill-card .tool-name {
+  color: var(--success, #22c55e);
+  font-weight: 700;
+}
+.tool-card.skill-card .tool-icon {
+  font-size: 13px;
+}

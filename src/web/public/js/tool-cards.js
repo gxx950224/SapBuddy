@@ -36,25 +36,41 @@
     return s.length > 90 ? s.slice(0, 90) + "…" : s;
   };
 
+  // ── Skill 识别：read 调用读取 .SapBuddy/skills/xxx/SKILL.md → Skill 卡 ──
+  function isSkillRead(name, args) {
+    if (name !== "read") return false;
+    const s = typeof args === "string" ? args : JSON.stringify(args || {});
+    return /skills[\/\\][^\/\\"]+[\/\\]SKILL\.md/i.test(s) || /\.SapBuddy[\/\\]skills[\/\\]/i.test(s);
+  }
+  function skillNameFrom(args) {
+    const s = typeof args === "string" ? args : JSON.stringify(args || {});
+    const m = s.match(/skills[\/\\]([^\/\\"]+)/i);
+    if (m) return m[1].replace(/\.md$/i, "");
+    const m2 = s.match(/([^\/\\"]+)[\/\\]SKILL\.md/i);
+    return m2 ? m2[1] : "skill";
+  }
+
   // ── 创建工具卡片 ──
   App.createToolCard = function(id, name, args) {
     if (id && state.toolCards.has(id)) {
       return state.toolCards.get(id);
     }
+    const isSkill = isSkillRead(name, args);
+    const skillName = isSkill ? skillNameFrom(args) : "";
     const card = document.createElement("div");
-    card.className = "tool-card";
+    card.className = "tool-card" + (isSkill ? " skill-card" : "");
     card.dataset.toolName = name || "";
     card.innerHTML = `
       <div class="tool-head">
         <span class="tool-caret">▸</span>
-        <span class="tool-icon">${TOOL_ICONS[name] || "🔧"}</span>
+        <span class="tool-icon">${isSkill ? "📘" : (TOOL_ICONS[name] || "🔧")}</span>
         <span class="tool-name"></span>
         <span class="tool-args"></span>
         <span class="tool-state running"><span class="spinner"></span> 执行中</span>
       </div>
       <div class="tool-body"></div>`;
-    card.querySelector(".tool-name").textContent = name || "tool";
-    card.querySelector(".tool-args").textContent = App.summarizeArgs(args);
+    card.querySelector(".tool-name").textContent = isSkill ? ("Skill: " + skillName) : (name || "tool");
+    card.querySelector(".tool-args").textContent = isSkill ? "加载技能说明" : App.summarizeArgs(args);
     const bodyEl = card.querySelector(".tool-body");
     bodyEl.style.display = "none"; // 内联兜底：折叠必隐藏（不依赖 CSS）
     card.querySelector(".tool-head").addEventListener("click", () => {
