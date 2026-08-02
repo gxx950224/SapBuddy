@@ -797,7 +797,9 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card.expanded { box-shadow: var(--shadow-sm); }
 .tool-card .tool-head {
   display: flex; align-items: center; gap: 6px;
-  padding: 2px 8px; cursor: pointer; user-select: none;
+  padding: 0 8px; height: 30px; max-height: 30px;
+  overflow: hidden;
+  cursor: pointer; user-select: none;
   transition: background var(--ease);
 }
 .tool-card .tool-head:hover { background: var(--bg-hover); }
@@ -817,7 +819,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border-top: 1px solid var(--border);
   padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
   white-space: pre-wrap; word-break: break-word;
-  max-height: 60px; overflow-y: auto; color: var(--text-dim);
+  max-height: 50px; overflow-y: auto; color: var(--text-dim);
   display: none;
 }
 .tool-card.expanded .tool-body { display: block; }
