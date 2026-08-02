@@ -197,7 +197,7 @@
     }
   }
 
-  // lightbox 关闭/复制：事件委托（markdown.js 先于 overlay div 加载，委托不受 DOM 顺序影响）
+  // lightbox 关闭/查看代码：事件委托（markdown.js 先于 overlay div 加载，委托不受 DOM 顺序影响）
   document.addEventListener("click", (e) => {
     const overlay = document.getElementById("mermaid-overlay");
     if (!overlay) return;
@@ -207,18 +207,57 @@
       overlay.classList.remove("open");
       return;
     }
-    // 复制按钮
-    if (e.target.closest("#mermaid-lightbox-copy")) {
+    // 查看代码：切换右侧源码面板
+    if (e.target.closest("#mermaid-lightbox-code")) {
+      const panel = document.getElementById("mermaid-lightbox-code-panel");
+      const view = document.getElementById("mermaid-code-view");
+      if (!panel) return;
+      if (panel.classList.contains("open")) {
+        panel.classList.remove("open");
+      } else {
+        if (view && overlay._mermaidRaw) view.textContent = overlay._mermaidRaw;
+        panel.classList.add("open");
+      }
+      return;
+    }
+    // 源码面板内复制
+    if (e.target.closest("#mermaid-code-copy")) {
       const src = overlay._mermaidRaw;
       if (!src) return;
       App.copyText(src).then(() => {
-        const btn = document.getElementById("mermaid-lightbox-copy");
+        const btn = document.getElementById("mermaid-code-copy");
         if (!btn) return;
-        const old = btn.innerHTML;
-        btn.innerHTML = "\u2713 \u5DF2\u590D\u5236";
-        setTimeout(() => { btn.innerHTML = old; }, 1500);
+        const old = btn.textContent;
+        btn.textContent = "\u2713 \u5DF2\u590D\u5236";
+        setTimeout(() => { btn.textContent = old; }, 1500);
       });
     }
+  });
+
+  // 全屏画布拖拽平移（在图表上按住拖动）
+  let mermaidDrag = { active: false, x: 0, y: 0, sl: 0, st: 0 };
+  document.addEventListener("mousedown", (e) => {
+    const overlay = document.getElementById("mermaid-overlay");
+    if (!overlay?.classList.contains("open")) return;
+    if (e.target.closest("button, a, #mermaid-lightbox-code-panel, #mermaid-lightbox-head")) return;
+    const body = document.getElementById("mermaid-lightbox-body");
+    if (!body) return;
+    mermaidDrag = { active: true, x: e.clientX, y: e.clientY, sl: body.scrollLeft, st: body.scrollTop };
+    body.style.cursor = "grabbing";
+    e.preventDefault();
+  });
+  document.addEventListener("mousemove", (e) => {
+    if (!mermaidDrag.active) return;
+    const body = document.getElementById("mermaid-lightbox-body");
+    if (!body) return;
+    body.scrollLeft = mermaidDrag.sl - (e.clientX - mermaidDrag.x);
+    body.scrollTop = mermaidDrag.st - (e.clientY - mermaidDrag.y);
+  });
+  document.addEventListener("mouseup", () => {
+    if (!mermaidDrag.active) return;
+    mermaidDrag.active = false;
+    const body = document.getElementById("mermaid-lightbox-body");
+    if (body) body.style.cursor = "grab";
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
