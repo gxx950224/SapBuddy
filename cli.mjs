@@ -3,7 +3,7 @@
  * SapBuddy CLI — SAP ABAP AI 助手（跨平台）
  *
  * 用法:
- *   sapbuddy chat               交互式对话
+ *   sapbuddy chat               交互式对话（全屏 TUI）
  *   sapbuddy "提问内容"         单次提问
  *   sapbuddy --json "提问"      单次提问（JSON 输出）
  *   sapbuddy web                启动 Web 版（浏览器访问 http://127.0.0.1:7400）
@@ -18,6 +18,26 @@ import { createAgent, loadAuth, loadSettings, ROOT } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
+
+// ===== ANSI 与渲染辅助 =====
+const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", magenta: "\x1b[35m", red: "\x1b[31m", blue: "\x1b[34m" }
+function esc(s) { return String(s ?? "").replace(/\x1b/g, "") }
+function visibleLen(s) { return String(s).replace(/\x1b\[[0-9;]*m/g, "") }
+function mdToAnsi(text) {
+  let out = esc(text)
+  out = out.replace(/^```[\w-]*\n?([\s\S]*?)\n?```$/gm, (m, code) => ANSI.cyan + code.replace(/^/gm, "  │ ") + ANSI.reset)
+  out = out.replace(/^```[\w-]*$/gm, "")
+  out = out.replace(/^(#{1,4})\s+(.+)$/gm, (m, h, t) => ANSI.cyan + ANSI.bold + t + ANSI.reset)
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, ANSI.bold + "$1" + ANSI.reset)
+  out = out.replace(/`([^`\n]+)`/g, ANSI.green + "$1" + ANSI.reset)
+  out = out.replace(/^\s*[-*]\s+(.+)$/gm, "  " + ANSI.yellow + "•" + ANSI.reset + " $1")
+  out = out.replace(/^>\s?(.+)$/gm, ANSI.dim + "│ $1" + ANSI.reset)
+  return out
+}
+function sepLine() {
+  const w = process.stdout.columns || 80
+  return ANSI.dim + "─".repeat(Math.min(w, 100)) + ANSI.reset
+}
 
 // ===== tools：列出工具 =====
 async function cmdTools() {
@@ -45,7 +65,6 @@ async function cmdDoctor() {
   console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 .SapBuddy/auth.json）"}`)
   const settings = loadSettings()
   console.log(`默认模型: ${settings.defaultProvider ?? "deepseek"}/${settings.defaultModel ?? "deepseek-v4-flash"}`)
-  // 连接检查：~/.SapBuddy/connections.json 优先，兼容项目根
   const confPath = [path.join(process.cwd(), ".SapBuddy", "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
   if (confPath) {
     try {
@@ -74,216 +93,248 @@ async function cmdPrompt(text, jsonMode) {
   session.dispose()
 }
 
-// ===== 交互式对话（REPL，类 pi / Claude Code）=====
-
-// ── 启动页：ASCII art 标题 + 作者/模型/当前目录 ──
-const FIGLET = {
-  S: ["███████╗", "██╔════╝", "███████╗", "╚════██║", "███████║", "╚══════╝"],
-  A: [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"],
-  P: ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔═══╝ ", "██║     ", "╚═╝     "],
-  B: ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔══██╗", "██████╔╝", "╚═════╝ "],
-  U: ["██╗   ██╗", "██║   ██║", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
-  D: ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
-  Y: ["██╗   ██╗", "╚██╗ ██╔╝", " ╚████╔╝ ", "  ╚██╔╝  ", "   ██║   ", "   ╚═╝   "],
-}
-
-function renderBanner() {
-  const word = "SAPBUDDY"
-  const rows = Array(6).fill("")
-  for (const ch of word) {
-    const glyph = FIGLET[ch] || ["      ", "      ", "      ", "      ", "      ", "      "]
-    for (let i = 0; i < 6; i++) rows[i] += glyph[i]
-  }
-  return "\n" + rows.join("\n") + "\n"
-}
-
-// ── pi 风格：markdown → ANSI 彩色（无状态，安全闭合） ──
-const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", magenta: "\x1b[35m", red: "\x1b[31m", blue: "\x1b[34m" }
-function esc(s) { return String(s ?? "").replace(/\x1b/g, "") }
-function mdToAnsi(text) {
-  let out = esc(text)
-  // 代码块 → 青色 + 缩进标记
-  out = out.replace(/^```[\w-]*\n?([\s\S]*?)\n?```$/gm, (m, code) => ANSI.cyan + code.replace(/^/gm, "  │ ") + ANSI.reset)
-  out = out.replace(/^```[\w-]*$/gm, "")
-  // 标题 → 青色粗体
-  out = out.replace(/^(#{1,4})\s+(.+)$/gm, (m, h, t) => ANSI.cyan + ANSI.bold + t + ANSI.reset)
-  // 粗体
-  out = out.replace(/\*\*([^*\n]+)\*\*/g, ANSI.bold + "$1" + ANSI.reset)
-  // 行内代码 → 绿色
-  out = out.replace(/`([^`\n]+)`/g, ANSI.green + "$1" + ANSI.reset)
-  // 列表
-  out = out.replace(/^\s*[-*]\s+(.+)$/gm, "  " + ANSI.yellow + "•" + ANSI.reset + " $1")
-  // 引用
-  out = out.replace(/^>\s?(.+)$/gm, ANSI.dim + "│ $1" + ANSI.reset)
-  return out
-}
-// 轮次分隔线（终端宽度）
-function sepLine() {
-  const w = process.stdout.columns || 80
-  return ANSI.dim + "─".repeat(Math.min(w, 100)) + ANSI.reset
-}
-
-
+// ===== 交互式对话：全屏 TUI（pi 风格） =====
 async function cmdChat() {
-  // 启动页：ASCII art + 作者/模型/当前目录
-  console.log(renderBanner())
-  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+  // 非 TTY（管道/CI）：降级为简化 REPL
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return simpleChat()
+  }
+  const { createInterface } = await import("node:readline")
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: true })
+  process.stdin.setRawMode(true)
+  process.stdin.resume()
+  process.stdout.write("\x1b[?1049h")  // 备用屏幕
+  process.stdout.write("\x1b[?25l")    // 隐藏光标
+
   const settings = loadSettings()
   const modelId = (settings.defaultProvider ?? "deepseek") + "/" + (settings.defaultModel ?? "deepseek-v4-flash")
-  console.log("  author: guoxiaoxi    version: v" + pkg.version)
-  console.log("  models: " + modelId)
-  console.log("  " + process.cwd() + "\n")
-  // 首次运行引导：未配置 API Key / 连接时给出提示
-  const auth = loadAuth()
-  const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
-  if (!hasKey) {
-    console.log("⚠️  未配置 AI 模型 API Key。请先：")
-    console.log("    mkdir -p ~/.SapBuddy && cp config/auth.example.json .SapBuddy/auth.json   # 然后填入你的 API Key")
-    console.log("    或运行: node cli.mjs doctor\n")
-  }
-  const { session } = await createAgent()
-  const readline = await import("node:readline").then((m) =>
-    m.createInterface({ input: process.stdin, output: process.stdout })
-  )
+  const ctxMax = Number(settings.contextTokens) || 200000
+
+  const history = []      // { role, text }
+  let inputBuf = ""
+  let historyIdx = -1
   let streaming = false
+  let reply = ""
+  let spinnerTimer = null
+  let renderTimer = null
+  let exitDone = false
 
-  // stdin 关闭（管道 EOF）：优雅退出
-  readline.on("close", () => {
-    process.stdout.write("\n👋 再见\n")
-    process.exit(0)
-  })
-
-  // Ctrl+C：流式中停止当前生成；空闲时退出
-  readline.on("SIGINT", async () => {
-    if (streaming) {
-      streaming = false
-      try { await session.abort() } catch { /* 忽略 */ }
-      process.stdout.write("\n⏹ 已停止\n")
-      ask()
-    } else {
-      process.stdout.write("\n👋 再见\n")
-      session.dispose()
-      process.exit(0)
-    }
-  })
-
-  const helpText = `
-  可用命令:
-    /exit       退出
-    /tools      查看 42 个 SAP 工具
-    /compact    压缩上下文（节省 tokens）
-    /stop       停止当前生成
-    /model      切换模型
-    /clear      清屏
-    /help       帮助
-  `
-
-  // 会话历史（用于重绘）
-  const history = []
-  let promptPrefix = "❯"
-
-  // 全屏重绘：标题 + 历史消息 + 分隔 + 输入提示
-  function drawAll() {
-    process.stdout.write("\x1bc")
-    console.log(renderBanner())
-    console.log("  models: " + ((loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash")))
-    console.log(ANSI.dim + "  " + process.cwd() + ANSI.reset)
-    for (const h of history) {
-      if (h.role === "user") {
-        console.log()
-        console.log(sepLine())
-        console.log(ANSI.bold + "❯ " + ANSI.reset + esc(h.text))
-      } else {
-        console.log()
-        console.log(sepLine())
-        console.log(ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset)
-        console.log(mdToAnsi(h.text))
-      }
-    }
-    console.log()
-    console.log(sepLine())
-    const stat = ANSI.dim + " 模型: " + ((loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash")) +
-      " · 消息: " + history.length + " · 上下文: /compact" + ANSI.reset
-    console.log(stat)
-    console.log()
+  function ctxUsed() {
+    try {
+      const msgs = session?.agent?.state?.messages ?? []
+      let n = 0
+      for (const m of msgs) n += (m.usage?.input ?? 0) + (m.usage?.output ?? 0)
+      return n
+    } catch { return 0 }
   }
 
-  const ask = () => {
-    if (readline.closed) return
-    readline.question(promptPrefix + " ", async (input) => {
-      const t = input.trim()
-      if (!t) return ask()
+  function statusBar() {
+    const used = ctxUsed()
+    const pct = ctxMax > 0 ? Math.min(999, Math.round((used / ctxMax) * 100)) : 0
+    const home = process.env.USERPROFILE || process.env.HOME || ""
+    const short = home ? process.cwd().replace(home, "~") : process.cwd()
+    const left = "  " + ANSI.dim + short + ANSI.reset +
+      ANSI.dim + "  ·  模型 " + ANSI.reset + modelId +
+      ANSI.dim + "  ·  上下文 " + ANSI.reset + pct + "%/" + (ctxMax >= 1000000 ? (ctxMax / 1000000).toFixed(1) + "M" : ctxMax)
+    const right = ANSI.dim + "消息 " + history.length + " · " + new Date().toLocaleTimeString("zh-CN", { hour12: false }) + ANSI.reset
+    const pad = Math.max(1, (process.stdout.columns || 100) - visibleLen(left) - visibleLen(right))
+    return left + " ".repeat(pad) + right
+  }
 
-      // ── 命令处理 ──
-      switch (t) {
-        case "/exit":
-        case "/quit":
-          console.log("👋 再见")
-          session.dispose()
-          readline.close()
-          process.exit(0)
-        case "/tools":
-          await cmdTools()
-          return ask()
-        case "/help":
-        case "--help":
-        case "-h":
-          console.log(helpText)
-          return ask()
-        case "/clear":
-          process.stdout.write("\x1bc")
-          console.log(renderBanner())
-          console.log("  models: " + ((loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash")))
-          console.log("  " + process.cwd() + "\n")
-          return ask()
-        case "/stop":
-          if (streaming) { streaming = false; await session.abort().catch(() => {}); console.log("⏹ 已停止") }
-          else console.log("当前没有生成中的内容")
-          return ask()
-        case "/compact":
-          console.log("🧹 正在压缩上下文…")
-          try {
-            await session.compact()
-            console.log("✅ 压缩完成")
-          } catch (e) { console.log(`⚠️ 压缩失败: ${e.message}`) }
-          return ask()
-        case "/model": {
-          const result = await session.cycleModel().catch(() => undefined)
-          if (result?.model) console.log(`🔄 已切换: ${result.model.provider}/${result.model.id}`)
-          else console.log("⚠️ 没有可切换的模型")
-          return ask()
-        }
+  function messagesBlock() {
+    const lines = []
+    for (const h of history) {
+      if (h.role === "user") lines.push("", sepLine(), ANSI.bold + "❯ " + ANSI.reset + esc(h.text))
+      else lines.push("", sepLine(), ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset, mdToAnsi(h.text))
+    }
+    if (streaming) {
+      lines.push("", sepLine(), ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset)
+      lines.push(mdToAnsi(reply))
+    }
+    const rows = (process.stdout.rows || 30) - 6
+    if (lines.length > rows) return lines.slice(-rows).join("\n")
+    return lines.join("\n")
+  }
+
+  function render() {
+    let out = "\x1b[2J\x1b[H"
+    out += statusBar() + "\n"
+    out += ANSI.dim + "  Ctrl+C 停止/退出 · ↑↓ 历史 · /help 帮助 · /tools 工具 · /compact 压缩 · /clear 清屏" + ANSI.reset + "\n\n"
+    out += messagesBlock() + "\n\n"
+    out += sepLine() + "\n"
+    out += "❯ " + inputBuf
+    process.stdout.write(out)
+    const row = process.stdout.rows || 30
+    const col = 3 + visibleLen(inputBuf).length
+    process.stdout.write("\x1b[" + row + ";" + col + "H")
+  }
+  function scheduleRender() {
+    if (renderTimer) return
+    renderTimer = setTimeout(() => { renderTimer = null; render() }, 60)
+  }
+
+  function cleanup() {
+    if (exitDone) return
+    exitDone = true
+    if (spinnerTimer) clearInterval(spinnerTimer)
+    if (renderTimer) clearTimeout(renderTimer)
+    try { process.stdin.setRawMode(false) } catch {}
+    process.stdout.write("\x1b[?25h\x1b[?1049l\x1b[2J\x1b[H")
+    console.log("👋 再见\n")
+    try { session.dispose() } catch {}
+    process.exit(0)
+  }
+
+  // ── 输入处理（raw mode + keypress）──
+  process.stdin.on("keypress", async (ch, key) => {
+    if (!key) return
+    if (streaming) {
+      // 生成中：Ctrl+C 停止
+      if (key.ctrl && key.name === "c") {
+        streaming = false
+        if (spinnerTimer) { clearInterval(spinnerTimer); spinnerTimer = null }
+        history.push({ role: "assistant", text: reply || "(已停止)" })
+        reply = ""
+        render()
       }
+      return
+    }
+    if (key.ctrl && key.name === "c") return cleanup()
+    if (key.name === "return") {
+      const t = inputBuf.trim()
+      inputBuf = ""
+      historyIdx = -1
+      if (!t) return render()
+      if (["/exit", "/quit"].includes(t)) return cleanup()
+      if (t === "/help" || t === "--help" || t === "-h") {
+        history.push({ role: "user", text: t })
+        history.push({ role: "assistant", text: "可用命令:\n  /exit 退出 · /tools 42 个工具 · /compact 压缩上下文 · /stop 停止 · /model 切换模型 · /clear 清屏 · /help 帮助" })
+        return render()
+      }
+      if (t === "/clear") { history.length = 0; return render() }
+      if (t === "/compact") {
+        history.push({ role: "user", text: t })
+        history.push({ role: "assistant", text: "🧹 正在压缩上下文…" })
+        render()
+        try { await session.compact(); history[history.length - 1].text = "✅ 压缩完成" }
+        catch (e) { history[history.length - 1].text = "⚠️ 压缩失败: " + e.message }
+        return render()
+      }
+      if (t === "/model") {
+        history.push({ role: "user", text: t })
+        const r = await session.cycleModel().catch(() => undefined)
+        history.push({ role: "assistant", text: r?.model ? ("🔄 已切换: " + r.model.provider + "/" + r.model.id) : "⚠️ 没有可切换的模型" })
+        return render()
+      }
+      if (t === "/tools") {
+        history.push({ role: "user", text: t })
+        history.push({ role: "assistant", text: "42 个 SAP 工具可用（执行 `sapbuddy tools` 查看完整清单）。" })
+        return render()
+      }
+      if (t === "/stop") { history.push({ role: "assistant", text: "当前没有生成中的内容" }); return render() }
 
       // ── 普通对话 ──
-      streaming = true
       history.push({ role: "user", text: t })
-      console.log()
-      console.log(sepLine())
-      console.log(ANSI.bold + "❯ " + ANSI.reset + esc(t))
-      console.log()
-      console.log(sepLine())
-      console.log(ANSI.cyan + ANSI.bold + "SapBuddy" + ANSI.reset)
-      let reply = ""
+      streaming = true
+      reply = ""
+      const spin = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+      let si = 0
+      spinnerTimer = setInterval(() => {
+        process.stdout.write("\r" + ANSI.dim + " " + spin[si++ % spin.length] + " Working..." + ANSI.reset)
+      }, 100)
+      render()
       const unsub = session.subscribe((event) => {
         if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
           reply += event.assistantMessageEvent.delta
-          process.stdout.write(event.assistantMessageEvent.delta)
-        }
-        if (event.type === "tool_execution_start") {
-          process.stdout.write(`\n${ANSI.magenta}[🔧 ${event.toolName}]${ANSI.reset} `)
+          scheduleRender()
         }
       })
-      await session.prompt(t).catch((e) => console.log(`\n[错误] ${e.message}`))
+      await session.prompt(t).catch(() => {})
       unsub()
       streaming = false
+      if (spinnerTimer) { clearInterval(spinnerTimer); spinnerTimer = null }
       history.push({ role: "assistant", text: reply || "(无输出)" })
-      // 完成后全屏重绘（markdown 彩色渲染），呈现 pi 风格终态
-      drawAll()
-      ask()
+      reply = ""
+      render()
+    } else if (key.name === "backspace") {
+      inputBuf = inputBuf.slice(0, -1)
+      render()
+    } else if (key.name === "up") {
+      const userMsgs = history.filter((h) => h.role === "user").map((h) => h.text)
+      if (userMsgs.length) {
+        historyIdx = historyIdx === -1 ? userMsgs.length - 1 : Math.max(0, historyIdx - 1)
+        inputBuf = userMsgs[historyIdx]
+        render()
+      }
+    } else if (key.name === "down") {
+      const userMsgs = history.filter((h) => h.role === "user").map((h) => h.text)
+      if (userMsgs.length && historyIdx >= 0) {
+        historyIdx++
+        inputBuf = historyIdx < userMsgs.length ? userMsgs[historyIdx] : ""
+        if (historyIdx >= userMsgs.length) historyIdx = -1
+        render()
+      }
+    } else if (key.ctrl && key.name === "u") {
+      inputBuf = ""
+      render()
+    } else if (key.name === "tab" || key.name === "escape") {
+      // 忽略
+    } else if (ch) {
+      inputBuf += ch
+      render()
+    }
+  })
+
+  render()
+  rl.on("close", () => cleanup())
+  await new Promise(() => {})  // 常驻，由 cleanup 退出
+}
+
+// ===== 简化 REPL（非 TTY 降级：管道/CI）=====
+async function simpleChat() {
+  const { createInterface } = await import("node:readline")
+  process.stdin.resume()
+  const rl = createInterface({ input: process.stdin, output: process.stdout, terminal: false })
+  let session = null
+  let processing = false
+  const queue = []
+
+  console.log("SapBuddy 交互模式（简化）· 模型: " + (loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash"))
+  console.log("输入 /help 查看命令，/exit 退出\n")
+
+  // 逐行处理（队列串行；agent 懒创建，兼容管道输入在启动期间到达）
+  async function handleLine(raw) {
+    const t = raw.trim()
+    if (!t) return
+    if (["/exit", "/quit"].includes(t)) {
+      console.log("👋 再见")
+      try { session?.dispose() } catch {}
+      process.exit(0)
+    }
+    if (t === "/help" || t === "--help") { console.log("  /exit 退出 · /compact 压缩上下文 · /stop 停止 · /model 切换模型 \n"); return }
+    if (!session) session = (await createAgent()).session
+    if (t === "/compact") { try { await session.compact(); console.log("✅ 压缩完成") } catch (e) { console.log("⚠️ " + e.message) } return }
+    if (t === "/model") { const r = await session.cycleModel().catch(() => undefined); console.log(r?.model ? "🔄 " + r.model.id : "⚠️ 无模型可切"); return }
+    console.log()
+    const unsub = session.subscribe((e) => {
+      if (e.type === "message_update" && e.assistantMessageEvent.type === "text_delta") process.stdout.write(e.assistantMessageEvent.delta)
+      if (e.type === "tool_execution_start") process.stdout.write("\n[🔧 " + e.toolName + "] ")
     })
+    await session.prompt(t).catch((e) => console.log("\n[错误] " + e.message))
+    unsub()
+    console.log("\n")
   }
-  ask()
+
+  rl.on("line", async (line) => {
+    queue.push(line)
+    if (processing) return
+    processing = true
+    while (queue.length) {
+      await handleLine(queue.shift())
+    }
+    processing = false
+  })
+  rl.on("close", () => { console.log("👋 再见"); try { session?.dispose() } catch {}; process.exit(0) })
 }
 
 // ===== web：启动 Web 版 =====
@@ -291,7 +342,6 @@ async function cmdWeb() {
   const port = args.includes("--port") ? args[args.indexOf("--port") + 1] : 7400
   await import(pathToFileURL(path.join(HERE, "src", "web", "server.mjs")).href)
     .then((m) => undefined)
-  // server.mjs 自带 listen，等待
   process.stdin.resume()
 }
 
@@ -307,7 +357,7 @@ async function main() {
   console.log(`SapBuddy — SAP ABAP AI 助手
 
 用法:
-  sapbuddy chat                  交互式对话
+  sapbuddy chat                  交互式对话（全屏 TUI）
   sapbuddy "提问"                单次提问
   sapbuddy web [--port 7400]     启动 Web 版
   sapbuddy tools                 列出 SAP 工具
@@ -315,4 +365,7 @@ async function main() {
 `)
 }
 
-main().catch((e) => { console.error("错误:", e.message); process.exit(1) })
+main().catch((e) => {
+  console.error(e)
+  process.exit(1)
+})
