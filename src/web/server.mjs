@@ -43,13 +43,14 @@ const START_TS = Date.now() // 静态资源版本号（重启变化，强制刷�
 /** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
 let mcpStatusCache = null
 
-/** 工具定义实际 token 估算（启动时算一次，替代硬编码 8000） */
+/** 工具定义实际 token 估算（启动时算一次，替代硬编码 8000）
+ * zod 对象 JSON 约 38KB → 紧凑 JSON Schema 约 15.3KB（×0.4）→ /3.5 ≈ token */
 let EXT_TOKENS = 8000
 try {
   const { tools } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "tools", "index.js")).href)
-  const chars = tools.reduce((a, t) => a + JSON.stringify(t.inputSchema || {}).length + String(t.description || "").length + String(t.title || "").length, 0)
-  // 英文为主 /3.5，中文混合保守 /3
-  EXT_TOKENS = Math.max(1000, Math.round(chars / 3.5))
+  const schemaChars = tools.reduce((a, t) => a + JSON.stringify(t.inputSchema || {}).length, 0)
+  const descChars = tools.reduce((a, t) => a + String(t.description || "").length + String(t.title || "").length, 0)
+  EXT_TOKENS = Math.max(1000, Math.round(schemaChars * 0.4 / 3.5 + descChars / 3.5))
 } catch { /* 保持 8000 */ }
 
 // ─── Agent 会话 ────────────────────────────────────────────────────────────
