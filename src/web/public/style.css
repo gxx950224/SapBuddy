@@ -1658,11 +1658,6 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   user-select: none;
 }
 #mermaid-lightbox-body:active { cursor: grabbing; }
-.mermaid-drag-hint {
-  font-size: 11px;
-  color: var(--text-dim);
-  margin-right: 4px;
-}
 #mermaid-lightbox-code-panel {
   position: absolute;
   top: 0; right: 0; bottom: 0;
