@@ -25,3 +25,7 @@ Thumbs.db
 
 # 旧版 .pi 配置目录（已废弃，git 内容迁移到 .SapBuddy 后整个忽略）
 .pi/
+
+# 旧版项目根产物与连接（已迁移到 .SapBuddy，防误提交）
+output/
+connections.json
