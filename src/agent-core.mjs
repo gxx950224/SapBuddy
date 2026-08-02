@@ -227,88 +227,17 @@ export async function createAgent(opts = {}) {
         } catch (e) {
           console.log(`[sapbuddy] 工具注册失败: ${e.message}`)
         }
-        // 每轮规则注入（对齐原版 AbapBuddy：before_agent_start 按用户输入动态注入）
+        // 授权窗口：确认词/拒绝词统一处理（CLI/Web 同规则，扩展层强制）。
+        // 行为规则（创建/修改流程、避坑记录等）已统一在 SYSTEM.md（单一来源），不再按关键词动态注入。
         try {
-          const GLOBAL_TOOL_RULES = `
-
----
-## 【每轮强调 — 2 条核心（完整规则见 SYSTEM.md）】
-
-0. **精确搜索**：确认对象是否存在，用 \`search_abap_objects\` 传**精确名称（不带 *）**；模糊搜索/读现有对象源码"学风格"仅当用户明确要求参考或找同类时才做。
-1. **失败停手**：同一工具连续失败 3 次立即停手，把问题与已尝试方案发给用户，不要反复重试（换参数试 1 次可以，连试 3 次不行）。
-`
-          const CREATE_FLOW_RULES = `
-
-### 【创建流程 — 你正在处理创建请求】
-
-1. 只调一次 \`search_abap_objects\` 精确查用户给的对象名（不带 *）。
-2. 已存在 → 告知用户走修改流程；不存在且需求不明确 → **直接向用户提问**要实现什么（业务场景/数据来源/输入输出），不要创建空壳。
-3. **创建前必须收集齐以下信息（缺失则提问，不要默认 $TMP）**：
-   - **开发包**（packageName，正式包，不是 $TMP）
-   - **程序/对象名**（Z*/Y*）
-   - **程序描述**
-   - **传输请求**：新建请求的描述名，或指定放入哪个现有请求号
-4. 把完整计划（包名/对象名/描述/请求）展示给用户 → 等用户确认 → 才调用写工具。
-5. **创建可执行报表用 \`PROG/P\`（主程序），不要用 \`PROG/I\`（include）**；函数模块用 \`FUGR/FF\` + parentName 函数组。
-`
-          const MODIFY_FLOW_RULES = `
-
-### 【修改流程 — 你正在处理修改请求】
-
-1. 先用 \`get_abap_object_lines\` 读当前源码，并用 \`manage_transport_requests(action=get_object_transport)\` 查该对象所在的**未释放传输请求**。
-2. 若已有未释放请求 → **直接沿用**（不新建、不询问）。
-3. 若无未释放请求 → **向用户询问请求信息**：新建请求的描述名，或指定放入某个现有请求号。
-4. 展示改动计划（改什么 + 放入哪个请求）→ 等用户确认 → 才调用写工具。
-`
           pi.on("before_agent_start", async (event, _ctx) => {
             try {
-              const prompt = String(event?.prompt || "").toLowerCase()
-              // 授权窗口：确认词/拒绝词统一处理（CLI/Web 同规则，由扩展层强制）
               const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
               r.handleUserMessage?.(event?.prompt || "")
-              let inject = GLOBAL_TOOL_RULES
-              if (/创建|新建|开发|生成|写.*程序|create|new|开发一个/.test(prompt)) {
-                inject += CREATE_FLOW_RULES
-              }
-              if (/修改|改|更新|编辑|modify|change|update/.test(prompt)) {
-                inject += MODIFY_FLOW_RULES
-              }
-              // 避坑记录：仅用户明确推翻/纠错（方向性错误）时触发；字段增减等正常需求调整不记
-              const REJECT_STRONG_RE = /推翻|方向不对|搞错了|白做了|重新设计|别这么搞|这样不行|思路不对|改错了|越改越糟|完全不对|根本不对|反了|弄错了/i
-              if (REJECT_STRONG_RE.test(String(event?.prompt || ""))) {
-                inject += `
-
-### 【避坑记录 — 用户明确推翻了你的方案/代码改动】
-
-用户刚刚明确推翻/纠正了你的方案。**先判断是否值得记录，再响应用户**：
-
-**✅ 值得记（有可复用经验）才记录：**
-- 方向性错误被纠正（用错表/BAPI/架构/对象类型/调用方式）
-- 反复尝试失败后用户指出关键错误
-- 用户明确说"错了/不对/白做了/推翻重来"
-
-**❌ 不记录（属正常需求调整）：**
-- 字段增减、参数微调（如"增加一个字段""删掉某列"）
-- 正常需求变更/迭代
-- 仅"不要""取消""换个方案"等一般性反馈（无明确方向性错误）
-
-判断为**有价值**时：
-1. 用 \`read\` 读 \`Memory.md\` 现有内容；末尾追加摘要（保留现有内容）：
-\`\`\`
-## <日期> <对象/主题>
-- 被推翻的方案：<之前改了什么>
-- 用户拒绝原因/要求：<用户原话要点>
-- 经验：<下次避免/应改用>
-\`\`\`
-2. 用 \`write\` 写入完整内容；3. 告知用户"已记录到 Memory.md"。
-判断为**无价值**（正常调整）时：跳过记录，直接响应用户。
-`
-              }
-              return { systemPrompt: (event.systemPrompt || "") + inject }
-            } catch { return undefined }
+            } catch { /* 忽略 */ }
           })
         } catch (e) {
-          console.log(`[sapbuddy] 规则注入安装失败: ${e.message}`)
+          console.log(`[sapbuddy] 授权窗口钩子安装失败: ${e.message}`)
         }
       },
       // MCP 服务器工具动态注册（async factory：设置-MCP 保存的服务器在此生效）

@@ -68,6 +68,22 @@ node cli.mjs tools   # 工具列表
 - 新增 SAP 工具：在 `src/sap-tools/tools/` 新建文件，导出 `{ name, title, description, inputSchema(zod), execute() }`，并在 `tools/index.ts` 注册
 - 工具遵循"读优先、写需显式授权"：写操作必须标记 `write: true`
 
+
+### 强制规则 → 代码位置映射
+
+| 规则 | 位置 | 层 |
+|---|---|---|
+| 写工具名单 / 授权窗口 / 只读模式 | `src/sap-tools/register.ts`（isWriteTool/handleUserMessage/isReadOnly）| 硬强制 |
+| 写操作拦截（确认/路径/HTML 确认/查询放行）| `register.ts` `installWriteGate`（挂 pi.on("tool_call")）| 硬强制 |
+| 代码规则扫描（硬编码中文/裸类型 d/t）| `register.ts` `scanCodeViolations` | 硬强制 |
+| 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |
+| 创建：包名/描述必填、禁 $TMP、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically | 硬强制 |
+| 修改：自动沿用/创建请求、请求描述格式 | `tools/writeTools.ts` replace_string_in_abap_object | 硬强制 |
+| 传输请求：状态码中文、底表 E070/E071、只读放行 | `tools/transportText.ts` manage_transport_requests | 硬强制 |
+| 创建/修改流程、避坑记录、请求描述格式（行为层）| `SYSTEM.md` 铁律 6b / 输出约定 | 提示层（AI 执行，工具已兜底）|
+
+**编译产物** `dist/sap-tools/register.js` —— Web（agent-core）与 CLI（pi-extension）加载同一模块，规则两端一致。
+
 ## 安全
 
 - `connections.json`（SAP 凭据）与 `.SapBuddy/auth.json`（API Key）**已被 .gitignore 排除**，绝不提交
