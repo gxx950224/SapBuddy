@@ -2,7 +2,7 @@
 import { z } from "zod"
 import { session_types } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
-import { requireObject, resolveConnectionId, toToolError, connectionIdSchema } from "./shared.js"
+import { requireObject, resolveConnectionId, toToolError, escapeXmlAttr, connectionIdSchema } from "./shared.js"
 
 // ─── manage_transport_requests ──────────────────────────────────────────────
 export const transportTool = {
@@ -129,7 +129,7 @@ export const transportTool = {
           // 读详情拿请求属性，再 PUT 完整 tm:request（实测 ADT 支持，未释放请求可改描述）
           const details = await client.transportDetails(args.transportNumber)
           const d = details as unknown as Record<string, string>
-          const esc = String(args.description).replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          const esc = escapeXmlAttr(String(args.description))
           const body = `<?xml version="1.0" encoding="ASCII"?><tm:root xmlns:tm="http://www.sap.com/cts/adt/tm"><tm:request tm:number="${args.transportNumber}" tm:owner="${d["tm:owner"] ?? ""}" tm:desc="${esc}" tm:type="${d["tm:type"] ?? "K"}" tm:status="${d["tm:status"] ?? "D"}" tm:target="${d["tm:target"] ?? ""}"/></tm:root>`
           await client.httpClient.request(`/sap/bc/adt/cts/transportrequests/${args.transportNumber}`, {
             method: "PUT",

@@ -73,6 +73,11 @@ async function rebuildAgent(sessionFile) {
   try { await session?.dispose() } catch {}
   agent = null
   session = null
+  // 会话切换时清除写授权窗口，避免旧会话的批准残留到新会话
+  try {
+    const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+    r.clearWriteApproval?.()
+  } catch { /* 忽略 */ }
   const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
   agent = await createAgent({ sessionFile })
   session = agent.session
@@ -112,6 +117,21 @@ function readBody(req) {
   })
 }
 const sessionsDir = () => path.join(USER_PI, "sessions")
+
+/** 边界安全校验：target 必须严格位于 dir 内（或等于 dir），防 startsWith 弱前缀绕过（如 output-other） */
+function isWithinDir(target, dir) {
+  const t = path.resolve(String(target || ""))
+  const d = path.resolve(String(dir || ""))
+  return t === d || t.startsWith(d + path.sep)
+}
+
+/** 可选访问令牌：connections.json 的 security.apiKey（配置后所有 POST /api/* 需 Bearer/x-api-key） */
+function loadApiKey() {
+  try {
+    const conf = JSON.parse(fs.readFileSync(path.join(USER_PI, "connections.json"), "utf8"))
+    return (conf.security?.apiKey || "").trim() || null
+  } catch { return null }
+}
 
 /** 清理空会话（仅初始化条目、无对话消息的 jsonl）——避免列表出现无意义的「新会话」 */
 function cleanEmptySessions() {
@@ -195,6 +215,19 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.headers["user-agent"]?.includes("Mozilla") && !origin) {
       // 浏览器同源 POST 必带 Origin；无 Origin 的浏览器 POST 视为异常
       return json(res, 403, { error: "Forbidden: 缺少来源标识" })
+    }
+    // 可选访问令牌：security.apiKey 配置后，所有写操作（POST /api/*）需 Bearer / x-api-key
+    const apiKey = loadApiKey()
+    if (apiKey && req.method === "POST" && p.startsWith("/api/")) {
+      const auth = String(req.headers.authorization || "")
+      const got = (auth.startsWith("Bearer ") ? auth.slice(7) : "") || String(req.headers["x-api-key"] || "")
+      if (got.trim() !== apiKey) {
+        return json(res, 401, { error: "未授权：此实例已开启 API Key。请携带 Authorization: Bearer <key> 或 x-api-key 请求头。" })
+      }
+    }
+    // 安全状态（前端据此判断是否需要提示输入 Key；无需鉴权）
+    if (p === "/api/security-status" && req.method === "GET") {
+      return json(res, 200, { required: !!apiKey })
     }
     // SSE
     if (p === "/api/events" && req.method === "GET") {
@@ -354,6 +387,7 @@ const server = http.createServer(async (req, res) => {
     // 会话历史
     if (p === "/api/history" && req.method === "GET") {
       const file = url.searchParams.get("path") || session?.sessionFile
+      if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许读取会话文件" })
       return json(res, 200, { success: true, data: { messages: readSessionMessages(file) } })
     }
 
@@ -412,6 +446,8 @@ const server = http.createServer(async (req, res) => {
     // 删除会话
     if (p === "/api/session/delete" && req.method === "POST") {
       const { path: file } = await readBody(req)
+      // 安全：仅允许删除会话目录内的文件（防任意文件删除）
+      if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许删除会话文件" })
       try { if (file && fs.existsSync(file)) fs.unlinkSync(file) } catch {}
       return json(res, 200, { success: true })
     }
@@ -420,6 +456,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/session/rename" && req.method === "POST") {
       const { path: file, name } = await readBody(req)
       if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许重命名会话文件" })
       try {
         const { SessionManager } = await import("@earendil-works/pi-coding-agent")
         const sm = await SessionManager.open(file)
@@ -434,6 +471,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/session/switch" && req.method === "POST") {
       const { path: file } = await readBody(req)
       if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许切换会话文件" })
       // 当前会话是空会话（无消息）→ 重建（已释放句柄）后自动删除，避免残留 chat-xxx.jsonl
       const curFile = session?.sessionFile
       try {
@@ -534,20 +572,20 @@ const server = http.createServer(async (req, res) => {
       const qIdx = p.indexOf("?")
       const name = decodeURIComponent((qIdx >= 0 ? p.slice(0, qIdx) : p).slice("/api/output-files/".length))
       const file = path.join(OUTPUT_DIR, name)
-      if (!file.startsWith(OUTPUT_DIR)) return json(res, 403, { error: "Forbidden" })
+      if (!isWithinDir(file, OUTPUT_DIR)) return json(res, 403, { error: "Forbidden" })
       if (!fs.existsSync(file)) return json(res, 200, { success: false, error: "文件不存在" })
-      // raw 模式：直接返回文件内容（HTML 预览/下载用）
-      if (url.searchParams.get("raw") || url.searchParams.get("download")) {
-        const data = fs.readFileSync(file)
-        const ext = path.extname(file).toLowerCase()
-        res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": data.length })
-        res.end(data)
-        return
-      }
-      // 默认模式：直接返回文件原始内容（文本预览/HTML frame 都可用）
       const data = fs.readFileSync(file)
       const ext = path.extname(file).toLowerCase()
-      res.writeHead(200, { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": data.length })
+      const headers = { "Content-Type": MIME[ext] || "application/octet-stream", "Content-Length": data.length }
+      if (ext === ".html") {
+        // 防存储型 XSS：本地 origin 提供的报告类 HTML 一律加 CSP（禁外连/禁表单/禁脚本外发），
+        // 即使报告内嵌了用户可控文本 <script>，也无法调用本地 API 或外发数据
+        headers["Content-Security-Policy"] =
+          "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; form-action 'none'"
+        headers["X-Content-Type-Options"] = "nosniff"
+      }
+      if (url.searchParams.get("download")) headers["Content-Disposition"] = `attachment; filename="${path.basename(file)}"`
+      res.writeHead(200, headers)
       res.end(data)
       return
     }
@@ -594,7 +632,7 @@ const server = http.createServer(async (req, res) => {
             apiKey,
             contextTokens: cfg.contextTokens ?? 200000,
             thinkingLevel: cfg.defaultThinkingLevel ?? "off",
-            approvalWindowMinutes: cfg.approvalWindowMinutes ?? 120,
+            approvalWindowMinutes: cfg.approvalWindowMinutes ?? 15,
           },
         })
       } catch { return json(res, 200, { success: true, data: {} }) }
@@ -608,7 +646,7 @@ const server = http.createServer(async (req, res) => {
         if (body.model) next.defaultModel = body.model
         if (body.contextTokens) next.contextTokens = Number(body.contextTokens)
         if (body.thinkingLevel) next.defaultThinkingLevel = body.thinkingLevel
-        if (body.approvalWindowMinutes !== undefined) next.approvalWindowMinutes = Number(body.approvalWindowMinutes) || 120
+        if (body.approvalWindowMinutes !== undefined) next.approvalWindowMinutes = Number(body.approvalWindowMinutes) || 15
         fs.writeFileSync(settingsFile, JSON.stringify(next, null, 2))
         if (body.apiKey) {
           const authFile = path.join(USER_PI, "auth.json")
@@ -676,12 +714,18 @@ const ids = models.map((m) => m.id)
     // ── Prompts（提示词）──
     const promptsDir = path.join(USER_PI, "prompts")
     if (p === "/api/prompt" && req.method === "GET") {
-      const file = url.searchParams.get("file") || "AGENTS.md"
-      const candidates = [path.join(ROOT, file), path.join(promptsDir, file), path.join(ROOT, ".SapBuddy", "prompts", file), path.join(ROOT, ".SapBuddy", "skills", file)]
+      // 安全：仅允许白名单根文件（防 ../ 路径穿越读任意文件，与 POST 同规则）
+      const raw = String(url.searchParams.get("file") || "AGENTS.md")
+      const base = raw.split(/[/\\]/).pop()
+      const WHITELIST = ["AGENTS.md", "AGENTS.MD", "SYSTEM.md", "Memory.md", "CLAUDE.md"]
+      if (!WHITELIST.includes(base)) {
+        return json(res, 403, { error: "Forbidden: 仅允许读取 AGENTS.md / SYSTEM.md / Memory.md / CLAUDE.md" })
+      }
+      const candidates = [path.join(ROOT, base), path.join(promptsDir, base), path.join(ROOT, ".SapBuddy", "prompts", base), path.join(ROOT, ".SapBuddy", "skills", base)]
       for (const c of candidates) {
         if (fs.existsSync(c)) return json(res, 200, { success: true, data: { content: fs.readFileSync(c, "utf8"), path: c } })
       }
-      return json(res, 200, { success: true, data: { content: "", path: file } })
+      return json(res, 200, { success: true, data: { content: "", path: base } })
     }
     if (p === "/api/prompt" && req.method === "POST") {
       const { file, content } = await readBody(req)
@@ -750,8 +794,10 @@ const ids = models.map((m) => m.id)
     if (p === "/api/skills" && req.method === "GET") {
       const file = url.searchParams.get("file")
       if (file) {
-        try { return json(res, 200, { success: true, data: { content: fs.readFileSync(path.join(skillsDir, file), "utf8"), path: path.join(skillsDir, file) } }) }
-        catch { return json(res, 200, { success: true, data: { content: "", path: path.join(skillsDir, file) } }) }
+        const target = path.join(skillsDir, file)
+        if (!isWithinDir(target, skillsDir)) return json(res, 403, { error: "Forbidden" })
+        try { return json(res, 200, { success: true, data: { content: fs.readFileSync(target, "utf8"), path: target } }) }
+        catch { return json(res, 200, { success: true, data: { content: "", path: target } }) }
       }
       try {
         const dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory())
@@ -764,7 +810,7 @@ const ids = models.map((m) => m.id)
       const { file, content } = await readBody(req)
       try {
         const target = path.join(skillsDir, file || "")
-        if (!target.startsWith(skillsDir)) return json(res, 403, { error: "Forbidden" })
+        if (!isWithinDir(target, skillsDir)) return json(res, 403, { error: "Forbidden" })
         fs.mkdirSync(path.dirname(target), { recursive: true })
         fs.writeFileSync(target, content ?? "")
         return json(res, 200, { success: true })

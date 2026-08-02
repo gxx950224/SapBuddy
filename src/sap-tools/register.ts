@@ -37,17 +37,18 @@ export function clearWriteApproval(): void {
 }
 
 // ── 用户消息处理（确认词/拒绝词 → 授权窗口；CLI 与 Web 共用同一套规则）──
-const CONFIRM_RE = /确认|同意|允许|批准|可以|好的|好，|好、|好 |ok|okay|yes|继续|执行|就这么办|没问题|没问题|行，|行 |行$|行，就|go ahead/i
-const REJECT_RE = /拒绝|不要|取消|算了|不干|停止|换个方案|重新来|推翻|改回|不用了|撤回/i
+// 只认明确批准词（确认/同意/批准…），避免日常应答（好的/可以/ok/行）无意中打开写授权窗口
+const CONFIRM_RE = /确认|同意|允许|批准|就这么办|执行|继续|go ahead/i
+const REJECT_RE = /拒绝|不要|取消|算了|不干|停止|换个方案|重新来|推翻|改回|不用了|撤回|不执行|不能执行|先别|暂不|先不做|别急|别继续/i
 
-/** 授权窗口毫秒数：读设置 .SapBuddy/settings.json 的 approvalWindowMinutes（默认 120 分钟） */
+/** 授权窗口毫秒数：读设置 .SapBuddy/settings.json 的 approvalWindowMinutes（默认 15 分钟） */
 function approvalWindowMs(): number {
   try {
     const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "settings.json"), "utf8").toString())
     const m = Number(cfg.approvalWindowMinutes)
     if (m > 0 && Number.isFinite(m)) return m * 60 * 1000
   } catch { /* 默认 */ }
-  return 2 * 60 * 60 * 1000
+  return 15 * 60 * 1000
 }
 
 export function handleUserMessage(text: string): void {
@@ -68,6 +69,22 @@ function isReadOnly(): boolean {
     const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "connections.json"), "utf8").toString())
     return cfg.security?.readOnly !== false
   } catch { return false }
+}
+
+/** 命名空间强制：写操作对象名必须以 Z 或 Y 开头（SAP 标准对象只读不写）。
+ * 只检查明确的"对象名"字段（name/objectName/className），传输请求号等不参与。
+ * 返回违规说明；空串 = 通过。 */
+export function namespaceViolation(input: unknown): string {
+  const o = (input ?? {}) as Record<string, unknown>
+  for (const key of ["name", "objectName", "className"] as const) {
+    const v = o[key]
+    if (typeof v !== "string" || !v.trim()) continue
+    const n = v.trim()
+    if (/^[A-Za-z0-9_/-]+$/.test(n) && !/^[ZY]/i.test(n)) {
+      return `对象名 "${n}" 不是 Z*/Y* 开头（SAP 标准对象只读不写）。请确认对象名，或改用只读工具查询。`
+    }
+  }
+  return ""
 }
 
 /**
@@ -139,6 +156,11 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       const act = String((event.input as Record<string, unknown>)?.action || "")
       if (act === "read") return
     }
+    // 命名空间强制：只允许 Z*/Y*（代码级兜底，不依赖 LLM 遵守）
+    const nsv = namespaceViolation(event.input)
+    if (nsv) {
+      return { block: true, reason: `⛔ 命名空间拦截（代码级强制）：${nsv}` }
+    }
     // 只读模式开关（settings.security.readOnly=true 时全部写操作拒绝）
     if (isReadOnly()) {
       return {
@@ -162,7 +184,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       reason:
         `⛔ 写操作需人工确认（已拦截，未执行）：${name}\n` +
         `请先把本次改动计划完整展示给用户（改哪个对象/文件、具体改动内容），并明确请求确认。\n` +
-        `用户在对话中输入"确认/同意/可以/执行"后重试本工具即可放行；若用户提出修改意见，则按新需求调整计划后再请求确认。`,
+        `用户在对话中输入"确认/同意/批准/执行"后重试本工具即可放行；若用户提出修改意见，则按新需求调整计划后再请求确认。`,
     }
   })
 }

@@ -6,6 +6,7 @@ import {
   requireObject,
   resolveConnectionId,
   toToolError,
+  escapeXmlAttr,
   connectionIdSchema,
   objectTypeSchema,
 } from "./shared.js"
@@ -74,6 +75,19 @@ export const createObjectTool = {
   }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
+      // ── 强制规则：对象类型（写死，不允许自由发挥）──
+      const objType = (args.objectType || "").toUpperCase()
+      if (objType === "PROG/I") {
+        return "⛔ 强制规则拦截：可执行报表必须用 PROG/P（主程序），不要用 PROG/I（Include）。请将 objectType 改为 PROG/P。"
+      }
+      if (objType.startsWith("FUGR")) {
+        if (objType !== "FUGR/FF") {
+          return "⛔ 强制规则拦截：函数模块必须用 FUGR/FF 类型（不是 FUGR/F）。"
+        }
+        if (!args.parentName || !String(args.parentName).trim()) {
+          return "⛔ 强制规则拦截：创建函数模块（FUGR/FF）必须提供 parentName（函数组名）。请先向用户收集函数组名称。"
+        }
+      }
       // ── 强制规则：创建必须提供正式包名/描述（写死，不允许自由发挥）──
       const pkg = (args.packageName || "").trim()
       if (!pkg || pkg.toUpperCase() === "$TMP") {
@@ -83,6 +97,19 @@ export const createObjectTool = {
         return "⛔ 强制规则拦截：创建对象必须提供描述（description）。请先向用户收集。"
       }
       const client = await getClient(connId)
+      // ── 强制规则：先搜后建（工具内置精确查重，不依赖 LLM 自觉）──
+      const searchType = (args.objectType || "").split("/")[0]
+      if (searchType) {
+        try {
+          const found = await client.searchObject(args.name.toUpperCase(), searchType, 1)
+          if (Array.isArray(found) && found.length > 0) {
+            return (
+              `⛔ 对象已存在：${args.objectType} ${args.name.toUpperCase()}（强制规则：先搜后建，存在不重复创建）。\n` +
+              `请改为"修改"流程：读源码（get_abap_object_lines）→ 确认修改点 → 展示方案 → replace_string_in_abap_object → abap_activate。`
+            )
+          }
+        } catch { /* 查重失败不阻塞创建，ADT createObject 会对已存在对象报错兜底 */ }
+      }
       const { objectPath } = await import("abap-adt-api")
       const devClass = pkg
       const parentName = args.parentName ?? devClass
@@ -373,7 +400,7 @@ export const updateDescriptionTool = {
         try {
           const xml = await client.getObjectSource(uri)
           // 替换 adtcore:description 属性（XML 中可能带转义字符）
-          const escaped = args.description.replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+          const escaped = escapeXmlAttr(args.description)
           let newXml = xml.replace(
             /adtcore:description="[^"]*"/,
             `adtcore:description="${escaped}"`

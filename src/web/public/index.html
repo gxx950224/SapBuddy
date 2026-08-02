@@ -235,8 +235,8 @@
             </label>
             <label class="settings-field">
               <span>授权窗口（分钟）</span>
-              <input id="llm-approval-window" type="number" min="1" max="1440" step="5" placeholder="120" />
-              <span class="field-hint">写操作确认后放行时长（默认 120 分钟），期间不重复授权</span>
+              <input id="llm-approval-window" type="number" min="1" max="1440" step="5" placeholder="15" />
+              <span class="field-hint">写操作确认后放行时长（默认 15 分钟），期间不重复授权</span>
             </label>
           </div>
         </div>
@@ -417,6 +417,7 @@
 </div>
 
 <script src="vendor/mermaid.min.js"></script>
+<script src="js/api.js?v=__V__"></script>
 <script src="js/state.js?v=__V__"></script>
 <script src="js/markdown.js?v=__V__"></script>
 <script src="js/messages.js?v=__V__"></script>

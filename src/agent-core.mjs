@@ -126,7 +126,7 @@ export function ensureRuntimeFiles() {
     // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
     const dstSessions = path.join(CONFIG_DIR, "sessions")
     const legacySessions = path.join(LEGACY_PI, "sessions")
-fs.mkdirSync(dstSessions, { recursive: true })
+    fs.mkdirSync(dstSessions, { recursive: true })
     for (const srcS of [legacySessions]) if (fs.existsSync(srcS)) {
       for (const f of fs.readdirSync(srcS)) {
         const dst = path.join(dstSessions, f)

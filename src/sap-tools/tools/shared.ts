@@ -30,6 +30,15 @@ export function formatSearchResult(r: SearchResult): string {
   return `${type.padEnd(6)} ${name}${pkg}${desc}`
 }
 
+/** XML 属性值转义（顺序：先 & 后其它，避免把已转义的 &quot; 二次转义） */
+export function escapeXmlAttr(s: string): string {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+}
+
 /** 格式化工具错误为 LLM 可读、可自愈的文本 */
 export function toToolError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err)

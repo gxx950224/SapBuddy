@@ -204,9 +204,8 @@ async function cmdChat() {
 
 // ===== web：启动 Web 版 =====
 async function cmdWeb() {
-  const port = args.includes("--port") ? args[args.indexOf("--port") + 1] : 7400
+  // server.mjs 自身解析 --port 并监听（argv 共享），import 即启动
   await import(pathToFileURL(path.join(HERE, "src", "web", "server.mjs")).href)
-    .then((m) => undefined)
   process.stdin.resume()
 }
 

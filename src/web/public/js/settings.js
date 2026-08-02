@@ -115,7 +115,7 @@
       model,
       apiKey: $("#llm-key").value,
       contextTokens: parseInt($("#llm-context-tokens").value, 10) || 200000,
-      approvalWindowMinutes: parseInt($("#llm-approval-window").value, 10) || 120,
+      approvalWindowMinutes: parseInt($("#llm-approval-window").value, 10) || 15,
     };
   }
 
@@ -157,7 +157,7 @@
       keyToggle.title = isPlaceholder ? "隐藏 Key" : "显示 Key";
     }
     $("#llm-context-tokens").value = s.contextTokens || 200000;
-    $("#llm-approval-window").value = s.approvalWindowMinutes || 120;
+    $("#llm-approval-window").value = s.approvalWindowMinutes || 15;
   }
 
   // ── 打开/关闭设置 ──

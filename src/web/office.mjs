@@ -40,7 +40,12 @@ function readEntry(buf, entry) {
   const data = buf.subarray(dataStart, dataStart + entry.cSize)
   if (entry.method === 0) return data
   if (entry.method === 8) {
-    try { return zlib.inflateRawSync(data) } catch { return Buffer.alloc(0) }
+    try {
+      const out = zlib.inflateRawSync(data)
+      // zip bomb 防护：单个条目解压后超过 100MB 视为异常，丢弃
+      if (out.length > 100 * 1024 * 1024) return Buffer.alloc(0)
+      return out
+    } catch { return Buffer.alloc(0) }
   }
   return Buffer.alloc(0)
 }
