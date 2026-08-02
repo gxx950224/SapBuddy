@@ -9,10 +9,25 @@
  */
 import { z } from "zod"
 import { Type } from "typebox"
+import { truncateHead, formatSize } from "@earendil-works/pi-coding-agent"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
 import { assertDevClient } from "./adtManager.js"
 import { resolveConnectionId } from "./tools/shared.js"
+
+// ── 工具输出截断（极致性价比：杜绝大结果全量进上下文）──
+// 与 pi 内置工具一致的 truncateHead，但用更小的预算：8KB / 120 行。
+const MAX_BYTES = 8000
+const MAX_LINES = 120
+export function truncateOutput(text: string): string {
+  if (!text) return text
+  const truncation = truncateHead(text, { maxLines: MAX_LINES, maxBytes: MAX_BYTES })
+  let result = truncation.content
+  if (truncation.truncated) {
+    result += `\n\n[输出截断: ${truncation.outputLines}/${truncation.totalLines} 行 ${formatSize(truncation.outputBytes)}/${formatSize(truncation.totalBytes)}。需要更多内容时请用 lineCount/methodName/精确 SQL 分页读取]`
+  }
+  return result
+}
 
 // ── 写操作人工确认（human-in-the-loop）──
 // 所有写工具执行前必须获得用户确认：TUI 弹窗（CLI）或 Web 确认浮层（block 后重放）。
@@ -192,7 +207,7 @@ export function registerSapTools(pi: ExtensionAPI): number {
     pi.registerTool({
       name: t.name,
       label: t.title ?? t.name,
-      description: `[SAP ABAP] ${t.description}\nSAP 连接：不确定 connectionId 时先调用 get_connected_systems。`,
+      description: `[SAP ABAP] ${t.description}\n（工具输出超 8KB/120 行自动截断，需更多内容用 lineCount/methodName/精确查询分页）\nSAP 连接：不确定 connectionId 时先调用 get_connected_systems。`,
       promptSnippet: "SAP ABAP 工具（搜索/读取/分析/编辑 SAP 对象、执行 ATC/单测/SQL 等）",
       parameters: zodToTypebox(t.inputSchema) as never,
       async execute(_toolCallId, params) {
@@ -218,7 +233,7 @@ export function registerSapTools(pi: ExtensionAPI): number {
             }
           }
           const text = await t.execute((params ?? {}) as Record<string, unknown>)
-          return { content: [{ type: "text" as const, text }], details: {} }
+          return { content: [{ type: "text" as const, text: truncateOutput(text) }], details: {} }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           return {
