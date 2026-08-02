@@ -176,7 +176,7 @@ export const textElementsTool = {
         try {
           const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
           const transport = lockInfo.IS_LOCAL === "X" ? undefined : lockInfo.CORRNR
-          await client.setTextElements(url, args.category as never, elements, lock.LOCK_HANDLE, transport)
+          await client.setTextElements(url, args.category as never, elements as never, lock.LOCK_HANDLE, transport)
         } finally {
           await client.unLock(url, lock.LOCK_HANDLE).catch(() => undefined)
         }
