@@ -14,6 +14,7 @@ import path from "node:path"
 import fs from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import net from "node:net"
 import { createAgent, loadAuth, loadSettings, ROOT } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -166,10 +167,38 @@ async function cmdChat() {
   } catch {}
 
   const { spawn } = await import("node:child_process")
+
+  // ── 自动附带 Web 服务（子进程隔离，避免同进程干扰 pi CLI 的 TTY/进程生命周期）──
+  const WEB_PORT = 7400
+  let webProcess = null
+  if (!args.includes("--no-web")) {
+    const portInUse = await new Promise((resolve) => {
+      const s = net.connect(WEB_PORT, "127.0.0.1")
+      s.on("connect", () => { s.destroy(); resolve(true) })
+      s.on("error", () => resolve(false))
+    })
+    if (portInUse) {
+      console.log(`🌐 Web 版已在 http://127.0.0.1:${WEB_PORT} 运行（同一会话）`)
+    } else {
+      try {
+        webProcess = spawn(process.execPath, [path.join(HERE, "src", "web", "server.mjs")], { cwd: ROOT, stdio: "ignore", detached: false })
+        webProcess.unref()
+        await new Promise((r) => setTimeout(r, 1500)) // 给 server 启动时间（失败静默）
+        console.log(`🌐 Web 版已启动：http://127.0.0.1:${WEB_PORT}（浏览器打开即可；与当前 CLI 共享会话/产物/记忆；--no-web 可禁用）`)
+      } catch (e) {
+        console.log(`⚠️  Web 版启动失败（不影响 CLI）：${e.message}`)
+      }
+    }
+  }
+
   // 隔离全局 ~/.pi 配置（不加载 pi-obsidian/mcp-adapter 等无关扩展/技能）
   const env = { ...process.env, PI_CODING_AGENT_DIR: path.join(process.cwd(), ".SapBuddy") }
   const child = spawn(process.execPath, args, { stdio: "inherit", cwd: ROOT, env })
-  child.on("exit", (code) => process.exit(code ?? 0))
+  child.on("exit", (code) => {
+    // 退出时关闭附带的 Web 子进程（如果还活着）
+    if (webProcess && !webProcess.killed) { try { webProcess.kill() } catch {} }
+    process.exit(code ?? 0)
+  })
   child.on("error", (e) => { console.error("❌ 启动失败: " + e.message); process.exit(1) })
 }
 
