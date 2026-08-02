@@ -6,7 +6,7 @@
 
 ## 前置阅读
 - 编码规范：`SYSTEM.md`（默认 SAP 官方 Clean ABAP）
-- 代码模板与最佳实践：`.pi/skills/abap-templates/SKILL.md`（一、报表 / 二、函数模块 / 三、类）
+- 代码模板与最佳实践：`.SapBuddy/skills/abap-templates/SKILL.md`（一、报表 / 二、函数模块 / 三、类）
 - SAP 工具：内置 42 个（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `create_object_programmatically` / `replace_string_in_abap_object` / `abap_activate` 等）
 
 ## 工作流程（含确认门禁，⚠ 处必须等用户明确确认）
@@ -75,7 +75,7 @@
 ⛔ 此步骤不可跳过。即使用户需求简单、改动少，也必须展示逻辑等确认。
 
 ### 6. 生成代码并展示
-遵循 `SYSTEM.md` 规范生成代码（模板见 `.pi/skills/abap-templates/SKILL.md` 对应章节）。
+遵循 `SYSTEM.md` 规范生成代码（模板见 `.SapBuddy/skills/abap-templates/SKILL.md` 对应章节）。
 
 ⛔ 先生成代码全文展示给用户 → 用户确认 → 才允许写入 SAP。
 本地文件 `output/<对象名>.abap` **默认不生成**，仅当用户明确要求时才保存留档。

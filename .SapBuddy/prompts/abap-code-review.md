@@ -6,8 +6,8 @@
 - ⚠️ 若用户只是要"解释/分析程序做什么"→ 走 `/abap-explain`（本流程专注审查质量）
 
 ## 前置阅读
-- 审查清单（14 维度）：.pi/skills/abap-code-review/references/checklist.md
-- 审查报告 HTML 模板：.pi/skills/abap-code-review/assets/report-template.html
+- 审查清单（14 维度）：.SapBuddy/skills/abap-code-review/references/checklist.md
+- 审查报告 HTML 模板：.SapBuddy/skills/abap-code-review/assets/report-template.html
 - 编码规范：SYSTEM.md（默认 SAP 官方 Clean ABAP）
 
 ## 前置条件
