@@ -14,7 +14,9 @@ export const searchObjectsTool = {
   title: "Search ABAP Objects",
   description:
     "在 SAP 系统中按名称模式搜索 ABAP 对象（支持通配符 *，如 Z*PRICING*、BAPI_USER*）。" +
-    "未指定 types 时搜索所有常用类型。用于确认对象是否存在、查找对象名和类型。",
+    "**确认对象是否存在时用精确名称（不带通配符）**，避免模糊搜索返回大量无关对象浪费 token；" +
+    "查找同类对象/未知名称时才用通配符。未指定 types 时搜索所有常用类型。" +
+    "用于确认对象是否存在、查找对象名和类型。",
   inputSchema: z.object({
     pattern: z
       .string()
