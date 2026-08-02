@@ -1565,3 +1565,71 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   cursor: help;
 }
 .mermaid-error pre { margin: 0; }
+
+/* ── Mermaid 工具栏与放大查看 ── */
+.mermaid { position: relative; }
+.mermaid-toolbar {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 5;
+}
+.mermaid:hover .mermaid-toolbar { opacity: 1; }
+.mermaid-toolbar button {
+  background: var(--bg-panel, #26263a);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.mermaid-toolbar button:hover { color: var(--accent); border-color: var(--accent); }
+
+#mermaid-overlay {
+  position: fixed; inset: 0; z-index: 20000;
+  background: rgba(0,0,0,0.65);
+  display: none;
+  align-items: center; justify-content: center;
+  padding: 24px;
+}
+#mermaid-overlay.open { display: flex; }
+#mermaid-lightbox {
+  background: var(--bg-panel, #1e1e2e);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  max-width: 94vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+#mermaid-lightbox-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+}
+#mermaid-lightbox-body {
+  padding: 18px;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+#mermaid-lightbox-body svg { max-width: 100%; height: auto; }
+.mermaid-lightbox-loading { color: var(--text-dim); padding: 30px; }
+.mermaid-lightbox-fallback {
+  max-width: 70vw;
+  white-space: pre;
+  font-size: 12px;
+  overflow: auto;
+  background: rgba(128,128,128,0.1);
+  padding: 12px;
+  border-radius: 8px;
+}

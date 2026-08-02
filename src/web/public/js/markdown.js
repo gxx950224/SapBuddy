@@ -135,6 +135,8 @@
           if (svg) {
             el.innerHTML = svg;
             el.dataset.rendered = "1";
+            el.dataset.code = encodeURIComponent(raw); // 保留原始代码供复制
+            attachMermaidToolbar(el, raw);
           }
         }).catch((err) => {
           el.dataset.rendered = "1";
@@ -148,4 +150,83 @@
       }
     });
   };
+
+  /** 给渲染后的 mermaid 图挂工具栏（放大查看 / 复制代码） */
+  function attachMermaidToolbar(el, rawCode) {
+    if (el.querySelector(".mermaid-toolbar")) return;
+    const bar = document.createElement("div");
+    bar.className = "mermaid-toolbar";
+    bar.innerHTML =
+      '<button class="mermaid-zoom-btn" title="放大查看">\u26F0\uFE0F \u653E\u5927</button>' +
+      '<button class="mermaid-copy-btn" title="复制 Mermaid 源码">\u{1F4CB} \u590D\u5236\u4EE3\u7801</button>';
+    el.prepend(bar);
+    bar.querySelector(".mermaid-zoom-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openMermaidLightbox(el, rawCode);
+    });
+    bar.querySelector(".mermaid-copy-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      App.copyText(rawCode).then(() => {
+        const b = e.currentTarget;
+        const old = b.textContent;
+        b.textContent = "\u2713 \u5DF2\u590D\u5236";
+        setTimeout(() => { b.textContent = old; }, 1500);
+      });
+    });
+  }
+
+  /** 放大查看：全屏 lightbox 重新渲染大图 */
+  function openMermaidLightbox(sourceEl, rawCode) {
+    const overlay = document.getElementById("mermaid-overlay");
+    const body = document.getElementById("mermaid-lightbox-body");
+    if (!overlay || !body) return;
+    overlay._mermaidRaw = rawCode; // 供 lightbox 复制按钮使用
+    body.innerHTML = '<div class="mermaid-lightbox-loading">\u6B63\u5728\u6E32\u67D3\u56FE\u8868\u2026</div>';
+    overlay.classList.add("open");
+    // 大图重新渲染（theme 同源）
+    const code = fixMermaid(rawCode);
+    try {
+      const id = "mermaid-zoom-" + Math.random().toString(36).slice(2, 8);
+      window.mermaid.render(id, code).then(({ svg }) => {
+        body.innerHTML = svg || "";
+      }).catch(() => {
+        body.innerHTML = '<pre class="mermaid-lightbox-fallback">' + App.escapeHtml(rawCode) + "</pre>";
+      });
+    } catch {
+      body.innerHTML = '<pre class="mermaid-lightbox-fallback">' + App.escapeHtml(rawCode) + "</pre>";
+    }
+  }
+
+  // lightbox 关闭
+  document.addEventListener("click", (e) => {
+    const overlay = document.getElementById("mermaid-overlay");
+    if (!overlay) return;
+    if (e.target === overlay) overlay.classList.remove("open");
+  });
+  const closeBtn = document.getElementById("mermaid-lightbox-close");
+  if (closeBtn) closeBtn.addEventListener("click", () => {
+    const o = document.getElementById("mermaid-overlay");
+    if (o) o.classList.remove("open");
+  });
+  const copyBtn = document.getElementById("mermaid-lightbox-copy");
+  if (copyBtn) copyBtn.addEventListener("click", () => {
+    const overlay = document.getElementById("mermaid-overlay");
+    const body = document.getElementById("mermaid-lightbox-body");
+    const svgEl = body?.querySelector("svg");
+    // 从 lightbox 的 svg 回找源码：存于 sourceEl 引用
+    const src = overlay?._mermaidRaw;
+    if (src) {
+      App.copyText(src).then(() => {
+        const old = copyBtn.textContent;
+        copyBtn.textContent = "\u2713 \u5DF2\u590D\u5236";
+        setTimeout(() => { copyBtn.textContent = old; }, 1500);
+      });
+    } else if (svgEl) { /* 无源码时忽略 */ }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const o = document.getElementById("mermaid-overlay");
+      if (o?.classList.contains("open")) o.classList.remove("open");
+    }
+  });
 })();

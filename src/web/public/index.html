@@ -421,5 +421,23 @@
 <script src="js/settings.js"></script>
 <script src="js/theme.js"></script>
 <script src="app.js"></script>
+<!-- Mermaid 放大查看 -->
+<div id="mermaid-overlay">
+  <div id="mermaid-lightbox">
+    <div id="mermaid-lightbox-head">
+      <span id="mermaid-lightbox-title">Mermaid 流程图</span>
+      <span class="spacer"></span>
+      <button id="mermaid-lightbox-copy" class="btn-sm btn-icon-text" title="复制 Mermaid 源码">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M5 2h7a1 1 0 0 1 1 1v8h-2V4H5V2zm2-1h6a1 1 0 0 1 1 1v9h-2V3H7V1zM3 4h7a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/></svg>
+        <span>复制代码</span>
+      </button>
+      <button id="mermaid-lightbox-close" class="btn-sm btn-icon-text btn-close" title="关闭 (Esc)">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><path d="M4 3l4.5 4.5L13 3l1 1-4.5 4.5L14 13l-1 1-4.5-4.5L4 14l-1-1 4.5-4.5L3 4l1-1z"/></svg>
+        <span>关闭</span>
+      </button>
+    </div>
+    <div id="mermaid-lightbox-body"></div>
+  </div>
+</div>
 </body>
 </html>
