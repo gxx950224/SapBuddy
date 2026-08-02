@@ -35,14 +35,16 @@ disable: false
 【强制】以下步骤必须按顺序执行，不得插入其他工具调用。
 
 1. **获取输入。** 从用户处确认程序/函数名称以及审查范围。
-2. **读取源码**，调用内置 `get_abap_object_lines`：
-   - 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`。
-   - 若对象名不确定，先 `search_abap_objects`（pattern=`<对象名>*`）确认存在。
-   - 一次读取全部源码（必要时分页读取多个 INCLUDE）。
+2. **读取源码（智能分步）**：
+   - 对象类型：报表/程序=`PROG`、函数模块=`FUNC`、类=`CLAS`；对象名不确定先 `search_abap_objects`。
+   - **先读头部 + 事件块清单**（前 100 行），用 `search_abap_object_lines` 定位 INITIALIZATION / START-OF-SELECTION / FORM / CALL FUNCTION 关键行。
+   - **再按行区间精读关键段**；程序 > 2000 行必须分步读取，禁止一次全量拉取。
 3. **存档源码（可选）。** 默认**不**在本地保存源码；仅当用户明确要求时才保存到 `output/<程序名>.abap`，便于对照。
-4. **收集关联对象。** 留意被 INCLUDE 的程序、配置表（`ZBCT_OUTF_CONFIG`）、
-   结构（`ZCRMS_*`、`ZBCS_*`）等引用对象，可继续用内置工具读取或向用户索取。
-5. **静态走查。** 自顶向下逐段核对 `references/checklist.md` 的每一项：
+4. **ATC 自动检查（客观补充）。** 调用内置 `run_atc_analysis` 获取代码质量门禁的客观发现
+   （语法/性能/安全/废弃用法规则），记录为「ATC 自动发现」并入报告——与 AI 静态走查互补。
+5. **收集关联对象。** 留意被 INCLUDE 的程序、配置表（`ZBCT_OUTF_CONFIG`）、
+   结构（`ZCRMS_*`、`ZBCS_*`）等引用对象，可继续用内置工具读取；用 `find_where_used` 查谁调用本程序（修改影响面）。
+6. **静态走查。** 自顶向下逐段核对 `references/checklist.md` 的每一项：
    选择屏幕 → `INITIALIZATION` → GET_DATA（接口调用 + JSON 反序列化 + 展平）
    → ALV 展示 → 可编辑处理 → 发送/更新命令。
    - **逻辑解析准备**：同时梳理「程序在做什么 / 怎么做」的脉络，作为「代码逻辑详细解析」子节（挂在「一、程序功能与结构概览」页签下方）的 `{{LOGIC_SECTION}}`。
@@ -50,10 +52,11 @@ disable: false
      一并写入 `{{LOGIC_SECTION}}`——格式为含 `<h3>ALV 字段取数逻辑</h3>` 与
      `<table>`（列：字段名 | 取数来源/逻辑 | 备注/计算公式）的整块 HTML；
      非 ALV 程序（函数 / 接口类）的 `{{LOGIC_SECTION}}` 仅含文字解析、不含取数表。
-6. **问题定级。** 每条问题记录：`id`、严重度（高/中/低）、
-   `位置`（FORM 或区域）、`现象`、`建议修复`。
+7. **问题定级。** 每条问题记录：`id`、严重度（高/中/低）、
+   `位置`（FORM/方法/行号，可用 `search_abap_object_lines` 定位准确行）、`现象`、`建议修复`、`来源`（AI 走查 / ATC）。
    严重度配色：红=高，黄=中，蓝=低，绿=OK。
-7. **生成 HTML 报告。** 将 `assets/report-template.html` 复制到 `output/` 目录，
+   ⚠️ 报告篇幅控制：重点问题 ≤ 15 条、中危 ≤ 20 条、低危 ≤ 20 条（超出按影响度精选），避免报告过大。
+8. **生成 HTML 报告。** 将 `assets/report-template.html` 复制到 `output/` 目录，
    把每个 `{{TOKEN}}` 占位符替换为真实内容（保留现有 CSS，不要改样式），
    保存为 `output/<程序名或函数名>_CodeReview.html`。
    - 报告顶部元信息常驻；下方为「多页签」切换，**共 4 个页签**，章节顺序：
@@ -64,7 +67,7 @@ disable: false
      `{{SUMMARY_SECTION}}`（统计+汇总表）、`{{DETAIL_ITEMS}}`/`{{MEDIUM_ITEMS}}`/`{{LOW_ITEMS}}`（重点/中危/低危）、
      `{{POSITIVES}}`（亮点）、`{{CONCLUSION_SECTION}}`（结论表+脚注）。
    - 页签切换为纯原生 JS（模板自带 `showTab()`），无外部依赖，单文件可离线打开。
-8. **交付结果。** 告知用户报告位置 `output/<程序名或函数名>_CodeReview.html`（Web 端产物面板可预览），并简要总结发现问题数量。
+9. **交付结果。** 告知用户报告位置 `output/<程序名或函数名>_CodeReview.html`（Web 端产物面板可预览），并简要总结发现问题数量。
 
 完整清单见 `references/checklist.md`，
 交付模板见 `assets/report-template.html`。
