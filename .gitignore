@@ -32,3 +32,5 @@ connections.json
 .SapBuddy/sessions-test/
 .SapBuddy/uploads/
 .tmp_*
+deliverables/
+*.abap
