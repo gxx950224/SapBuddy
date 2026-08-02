@@ -64,13 +64,27 @@ export const transportTool = {
             `传输 ${args.transportNumber}: ${details["tm:desc"] ?? ""}`,
             `状态: ${details["tm:status"] === "D" ? "可修改" : details["tm:status"] === "R" ? "已发布" : (details["tm:status"] ?? "?")} | 负责人: ${details["tm:owner"] ?? "?"}`,
             "",
-            `对象列表（${details.objects?.length ?? 0} 个）:`,
-          ]
+            `对象列表（${details.objects?.length ?? 0} 个）:`,   ]
           for (const o of (details.objects ?? []).slice(0, 100)) {
             const cast = o as unknown as Record<string, unknown>
             const objName = String(cast["tm:obj_name"] ?? cast.objName ?? "?")
             const objType = String(cast["tm:obj_type"] ?? cast.objType ?? "?")
             lines.push(`  - ${objType} ${objName}`)
+          }
+          // ADT 对象列表可能为空（与 E071 不一致）→ 补底表查询更准确
+          if ((details.objects ?? []).length === 0) {
+            try {
+              const q = await client.runQuery(`SELECT PGMID, OBJECT, OBJ_NAME FROM E071 WHERE TRKORR = '${String(args.transportNumber).replace(/'/g, "''")}'`, 100, true)
+              const rows = q?.values ?? []
+              if (rows.length) {
+                lines[3] = `对象列表（${rows.length} 个，E071）:`
+                for (const r of rows) lines.push(`  - ${r.OBJECT} ${r.OBJ_NAME}`)
+              } else {
+                lines.push("  （ADT 与 E071 均无对象记录）")
+              }
+            } catch {
+              lines.push("  （E071 查询失败）")
+            }
           }
           return lines.join("\n")
         }
@@ -79,15 +93,33 @@ export const transportTool = {
           const { findObject } = await import("./shared.js")
           const obj = await findObject(connId, args.objectName, args.objectType)
           if (!obj) return `未找到对象 ${args.objectName}。`
-          const info = await client.transportInfo(obj["adtcore:uri"])
-          const lines = [`对象 ${obj["adtcore:type"]} ${obj["adtcore:name"]} 的传输信息:`, ""]
-          if (info?.TRANSPORTS) {
-            for (const t of info.TRANSPORTS) {
-              const st = t.TRSTATUS === "D" ? "可修改" : t.TRSTATUS === "R" ? "已发布" : (t.TRSTATUS ?? "?")
-              lines.push(`- ${t.TRKORR} [${st}] ${t.AS4TEXT ?? ""}`)
+          const lines = [`对象 ${obj["adtcore:type"]} ${obj["adtcore:name"]} 的传输信息（含底表 E070/E071）:`, ""]
+          try {
+            // 1) ADT transportInfo
+            const info = await client.transportInfo(obj["adtcore:uri"])
+            if (info?.TRANSPORTS?.length) {
+              for (const t of info.TRANSPORTS) {
+                const st = t.TRSTATUS === "D" ? "可修改" : t.TRSTATUS === "R" ? "已发布" : (t.TRSTATUS ?? "?")
+                lines.push(`- ${t.TRKORR} [${st}] ${t.AS4TEXT ?? ""}`)
+              }
             }
-          } else {
-            lines.push("（无传输信息，对象可能无需传输）")
+            // 2) SQL 查 E071 关联请求 + E070 状态（更准确：含任务/父请求/目标系统，ADT 可能漏）
+            const name = String(args.objectName || "").toUpperCase().replace(/'/g, "''")
+            const q1 = await client.runQuery(`SELECT DISTINCT TRKORR FROM E071 WHERE OBJ_NAME = '${name}'`, 50, true)
+            const trkorrs = [...new Set((q1?.values ?? []).map((r) => String(r.TRKORR ?? "").trim()).filter(Boolean))]
+            if (trkorrs.length) {
+              if (lines.length > 2) lines.push("")
+              const q2 = `SELECT TRKORR, STRKORR, TARSYSTEM, TRSTATUS, AS4USER FROM E070 WHERE TRKORR IN ('${trkorrs.join("','")}')`
+              const st = await client.runQuery(q2, 100, true)
+              for (const r of st?.values ?? []) {
+                const code = String(r.TRSTATUS ?? "")
+                const stt = code === "D" ? "可修改" : code === "R" ? "已发布" : code
+                lines.push(`- ${r.TRKORR} [${stt}] 目标:${r.TARSYSTEM ?? ""} 父:${r.STRKORR ?? "-"} 负责人:${r.AS4USER ?? ""}`)
+              }
+            }
+            if (lines.length <= 2) lines.push("（无传输信息，对象可能无需传输）")
+          } catch (e) {
+            lines.push(`（底表查询失败: ${e instanceof Error ? e.message.slice(0, 80) : e}）`)
           }
           return lines.join("\n")
         }

@@ -130,6 +130,15 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       }
     }
     if (!isWriteTool(name)) return
+    // 混合工具：只读 action 不拦截（manage_transport_requests 的查询、manage_text_elements 的 read）
+    if (name === "manage_transport_requests") {
+      const act = String((event.input as Record<string, unknown>)?.action || "")
+      if (["list_user_transports", "get_transport_details", "get_object_transport"].includes(act)) return
+    }
+    if (name === "manage_text_elements") {
+      const act = String((event.input as Record<string, unknown>)?.action || "")
+      if (act === "read") return
+    }
     // 只读模式开关（settings.security.readOnly=true 时全部写操作拒绝）
     if (isReadOnly()) {
       return {
