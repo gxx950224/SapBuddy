@@ -300,8 +300,11 @@ const server = http.createServer(async (req, res) => {
       const extensions = 8000
       const mcp = 0
       const conversation = usage.input + usage.output
+      // 设置读取（多路径 fallback：cwd/.SapBuddy → 项目根/.SapBuddy → 主目录）
       let cfg = {}
-      try { cfg = JSON.parse(fs.readFileSync(settingsFile, "utf8").toString()) } catch {}
+      for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json"), path.join(os.homedir(), ".SapBuddy", "settings.json")]) {
+        try { cfg = JSON.parse(fs.readFileSync(f, "utf8").toString()); break } catch { /* 继续 */ }
+      }
       const max0 = cfg.contextTokens ?? 200000
       const max = Number(max0) || 200000
       const total = piAgent + extensions + mcp + agents + systemMd + memory + skills + conversation

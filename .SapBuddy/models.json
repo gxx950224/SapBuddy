@@ -116,6 +116,28 @@
           "id": "ernie-3.5-8k"
         }
       ]
+    },
+    "deepseek": {
+      "baseUrl": "https://api.deepseek.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "deepseek-v4-flash",
+          "name": "DeepSeek V4 Flash",
+          "contextWindow": 1000000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "deepseek-chat",
+          "contextWindow": 1000000,
+          "maxTokens": 16384
+        },
+        {
+          "id": "deepseek-reasoner",
+          "contextWindow": 1000000,
+          "maxTokens": 16384
+        }
+      ]
     }
   }
 }
