@@ -38,6 +38,7 @@ const OUTPUT_DIR = path.join(USER_PI, "output")
 const portArg = process.argv.indexOf("--port")
 const PORT = portArg >= 0 ? Number(process.argv[portArg + 1]) : 7400
 const HOST = "127.0.0.1"
+const START_TS = Date.now() // 静态资源版本号（重启变化，强制刷新缓存）
 
 /** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
 let mcpStatusCache = null
@@ -689,6 +690,16 @@ const ids = models.map((m) => m.id)
     // ── 静态资源 ──
     let pathname = decodeURIComponent(url.pathname)
     if (pathname === "/") pathname = "/index.html"
+    // index.html 注入版本号（css/js 缓存控制）
+    if (pathname === "/index.html" && url.searchParams.get("v") !== "b") {
+      // 读原始文件并替换版本占位符
+      try {
+        const raw = fs.readFileSync(path.join(PUBLIC_DIR, pathname), "utf8")
+        const html = raw.replace(/__V__/g, String(START_TS))
+        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" })
+        return res.end(html)
+      } catch { /* 落到普通静态 */ }
+    }
     const file = path.join(PUBLIC_DIR, pathname)
     if (!file.startsWith(PUBLIC_DIR)) return json(res, 403, { error: "Forbidden" })
     fs.readFile(file, (err, data) => {
