@@ -171,7 +171,7 @@ async function cmdChat() {
   // ── 自动附带 Web 服务（子进程隔离，避免同进程干扰 pi CLI 的 TTY/进程生命周期）──
   const WEB_PORT = 7400
   let webProcess = null
-  if (!args.includes("--no-web")) {
+  if (!process.argv.includes("--no-web")) {
     const portInUse = await new Promise((resolve) => {
       const s = net.connect(WEB_PORT, "127.0.0.1")
       s.on("connect", () => { s.destroy(); resolve(true) })
