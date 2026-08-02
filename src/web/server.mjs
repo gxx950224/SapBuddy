@@ -114,6 +114,28 @@ function readBody(req) {
 }
 const sessionsDir = () => path.join(USER_PI, "sessions")
 
+/** 清理空会话（仅初始化条目、无对话消息的 jsonl）——避免列表出现无意义的「新会话」 */
+function cleanEmptySessions() {
+  try {
+    const dir = sessionsDir()
+    if (!fs.existsSync(dir)) return
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith(".jsonl")) continue
+      const full = path.join(dir, f)
+      try {
+        let hasMsg = false
+        for (const line of fs.readFileSync(full, "utf8").split(String.fromCharCode(10))) {
+          if (!line.trim()) continue
+          const e = JSON.parse(line)
+          const r = e?.message?.role
+          if (r === "user" || r === "assistant") { hasMsg = true; break }
+        }
+        if (!hasMsg) { fs.unlinkSync(full); console.log(`[sapbuddy] 已清理空会话: ${f}`) }
+      } catch { /* 损坏文件忽略 */ }
+    }
+  } catch { /* 忽略 */ }
+}
+
 /** 递归扫描目录为前端树结构 */
 function scanTree(dir, rel) {
   let items = []
@@ -663,6 +685,7 @@ server.listen(PORT, HOST, () => {
   import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
     .then((m) => m.ensureRuntimeFiles?.())
     .catch(() => undefined)
+  cleanEmptySessions()
   console.log(`\n  🚀 SapBuddy Web 版已启动`)
   console.log(`  📍 http://${HOST}:${PORT}\n`)
 })
