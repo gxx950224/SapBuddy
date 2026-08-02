@@ -311,8 +311,10 @@
 
   // ── 渲染消息列表 ──
   App.renderMessageList = function(messages) {
+    let lastWasAssistant = false; // 同一轮次（相邻 assistant 无 user 间隔）复用气泡，避免刷屏
     for (const msg of messages) {
       if (msg.role === "user") {
+        lastWasAssistant = false;
         const text = (msg.content || []).map((c) => c.text || "").join("");
         if (text) {
           App.addUserBubble(text);
@@ -325,10 +327,13 @@
       } else if (msg.role === "assistant") {
         // 跳过空 assistant 消息（无内容不产生气泡）
         if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) continue;
-        // 历史渲染：每条 assistant 消息独立气泡（避免多条消息堆叠到同一气泡）
-        state.currentAssistantEl = null;
         state.currentTextDiv = null;
         state.currentThinkSeg = null;
+        // 同一轮次（上一条是 assistant）复用同一气泡：思考/工具/文本按序合并进一个气泡
+        if (!lastWasAssistant) {
+          state.currentAssistantEl = null;
+        }
+        lastWasAssistant = true;
         const body = App.ensureAssistantBubble();
         App.renderAssistantContent(body, msg.content);
       } else if (msg.role === "toolResult") {
@@ -341,6 +346,10 @@
     if (_last && _last.role === "assistant" &&
         (_last.stopReason === "error" || _last.errorMessage === "terminated")) {
       App.onGenerationInterrupted();
+    }
+    // 合并同轮多段 assistant 文本为一段 markdown（历史渲染也不刷屏）
+    if (state.currentAssistantEl && state.pendingTexts.length > 0) {
+      App.consolidateAssistantReplies();
     }
     state.currentAssistantEl = null;
     state.currentTextDiv = null;
