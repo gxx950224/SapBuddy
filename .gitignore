@@ -40,8 +40,9 @@ connections.json
 deliverables/
 *.abap
 
-# 平台二进制（fd/rg，本地用，不入库）
+# 平台二进制（fd/rg，随 npm 包分发但不入库；cli.mjs 启动时按系统自动选择复制到 .SapBuddy/bin）
 .SapBuddy/bin/
+binaries/
 
 # 遗留镜像目录（含敏感配置，整体忽略）
 .SapBuddy/prompts/

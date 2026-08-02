@@ -171,16 +171,21 @@ async function cmdChat() {
   if (tl && tl !== "off") args.push("--thinking", tl)
   // 会话目录不存在时创建（pi --session-dir 需要存在）
   fs.mkdirSync(path.join(CONFIG_DIR, "sessions"), { recursive: true })
-  // 复用已有 fd/rg 二进制（PI_CODING_AGENT_DIR 隔离后 bin 目录在 .SapBuddy/bin，避免内网重新下载）
+  // 平台二进制：随包分发的 binaries/<平台>-<架构>/（Windows/Mac Intel/M芯片/Linux），启动时按系统自动选择复制到 .SapBuddy/bin
+  // 已存在则不覆盖（尊重用户手动放置/旧缓存）；老用户 ~/.pi/agent/bin 里的 Windows 二进制作为兜底
   try {
-    const srcBin = path.join(os.homedir(), ".pi", "agent", "bin")
     const dstBin = path.join(CONFIG_DIR, "bin")
     fs.mkdirSync(dstBin, { recursive: true })
-    for (const f of ["fd", "fd.exe", "rg", "rg.exe"]) {
-      const s = path.join(srcBin, f)
-      const d = path.join(dstBin, f)
-      if (fs.existsSync(s) && !fs.existsSync(d)) fs.copyFileSync(s, d)
+    const copyIfMissing = (src, name) => {
+      const d = path.join(dstBin, name)
+      if (fs.existsSync(src) && !fs.existsSync(d)) fs.copyFileSync(src, d)
     }
+    const exe = process.platform === "win32" ? ".exe" : ""
+    for (const tool of ["fd", "rg"]) {
+      copyIfMissing(path.join(HERE, "binaries", `${process.platform}-${process.arch}`, tool + exe), tool + exe)
+    }
+    const srcBin = path.join(os.homedir(), ".pi", "agent", "bin")
+    for (const f of ["fd.exe", "rg.exe"]) copyIfMissing(path.join(srcBin, f), f)
   } catch {}
   // quietStartup：禁用 pi 启动公告（What's New / 版本说明）
   try {
