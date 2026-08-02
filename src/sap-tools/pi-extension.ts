@@ -1,12 +1,14 @@
 /**
  * SapBuddy SAP 工具 Pi 扩展（文件扩展）
- * 加载期直接注册 42 个 SAP 工具 + 打印启动图标
+ * 加载期注册 42 个 SAP 工具 + MCP 外部工具 + 打印启动图标
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
+import path from "node:path"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { registerSapTools, installWriteGate, handleUserMessage } from "./register.js"
 import { SAPBUDDY_BANNER } from "./banner.js"
 
-export default function (pi: ExtensionAPI): void {
+export default async function (pi: ExtensionAPI): Promise<void> {
   // 启动图标（pi CLI 顶部信息区显示）
   console.log(SAPBUDDY_BANNER)
   console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具 · author:guoxiaoxi")
@@ -14,6 +16,14 @@ export default function (pi: ExtensionAPI): void {
     registerSapTools(pi)
   } catch (e) {
     console.log(`  [sapbuddy] 工具注册失败: ${e instanceof Error ? e.message : e}`)
+  }
+  // MCP 外部工具：与 Web/单次提问一致（读取 .SapBuddy/mcp.json → 注册 mcp_<server>_ 工具）
+  try {
+    const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
+    const { registerMcpTools } = await import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
+    await registerMcpTools(pi)
+  } catch (e) {
+    console.log(`  [sapbuddy] MCP 工具注册失败: ${e instanceof Error ? e.message : e}`)
   }
   // 写操作人工确认：CLI/TUI 模式原生弹窗
   try {

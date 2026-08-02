@@ -11,8 +11,11 @@ dist/
 .DS_Store
 Thumbs.db
 
+# 本机 Claude Code 配置（不入库）
+.claude/
+
 # 用户运行时配置（含敏感信息，不提交）
-# .SapBuddy/skills、prompts、models.json 为默认内容随仓库跟踪；个人文件忽略
+# 默认技能/models.json 已随仓库放在 defaults/，运行时由 ensureRuntimeFiles 拷贝到 .SapBuddy/
 .SapBuddy/auth.json
 .SapBuddy/settings.json
 .SapBuddy/connections.json
@@ -22,6 +25,8 @@ Thumbs.db
 .SapBuddy/memory.md
 .SapBuddy/models-store.json
 .SapBuddy/agent
+.SapBuddy/skills/
+.SapBuddy/models.json
 
 # 旧版 .pi 配置目录（已废弃，git 内容迁移到 .SapBuddy 后整个忽略）
 .pi/

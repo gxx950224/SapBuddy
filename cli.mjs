@@ -15,7 +15,7 @@ import fs from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import net from "node:net"
-import { createAgent, loadAuth, loadSettings, ROOT } from "./src/agent-core.mjs"
+import { createAgent, loadAuth, loadSettings, ensureRuntimeFiles, ROOT } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
@@ -69,6 +69,26 @@ async function cmdTools() {
   console.log(`SAP 工具共 ${tools.length} 个：`)
   console.log(`\n📖 只读（${read.length}）：${read.map((t) => t.name).join(", ")}`)
   console.log(`\n✏️ 写操作（${write.length}）：${write.map((t) => t.name).join(", ")}`)
+  // MCP 外部工具（.SapBuddy/mcp.json 配置的服务器）
+  try {
+    const { loadMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
+    const servers = loadMcpServers()
+    if (!Object.keys(servers).length) {
+      console.log(`\n🔌 MCP 外部工具：未配置（Web 设置-MCP 可添加）`)
+      return
+    }
+    for (const [name, s] of Object.entries(servers)) {
+      const st = await testServer(name, s)
+      if (!st.connected) {
+        console.log(`\n🔌 MCP ${name}：连接失败（${st.error}）`)
+        continue
+      }
+      const names = st.tools.map((t) => `mcp_${name}_${t.name}`)
+      console.log(`\n🔌 MCP ${name}（${names.length} 个）：${names.join(", ")}`)
+    }
+  } catch (e) {
+    console.log(`\n🔌 MCP 外部工具：列出失败（${e instanceof Error ? e.message : e}）`)
+  }
 }
 
 // ===== doctor：环境自检 =====
@@ -116,6 +136,8 @@ async function cmdPrompt(text, jsonMode) {
 
 // ===== 交互式对话：直接复用 pi CLI（完整 TUI + 42 工具扩展）=====
 async function cmdChat() {
+  // 首次运行：初始化默认技能/models.json（从包内 defaults/ 拷贝到 .SapBuddy/）
+  try { ensureRuntimeFiles() } catch { /* 初始化失败不阻塞，pi CLI 会继续 */ }
   // 首次运行引导
   const auth = loadAuth()
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")

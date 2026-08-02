@@ -33,7 +33,7 @@
 - 🔒 **安全三重防线**：默认只读 + **开发客户端守卫**（`T000.CCCATEGORY` 非开发类自动拦截写操作）+ 生产环境 fail-closed
 - 🖥 **CLI + Web 双模式**：终端交互 / 浏览器界面（SSE 流式）
 - 🔀 **多模型**：DeepSeek / OpenAI / Anthropic / Qwen 等（pi 生态）
-- 🔌 **MCP 兼容**：可接入外部 MCP 服务器（如 SAP 端 ZSX_MCP），工具即时注册
+- 🔌 **MCP 兼容**：可接入外部 MCP 服务器（如 SAP 端 ZSX_MCP），CLI 与 Web 双端自动注册，工具即时可用
 
 ## 📸 截图
 
@@ -81,7 +81,7 @@ cp config/settings.example.json .SapBuddy/settings.json
 sapbuddy chat                      # 交互式对话
 sapbuddy web                       # Web 版（http://127.0.0.1:7400）
 sapbuddy "搜索 ZCL_* 开头的类"      # 单次提问
-sapbuddy tools                     # 列出 42 个工具
+sapbuddy tools                     # 列出 42 个 SAP 工具 + 已配置的 MCP 工具
 ```
 
 ## 🧩 架构
@@ -102,14 +102,16 @@ sapbuddy tools                     # 列出 42 个工具
 sapbuddy/
 ├── cli.mjs                 # CLI 入口（chat / 单次 / web / tools / doctor）
 ├── src/
-│   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析
+│   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析 + 运行时初始化
 │   ├── sap-tools/          # 42 个 SAP 工具（TypeScript，基于 abap-adt-api）
-│   └── web/                # 本地 Web 服务器 + UI
+│   └── web/                # 本地 Web 服务器 + UI + MCP 客户端
+├── defaults/               # 默认技能与 models.json（随包发布，首次运行拷贝到 .SapBuddy/）
 ├── config/                 # 配置模板（不含真实凭据）
-└── .SapBuddy/             # 用户配置目录（auth/连接/会话/技能/产物）
 ├── test/                   # 冒烟测试（node --test）
 └── docs/                   # 文档
 ```
+
+> 运行时配置（`.SapBuddy/`：auth/连接/会话/技能/产物/MCP）由程序自动初始化，不随仓库与 npm 包分发。
 
 ## 🔒 安全
 
@@ -133,10 +135,10 @@ npm run check   # TypeScript 类型检查
 ADT 服务（`/sap/bc/adt`）访问权限 + 目标对象读写权限；查询类工具需要相应授权对象。
 
 **Q：如何接入自己的模型？**
-编辑 `.pi/auth.json` 配置 API Key，`.pi/models.json` 添加模型，设置页（Web）可直接切换。
+编辑 `.SapBuddy/auth.json` 配置 API Key，`.SapBuddy/models.json` 添加模型，设置页（Web）可直接切换。
 
 **Q：MCP 工具如何使用？**
-设置-MCP 添加服务器（streamable-http/SSE/stdio），保存后自动连接测试并注册为 `mcp_<服务器>_<工具名>`，与内置工具同等可用。
+设置-MCP 添加服务器（streamable-http，兼容 SSE 响应），保存后自动连接测试并注册为 `mcp_<服务器>_<工具名>`，CLI 与 Web 双端同等可用。服务器名来自 mcp.json 的 key，引用时需全小写下划线写法（如 `mcp_sap-mcp-dev_GET_TCODE_INFO`）。
 
 **Q：为什么在测试机上写操作被拒绝？**
 开发客户端守卫拦截——这是设计意图。仅开发类客户端（默认 C）可写，见 [安全](#-安全)。

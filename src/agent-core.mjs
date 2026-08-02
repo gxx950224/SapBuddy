@@ -38,50 +38,6 @@ export function loadAuth() {
   return {}
 }
 
-/**
- * MCP 服务器工具动态注册（扩展）：
- * 读取 .pi/mcp.json 的服务器 → 连接拉取 tools/list → 注册为 customTools（前缀 mcp_<server>_）
- */
-async function registerMcpTools(pi) {
-  const { loadMcpServers, testServer, callMcpTool } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
-  const { jsonSchemaToTypebox } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
-  const servers = loadMcpServers()
-  for (const [name, server] of Object.entries(servers)) {
-    try {
-      const st = await testServer(name, server)
-      if (!st.connected) {
-        console.log(`[sapbuddy] MCP ${name} 连接失败: ${st.error}`)
-        continue
-      }
-      for (const t of st.tools) {
-        const toolName = `mcp_${name}_${t.name}`
-        pi.registerTool({
-          name: toolName,
-          label: `${name}/${t.name}`,
-          description: `[MCP:${name}] ${t.description}。来自外部 MCP 服务器 "${name}"（${server.url}）。`,
-          promptSnippet: `外部 MCP 工具（${name}）`,
-          parameters: jsonSchemaToTypebox(t.inputSchema),
-          async execute(_id, args) {
-            try {
-              const text = await callMcpTool(server, t.name, args ?? {})
-              return { content: [{ type: "text", text }], details: {} }
-            } catch (err) {
-              return {
-                content: [{ type: "text", text: `MCP 工具 ${t.name} 执行失败: ${err instanceof Error ? err.message : String(err)}` }],
-                details: {},
-                isError: true,
-              }
-            }
-          },
-        })
-      }
-      console.log(`[sapbuddy] MCP ${name} 已注册 ${st.tools.length} 个工具（${st.tools.map((x) => x.name).join(", ")}）`)
-    } catch (e) {
-      console.log(`[sapbuddy] MCP ${name} 注册失败: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  }
-}
-
 /** 读取设置（默认模型等） */
 export function loadSettings() {
   try {
@@ -102,19 +58,19 @@ export function loadSettings() {
 export function ensureRuntimeFiles() {
   try {
     fs.mkdirSync(CONFIG_DIR, { recursive: true })
-    // 技能默认内容（来源：旧 cwd/.pi → 包内默认）。
+    // 技能默认内容（来源：旧 cwd/.pi → 包内 defaults/，随 npm 包发布）。
     // ⚠️ 不再迁移 prompts（已弃用，由技能覆盖）；绝不复制主目录 ~/.SapBuddy 整套配置（含 auth.json，曾污染目录）
     for (const sub of ["skills"]) {
       const dst = path.join(CONFIG_DIR, sub)
       if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, sub), path.join(ROOT, ".SapBuddy", sub)]) {
+      for (const src of [path.join(LEGACY_PI, sub), path.join(ROOT, "defaults", sub)]) {
         if (fs.existsSync(src)) { fs.cpSync(src, dst, { recursive: true }); break }
       }
     }
     for (const f of ["models.json", "auth.json", "settings.json"]) {
       const dst = path.join(CONFIG_DIR, f)
       if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, ".SapBuddy", f)]) {
+      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, "defaults", f)]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
       }
     }
@@ -242,6 +198,7 @@ export async function createAgent(opts = {}) {
       },
       // MCP 服务器工具动态注册（async factory：设置-MCP 保存的服务器在此生效）
       async (pi) => {
+        const { registerMcpTools } = await import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
         await registerMcpTools(pi)
       },
     ],

@@ -16,11 +16,17 @@
   let scrollRaf = 0;
 
   function isNearBottom() {
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 120;
+    // 阈值收紧：几乎贴底才自动跟随，用户稍微上滚就退出，避免流式输出时被反复拉回
+    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40;
   }
 
   messagesEl.addEventListener("scroll", () => {
     autoScroll = isNearBottom();
+    if (!autoScroll && scrollRaf) {
+      // 用户上滚离开底部：取消待执行的强制到底，防止下一帧把滚动拉回底
+      cancelAnimationFrame(scrollRaf);
+      scrollRaf = 0;
+    }
   });
 
   // 滚动跟随合并到每帧一次：流式高频更新时避免反复强制 scrollTop 造成抖动/卡死

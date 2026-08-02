@@ -330,7 +330,7 @@ const server = http.createServer(async (req, res) => {
       try { agents = t(fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8")) } catch {}
       try { systemMd = t(fs.readFileSync(path.join(ROOT, "SYSTEM.md"), "utf8")) } catch {}
       try { memory = t(fs.readFileSync(memoryFile, "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
-      try { for (const base of [skillsDir, path.join(ROOT, ".SapBuddy", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
+      try { for (const base of [skillsDir, path.join(ROOT, "defaults", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
       const piAgent = 1500
       const extensions = EXT_TOKENS
       const mcp = 0
@@ -719,7 +719,7 @@ const ids = models.map((m) => m.id)
       if (!WHITELIST.includes(base)) {
         return json(res, 403, { error: "Forbidden: 仅允许读取 AGENTS.md / SYSTEM.md / Memory.md / CLAUDE.md" })
       }
-      const candidates = [path.join(ROOT, base), path.join(promptsDir, base), path.join(ROOT, ".SapBuddy", "prompts", base), path.join(ROOT, ".SapBuddy", "skills", base)]
+      const candidates = [path.join(ROOT, base), path.join(promptsDir, base), path.join(ROOT, ".SapBuddy", "prompts", base), path.join(ROOT, "defaults", "skills", base)]
       for (const c of candidates) {
         if (fs.existsSync(c)) return json(res, 200, { success: true, data: { content: fs.readFileSync(c, "utf8"), path: c } })
       }
