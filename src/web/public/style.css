@@ -428,13 +428,14 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 }
 
 .session-ren {
-  position: absolute; right: 30px; top: 50%; transform: translateY(-50%);
-  background: transparent; border: none; color: var(--text-faint);
-  cursor: pointer; padding: 3px; border-radius: 4px; opacity: 0;
-  transition: opacity var(--ease), color var(--ease);
+  flex-shrink: 0; width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer; padding: 0;
+  color: var(--text-faint); border-radius: var(--radius-sm);
+  opacity: 0; transition: opacity var(--ease), background var(--ease), color var(--ease);
 }
 .session-item:hover .session-ren { opacity: 1; }
-.session-ren:hover { color: var(--accent); }
+.session-ren:hover { color: var(--accent); background: var(--bg-hover); }
 .session-item:hover .session-del { opacity: 1; }
 .session-del:hover { color: var(--error); background: var(--bg-hover); }
 .session-item.current .session-del { color: var(--error); }
