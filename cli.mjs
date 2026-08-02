@@ -14,7 +14,7 @@ import path from "node:path"
 import fs from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { createAgent, loadAuth, loadSettings } from "./src/agent-core.mjs"
+import { createAgent, loadAuth, loadSettings, ROOT } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
@@ -75,15 +75,38 @@ async function cmdPrompt(text, jsonMode) {
 }
 
 // ===== 交互式对话（REPL，类 pi / Claude Code）=====
-const BANNER = `
-╔══════════════════════════════════════╗
-║   🤖 SapBuddy  v2.0                 ║
-║   SAP ABAP AI 助手 · 42 个工具        ║
-╚══════════════════════════════════════╝
-`
+
+// ── 启动页：ASCII art 标题 + 作者/模型/当前目录 ──
+const FIGLET = {
+  S: ["███████╗", "██╔════╝", "███████╗", "╚════██║", "███████║", "╚══════╝"],
+  A: [" █████╗ ", "██╔══██╗", "███████║", "██╔══██║", "██║  ██║", "╚═╝  ╚═╝"],
+  P: ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔═══╝ ", "██║     ", "╚═╝     "],
+  B: ["██████╗ ", "██╔══██╗", "██████╔╝", "██╔══██╗", "██████╔╝", "╚═════╝ "],
+  U: ["██╗   ██╗", "██║   ██║", "██║   ██║", "██║   ██║", "╚██████╔╝", " ╚═════╝ "],
+  D: ["██████╗ ", "██╔══██╗", "██║  ██║", "██║  ██║", "██████╔╝", "╚═════╝ "],
+  Y: ["██╗   ██╗", "╚██╗ ██╔╝", " ╚████╔╝ ", "  ╚██╔╝  ", "   ██║   ", "   ╚═╝   "],
+}
+
+function renderBanner() {
+  const word = "SAPBUDDY"
+  const rows = Array(6).fill("")
+  for (const ch of word) {
+    const glyph = FIGLET[ch] || ["      ", "      ", "      ", "      ", "      ", "      "]
+    for (let i = 0; i < 6; i++) rows[i] += glyph[i]
+  }
+  return "\n" + rows.join("\n") + "\n"
+}
+
 
 async function cmdChat() {
-  console.log(BANNER)
+  // 启动页：ASCII art + 作者/模型/当前目录
+  console.log(renderBanner())
+  const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
+  const settings = loadSettings()
+  const modelId = (settings.defaultProvider ?? "deepseek") + "/" + (settings.defaultModel ?? "deepseek-v4-flash")
+  console.log("  author: guoxiaoxi    version: v" + pkg.version)
+  console.log("  models: " + modelId)
+  console.log("  " + process.cwd() + "\n")
   // 首次运行引导：未配置 API Key / 连接时给出提示
   const auth = loadAuth()
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
@@ -144,7 +167,9 @@ async function cmdChat() {
           return ask()
         case "/clear":
           process.stdout.write("\x1bc")
-          console.log(BANNER)
+          console.log(renderBanner())
+          console.log("  models: " + ((loadSettings().defaultProvider ?? "deepseek") + "/" + (loadSettings().defaultModel ?? "deepseek-v4-flash")))
+          console.log("  " + process.cwd() + "\n")
           return ask()
         case "/stop":
           if (streaming) { streaming = false; await session.abort().catch(() => {}); console.log("⏹ 已停止") }
