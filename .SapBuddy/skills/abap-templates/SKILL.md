@@ -85,7 +85,7 @@ APPEND ls_fieldcat TO lt_fieldcat.
 
 CLEAR ls_fieldcat.
 ls_fieldcat-fieldname = 'NETWR'.
-ls_fieldcat-coltext   = '净金额'.
+ls_fieldcat-coltext   = TEXT-002.  " 列文本在文本池维护（TEXT-002），禁止硬编码中文
 ls_fieldcat-no_zero   = abap_true.
 APPEND ls_fieldcat TO lt_fieldcat.
 

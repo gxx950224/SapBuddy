@@ -61,10 +61,11 @@ export function handleUserMessage(text: string): void {
   // 中性/继续类消息不清除窗口，避免同一需求反复授权
 }
 
-/** 只读模式开关：settings.security.readOnly=true 时拒绝一切写工具（默认 false，靠确认机制） */
+/** 只读模式开关：connections.json 的 security.readOnly=true 时拒绝一切写工具
+ * （网页端保存 SAP 配置写的就是 connections.json，两处一致） */
 function isReadOnly(): boolean {
   try {
-    const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "settings.json"), "utf8").toString())
+    const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "connections.json"), "utf8").toString())
     return cfg.security?.readOnly === true
   } catch { return false }
 }

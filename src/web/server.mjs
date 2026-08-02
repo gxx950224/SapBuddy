@@ -391,10 +391,22 @@ const server = http.createServer(async (req, res) => {
         for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
           const full = path.join(dir, f)
           try {
-            const msgs = readSessionMessages(full)
-            const firstUser = msgs.find((m) => m.role === "user")
-            const title = firstUser ? (Array.isArray(firstUser.content) ? firstUser.content.map((c) => c.text || "").join("").slice(0, 40) : String(firstUser.content || "").slice(0, 40)) : ""
-            list.push({ path: full, name: title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: msgs.length, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
+            // 性能：只读文件头 128KB 提取首条 user 消息做标题，消息数按行数（不 JSON.parse 全部）
+            const fd = fs.openSync(full, "r")
+            const buf = Buffer.alloc(128 * 1024)
+            const read = fs.readSync(fd, buf, 0, buf.length, 0)
+            fs.closeSync(fd)
+            const head = buf.toString("utf8", 0, read)
+            const lineCount = head.split("\n").filter(Boolean).length
+            const firstUserLine = head.split("\n").find((l) => l.includes('"role":"user"'))
+            let title = ""
+            if (firstUserLine) {
+              try {
+                const m = JSON.parse(firstUserLine).message
+                title = (m?.content ?? []).map((c) => c.text || "").join("").slice(0, 40)
+              } catch { /* 忽略坏行 */ }
+            }
+            list.push({ path: full, name: title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: lineCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
           } catch { /* 忽略 */ }
         }
       }

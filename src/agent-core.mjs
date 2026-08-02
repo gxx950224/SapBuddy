@@ -102,14 +102,14 @@ export function loadSettings() {
 export function ensureRuntimeFiles() {
   try {
     fs.mkdirSync(CONFIG_DIR, { recursive: true })
-    for (const sub of ["skills", "prompts"]) {
+    // 技能默认内容（来源：旧 cwd/.pi → 包内默认）。
+    // ⚠️ 不再迁移 prompts（已弃用，由技能覆盖）；绝不复制主目录 ~/.SapBuddy 整套配置（含 auth.json，曾污染目录）
+    for (const sub of ["skills"]) {
       const dst = path.join(CONFIG_DIR, sub)
       if (fs.existsSync(dst)) continue
-      const legacy = path.join(LEGACY_PI, sub)
-      const pkg = path.join(ROOT, ".SapBuddy", sub)
-      if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
-      else if (fs.existsSync(HOME_SAPBUDDY)) fs.cpSync(HOME_SAPBUDDY, dst, { recursive: true })
-      else if (fs.existsSync(pkg)) fs.cpSync(pkg, dst, { recursive: true })
+      for (const src of [path.join(LEGACY_PI, sub), path.join(ROOT, ".SapBuddy", sub)]) {
+        if (fs.existsSync(src)) { fs.cpSync(src, dst, { recursive: true }); break }
+      }
     }
     for (const f of ["models.json", "auth.json", "settings.json"]) {
       const dst = path.join(CONFIG_DIR, f)

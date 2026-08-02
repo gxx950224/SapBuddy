@@ -55,17 +55,32 @@ export async function findObject(
   const client = await getClient(connId)
   const types = objectType ? [objectType] : searchTypes ?? DEFAULT_SEARCH_TYPES
   const pattern = objectName.toUpperCase()
-  for (const type of types) {
-    try {
-      const results = await client.searchObject(pattern, type, 10)
-      const exact = results.find((r) => r["adtcore:name"].toUpperCase() === pattern)
-      if (exact) return exact
-      if (results.length > 0 && !objectType) return results[0]
-    } catch {
-      // 某些类型可能不支持搜索，跳过
+  // 性能：常用类型优先并行查（与 search_abap_objects 一致），命中即返回；未命中再查剩余
+  const COMMON = ["PROG", "CLAS", "INTF", "FUGR", "TABL", "DTEL", "DDLS", "DOMA", "TTYP", "MSAG", "DEVC", "FUNC"]
+  const ordered = COMMON.filter((t) => types.includes(t)).concat(types.filter((t) => !COMMON.includes(t)))
+
+  async function batch(ts: string[]): Promise<SearchResult | undefined> {
+    const settled = await Promise.allSettled(
+      ts.map(async (type) => {
+        try {
+          return { type, results: await client.searchObject(pattern, type as never, 10) }
+        } catch {
+          return { type, results: [] as never[] }
+        }
+      }),
+    )
+    for (const r of settled) {
+      const results = r.status === "fulfilled" ? (r.value.results as never[]) : []
+      const exact = results.find((x) => (x as SearchResult)["adtcore:name"].toUpperCase() === pattern)
+      if (exact) return exact as SearchResult
+      if (results.length > 0 && !objectType) return results[0] as SearchResult
     }
+    return undefined
   }
-  return undefined
+
+  let found = await batch(ordered.slice(0, 12))
+  if (!found && ordered.length > 12) found = await batch(ordered.slice(12))
+  return found
 }
 
 /** 按名称+类型搜索对象（找不到抛错，附带搜索建议） */
