@@ -76,8 +76,10 @@ function expandEnv(value: string): string {
 
 function resolveConfigPath(): string {
   if (process.env.ABAP_MCP_CONFIG) return resolve(process.env.ABAP_MCP_CONFIG)
-  const user = resolve(homedir(), ".SapBuddy", "connections.json")
+  const user = resolve(process.cwd(), ".SapBuddy", "connections.json")
   if (existsSync(user)) return user
+  const home = resolve(homedir(), ".SapBuddy", "connections.json")
+  if (existsSync(home)) return home // 兼容旧版：主目录配置
   return resolve(process.cwd(), "connections.json") // 兼容旧版：项目根配置
 }
 

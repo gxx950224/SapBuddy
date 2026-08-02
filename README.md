@@ -59,20 +59,20 @@ npm run build
 
 ### 首次配置（两种方式相同）
 
-> 所有配置保存在 `~/.SapBuddy/`（隐藏目录）：auth.json / connections.json / settings.json / sessions / skills / prompts / output。首次运行自动初始化默认技能与提示词。
+> 所有配置保存在 `.SapBuddy/`（隐藏目录）：auth.json / connections.json / settings.json / sessions / skills / prompts / output。首次运行自动初始化默认技能与提示词。
 
 ```bash
 # 1. AI 模型 API Key
-mkdir -p ~/.SapBuddy
-cp config/auth.example.json ~/.SapBuddy/auth.json
-#    编辑 ~/.SapBuddy/auth.json 填入你的 Key
+mkdir -p .SapBuddy
+cp config/auth.example.json .SapBuddy/auth.json
+#    编辑 .SapBuddy/auth.json 填入你的 Key
 
 # 2. SAP 连接（ADT 需在 SICF 激活 /sap/bc/adt）
-cp config/connections.example.json ~/.SapBuddy/connections.json
-#    编辑 ~/.SapBuddy/connections.json 填入系统地址/客户端/账号
+cp config/connections.example.json .SapBuddy/connections.json
+#    编辑 .SapBuddy/connections.json 填入系统地址/客户端/账号
 
 # 3.（可选）模型与思考级别
-cp config/settings.example.json ~/.SapBuddy/settings.json
+cp config/settings.example.json .SapBuddy/settings.json
 ```
 
 ### 开始对话
@@ -106,7 +106,7 @@ sapbuddy/
 │   ├── sap-tools/          # 42 个 SAP 工具（TypeScript，基于 abap-adt-api）
 │   └── web/                # 本地 Web 服务器 + UI
 ├── config/                 # 配置模板（不含真实凭据）
-└── ~/.SapBuddy/             # 用户配置目录（auth/连接/会话/技能/产物）
+└── .SapBuddy/             # 用户配置目录（auth/连接/会话/技能/产物）
 ├── test/                   # 冒烟测试（node --test）
 └── docs/                   # 文档
 ```

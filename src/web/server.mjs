@@ -32,7 +32,7 @@ import os from "node:os"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
 const PUBLIC_DIR = path.join(HERE, "public")
-const USER_PI = path.join(os.homedir(), ".SapBuddy")
+const USER_PI = path.join(process.cwd(), ".SapBuddy")
 const OUTPUT_DIR = path.join(USER_PI, "output")
 
 const portArg = process.argv.indexOf("--port")

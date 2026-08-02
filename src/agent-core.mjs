@@ -11,10 +11,12 @@ const require = createRequire(import.meta.url)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 export const ROOT = path.resolve(HERE, "..")
 /**
- * 用户配置目录：~/.SapBuddy（用户主目录的隐藏目录，全局安装/源码运行统一）
- * auth / settings / models / connections / sessions / skills / prompts / output 都在这里
+ * 用户配置目录：<cwd>/.SapBuddy（当前工作目录下的隐藏目录）
+ * 在项目根运行即数据在项目目录；auth/settings/models/connections/sessions/skills/prompts/output 都在这里
  */
-export const CONFIG_DIR = path.join(os.homedir(), ".SapBuddy")
+export const CONFIG_DIR = path.join(process.cwd(), ".SapBuddy")
+/** 旧迁移源：用户主目录 ~/.SapBuddy（之前版本的位置） */
+export const HOME_SAPBUDDY = path.join(os.homedir(), ".SapBuddy")
 /** 兼容旧版：cwd/.pi（历史配置，优先于包内默认） */
 export const LEGACY_PI = path.join(process.cwd(), ".pi")
 
@@ -104,38 +106,41 @@ export function ensureRuntimeFiles() {
       const dst = path.join(CONFIG_DIR, sub)
       if (fs.existsSync(dst)) continue
       const legacy = path.join(LEGACY_PI, sub)
+      const home = path.join(HOME_SAPBUDDY, sub)
       const pkg = path.join(ROOT, ".pi", sub)
       if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
+      else if (fs.existsSync(home)) fs.cpSync(home, dst, { recursive: true })
       else if (fs.existsSync(pkg)) fs.cpSync(pkg, dst, { recursive: true })
     }
     for (const f of ["models.json", "auth.json", "settings.json"]) {
       const dst = path.join(CONFIG_DIR, f)
       if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, ".pi", f)]) {
+      for (const src of [path.join(LEGACY_PI, f), path.join(HOME_SAPBUDDY, f), path.join(ROOT, ".pi", f)]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
       }
     }
     if (!fs.existsSync(path.join(CONFIG_DIR, "connections.json"))) {
-      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json")]) {
+      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(HOME_SAPBUDDY, "connections.json"), path.join(process.cwd(), "connections.json")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
       }
     }
     // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
     const dstSessions = path.join(CONFIG_DIR, "sessions")
     const legacySessions = path.join(LEGACY_PI, "sessions")
+    const homeSessions = path.join(HOME_SAPBUDDY, "sessions")
     fs.mkdirSync(dstSessions, { recursive: true })
-    if (fs.existsSync(legacySessions)) {
-      for (const f of fs.readdirSync(legacySessions)) {
+    for (const srcS of [legacySessions, homeSessions]) if (fs.existsSync(srcS)) {
+      for (const f of fs.readdirSync(srcS)) {
         const dst = path.join(dstSessions, f)
         if (!fs.existsSync(dst)) {
-          try { fs.copyFileSync(path.join(legacySessions, f), dst) } catch { /* 忽略 */ }
+          try { fs.copyFileSync(path.join(srcS, f), dst) } catch { /* 忽略 */ }
         }
       }
     }
     // 产物迁移（旧项目根 output / cwd/output → ~/.SapBuddy/output，补复制不覆盖）
     const dstOut = path.join(CONFIG_DIR, "output")
     fs.mkdirSync(dstOut, { recursive: true })
-    for (const srcOut of [path.join(ROOT, "output"), path.join(process.cwd(), "output")]) {
+    for (const srcOut of [path.join(ROOT, "output"), path.join(HOME_SAPBUDDY, "output"), path.join(process.cwd(), "output")]) {
       if (fs.existsSync(srcOut)) {
         for (const f of fs.readdirSync(srcOut)) {
           const dst = path.join(dstOut, f)
@@ -147,13 +152,13 @@ export function ensureRuntimeFiles() {
     }
     // MCP 配置迁移（旧 .pi/mcp.json → ~/.SapBuddy/mcp.json）
     if (!fs.existsSync(path.join(CONFIG_DIR, "mcp.json"))) {
-      for (const src of [path.join(LEGACY_PI, "mcp.json")]) {
+      for (const src of [path.join(LEGACY_PI, "mcp.json"), path.join(HOME_SAPBUDDY, "mcp.json")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "mcp.json")); break }
       }
     }
     // 记忆文件迁移（旧 .pi/memory.md / 根 Memory.md → ~/.SapBuddy/memory.md）
     if (!fs.existsSync(path.join(CONFIG_DIR, "memory.md"))) {
-      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(ROOT, "Memory.md")]) {
+      for (const src of [path.join(LEGACY_PI, "memory.md"), path.join(HOME_SAPBUDDY, "memory.md"), path.join(ROOT, "Memory.md")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "memory.md")); break }
       }
     }

@@ -42,18 +42,18 @@ async function cmdDoctor() {
   }
   const auth = loadAuth()
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
-  console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 ~/.SapBuddy/auth.json）"}`)
+  console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 .SapBuddy/auth.json）"}`)
   const settings = loadSettings()
   console.log(`默认模型: ${settings.defaultProvider ?? "deepseek"}/${settings.defaultModel ?? "deepseek-v4-flash"}`)
   // 连接检查：~/.SapBuddy/connections.json 优先，兼容项目根
-  const confPath = [path.join(os.homedir(), ".SapBuddy", "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
+  const confPath = [path.join(process.cwd(), ".SapBuddy", "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
   if (confPath) {
     try {
       const conf = JSON.parse(fs.readFileSync(confPath, "utf8"))
       console.log(`SAP 连接: ✅ ${conf.connections?.length ?? 0} 个已配置（${confPath}）`)
     } catch { console.log("SAP 连接: ⚠️ connections.json 格式错误") }
   } else {
-    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json 为 ~/.SapBuddy/connections.json）")
+    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json 为 .SapBuddy/connections.json）")
   }
 }
 
@@ -89,7 +89,7 @@ async function cmdChat() {
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
   if (!hasKey) {
     console.log("⚠️  未配置 AI 模型 API Key。请先：")
-    console.log("    mkdir -p ~/.SapBuddy && cp config/auth.example.json ~/.SapBuddy/auth.json   # 然后填入你的 API Key")
+    console.log("    mkdir -p ~/.SapBuddy && cp config/auth.example.json .SapBuddy/auth.json   # 然后填入你的 API Key")
     console.log("    或运行: node cli.mjs doctor\n")
   }
   const { session } = await createAgent()
