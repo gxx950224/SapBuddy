@@ -798,7 +798,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card .tool-head {
   display: flex; align-items: center; gap: 6px;
   padding: 0 10px; height: 40px; max-height: 40px;
-  overflow: hidden;
+  overflow: hidden; box-sizing: border-box;
   cursor: pointer; user-select: none;
   transition: background var(--ease);
 }
@@ -1750,8 +1750,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .agent-think[open] summary::before { transform: rotate(90deg); }
 .agent-think[open] summary { border-bottom: 1px solid var(--border); }
 .agent-think-body {
-  padding: 10px 14px;
-  font-size: 12.5px; line-height: 1.7;
+  padding: 6px 10px;
+  font-size: 12.5px; line-height: 1.6;
   color: var(--text-dim);
   white-space: pre-wrap;
   max-height: 520px; overflow-y: auto;
