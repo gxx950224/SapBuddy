@@ -1,9 +1,22 @@
-/** SAPBUDDY ASCII art + 版本行（pi CLI 启动时由扩展打印） */
-export const SAPBUDDY_BANNER = `
+/** SAPBUDDY ASCII art + 版本行（pi CLI 启动时由扩展打印）
+ * "SAP" 三个字母用品牌主色 #5b5bd6（ANSI RGB 真彩色）
+ */
+const PURPLE = "\x1b[38;2;91;91;214m" // #5b5bd6
+const RESET = "\x1b[0m"
+
+const RAW = `
 ███████╗ █████╗ ██████╗ ██████╗ ██╗   ██╗██████╗ ██████╗ ██╗   ██╗
 ██╔════╝██╔══██╗██╔══██╗██╔══██╗██║   ██║██╔══██╗██╔══██╗╚██╗ ██╔╝
 ███████╗███████║██████╔╝██████╔╝██║   ██║██║  ██║██║  ██║ ╚████╔╝
 ╚════██║██╔══██║██╔═══╝ ██╔══██╗██║   ██║██║  ██║██║  ██║  ╚██╔╝
 ███████║██║  ██║██║     ██████╔╝╚██████╔╝██████╔╝██████╔╝   ██║
 ╚══════╝╚═╝  ╚═╝╚═╝     ╚═════╝  ╚═════╝ ╚═════╝ ╚═════╝    ╚═╝
-`
+`.trimEnd()
+
+// "SAP" 三个字母 = 每行前 21 字符（█ 块），"BUDDY" 保持终端默认色
+export const SAPBUDDY_BANNER = RAW.split("\n")
+  .map((line) => {
+    if (!line.trim()) return line
+    return PURPLE + line.slice(0, 21) + RESET + line.slice(21)
+  })
+  .join("\n")
