@@ -174,11 +174,34 @@ export function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined)
   }
 }
 
-/** zod → JSON Schema → TypeBox */
-function zodToTypebox(schema: z.ZodType): unknown {
+/** zod → JSON Schema → TypeBox（紧凑化：去掉 def/format/checks 等噪声，只留 AI 需要的 type/description/enum/properties） */
+function compactize(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map((x) => compactize(x))
+  if (!node || typeof node !== "object") return node
+  const n = node as Record<string, unknown>
+  // 展开 def 包装（typebox 冗余结构）
+  if (n.def) return compactize(n.def)
+  const out: Record<string, unknown> = {}
+  for (const k of ["type", "description", "enum", "properties", "items", "required", "additionalProperties"]) {
+    const v = n[k]
+    if (v !== undefined && v !== null) out[k] = k === "properties" || k === "items" ? compactize(v) : v
+  }
+  if (n.type === "optional" && n.innerType) {
+    // 保留可选语义（模型需知道可不传）
+    const inner = compactize(n.innerType) as Record<string, unknown>
+    return { ...inner, optional: true }
+  }
+  if (n.type === "union") {
+    const opts = n.options as unknown[] | undefined
+    const types = (opts || []).map((x: unknown) => compactize(x))
+    return { type: "union", options: types }
+  }
+  return Object.keys(out).length ? out : n
+}
+function jsonSchemaToTypeboxCompact(schema: z.ZodType): unknown {
   try {
     const json = z.toJSONSchema(schema)
-    return jsonSchemaToTypebox(json as Record<string, unknown>)
+    return compactize(json as Record<string, unknown>)
   } catch {
     return Type.Unknown()
   }
@@ -192,9 +215,10 @@ export function registerSapTools(pi: ExtensionAPI): number {
     pi.registerTool({
       name: t.name,
       label: t.title ?? t.name,
-      description: `[SAP ABAP] ${t.description}\nSAP 连接：不确定 connectionId 时先调用 get_connected_systems。`,
+      description: `[SAP ABAP] ${t.description}
+connectionId 缺省用 get_connected_systems 第一个。`,
       promptSnippet: "SAP ABAP 工具（搜索/读取/分析/编辑 SAP 对象、执行 ATC/单测/SQL 等）",
-      parameters: zodToTypebox(t.inputSchema) as never,
+      parameters: jsonSchemaToTypeboxCompact(t.inputSchema) as never,
       async execute(_toolCallId, params) {
         try {
           const p = (params ?? {}) as Record<string, unknown>
