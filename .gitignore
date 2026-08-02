@@ -2,8 +2,20 @@
 node_modules/
 package-lock.json
 
-# 编译产物
-dist/
+# 编译产物：只提交混淆后的扩展代码（GitHub 加密）；可读源码与类型定义不入库
+# src/sap-tools（TS 源码，含安全/工具实现细节）不入库
+src/sap-tools/
+src/agent-core.mjs
+# dist：仅混淆产物入库（.js/.mjs），类型定义/映射文件排除
+dist/*
+!dist/sap-tools/
+!dist/agent-core.mjs
+dist/sap-tools/**/*.d.ts
+dist/sap-tools/**/*.map
+dist/**/*.d.ts
+dist/**/*.map
+!dist/sap-tools/**/*.js
+!dist/sap-tools/**/*.mjs
 
 # 日志与临时
 *.log

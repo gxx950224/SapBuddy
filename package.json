@@ -14,7 +14,7 @@
     "web": "node cli.mjs web",
     "tools": "node cli.mjs tools",
     "doctor": "node cli.mjs doctor",
-    "prepublishOnly": "npm run build && npm test",
+    "prepublishOnly": "npm test",
     "test": "node --test",
     "check": "tsc --noEmit",
     "obfuscate": "node scripts/obfuscate.mjs"
