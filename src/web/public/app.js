@@ -133,7 +133,7 @@
     for (const a of App.state.attachments) {
       const chip = document.createElement("span");
       chip.className = "attach-chip";
-      chip.innerHTML = "📎 " + App.escapeHtml(a.name) + " <button class='attach-remove' title='移除'>×</button>";
+      chip.innerHTML = App.escapeHtml(a.name) + " <button class='attach-remove' title='移除'>×</button>";
       chip.querySelector(".attach-remove").addEventListener("click", () => {
         App.state.attachments = App.state.attachments.filter((x) => x !== a);
         renderAttachments();
