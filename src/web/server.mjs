@@ -593,9 +593,10 @@ const ids = models.map((m) => m.id)
         return json(res, 200, { success: true, models: [] })
       }
     }
-    const memoryFile = path.join(USER_PI, "memory.md")
+    // 记忆：统一使用项目根 Memory.md（用户指定）；旧 .SapBuddy/memory.md 作读取 fallback
+    const memoryFile = path.join(ROOT, "Memory.md")
     if (p === "/api/memory" && req.method === "GET") {
-      for (const f of [memoryFile, path.join(ROOT, "Memory.md")]) {
+      for (const f of [memoryFile, path.join(USER_PI, "memory.md")]) {
         try { return json(res, 200, { success: true, data: { content: fs.readFileSync(f, "utf8"), path: f } }) } catch { /* 继续 */ }
       }
       return json(res, 200, { success: true, data: { content: "", path: memoryFile } })

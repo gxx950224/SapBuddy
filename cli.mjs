@@ -145,6 +145,7 @@ async function cmdChat() {
     "--session-dir", path.join(process.cwd(), ".SapBuddy", "sessions"),
     "--skill", path.join(process.cwd(), ".SapBuddy", "skills"),
     "--append-system-prompt", path.join(ROOT, "SYSTEM.md"),
+    "--append-system-prompt", path.join(ROOT, "Memory.md"),
   ]
   // API Key（从 .SapBuddy/auth.json 读取，避免手工配置）
   const apiKey = Object.values(auth).find((v) => v?.type === "api_key" && v.key)?.key
