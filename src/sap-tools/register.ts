@@ -255,6 +255,10 @@ function compactize(node: unknown): unknown {
   const n = node as Record<string, unknown>
   // 展开 def 包装（typebox 冗余结构）
   if (n.def) return compactize(n.def)
+  // 仅处理"schema 结构节点"（有 type/enum/properties 等结构特征）；
+  // 普通容器（如 properties 映射：key 是 action/transportNumber 等参数名）原样返回，防止误当 schema 节点丢失字段
+  const SCHEMA_KEYS = ["type", "enum", "properties", "items", "required", "additionalProperties", "anyOf", "allOf", "oneOf"]
+  if (!SCHEMA_KEYS.some((k) => n[k] !== undefined)) return n
   const out: Record<string, unknown> = {}
   for (const k of ["type", "description", "enum", "properties", "items", "required", "additionalProperties"]) {
     const v = n[k]

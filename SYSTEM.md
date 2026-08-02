@@ -66,7 +66,8 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 
 ## 工具使用要点
 
-- **完整工具手册见 `docs/TOOLS.md`**（42 工具用途/参数/组合流程；复杂或不确定用法时用 read 工具查看该文件）
+- **知识图谱工具手册见 `docs/TOOL-GUIDE.md`**（场景 → 工具 → 传参示例，含 JSON 参数示例；不确定怎么传参时**先 read 该文件对应场景**）
+- **完整工具手册见 `docs/TOOLS.md`**（42 工具用途/参数/组合流程）
 - **联网查询（实时信息）**：需要天气/汇率/新闻等实时信息时，用 `bash` 执行 `curl`（如 `curl -s "https://wttr.in/福州?format=3"` 查天气、`curl -s https://open.er-api.com/v6/latest/USD` 查汇率）。网络可用；失败时诚实告知并给替代建议，**禁止编造**。
 - **连接**：不确定 connectionId 时先调用 `get_connected_systems`
 - **搜索**：`search_abap_objects`（通配符，如 `ZCL_*`）
