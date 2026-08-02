@@ -234,6 +234,8 @@
           App.onGenerationInterrupted();
         }
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
+        // 输出全部返回后自动收起思考面板（工具执行时自动展开过）
+        App.collapseThinkPanels();
         App.consolidateAssistantReplies();
         if (usage) {
           const elapsedStr = elapsed

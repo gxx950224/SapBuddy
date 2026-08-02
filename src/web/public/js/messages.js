@@ -91,13 +91,25 @@
     const tools = det.querySelectorAll(".tool-card").length;
     let label = "💭 思考过程";
     if (tools) label += " · " + tools + " 个工具";
-    label += "（点击展开）";
     det.querySelector("summary").textContent = label;
   }
   function containerText(det) {
     let t = "";
     det.querySelectorAll(".think-seg").forEach((s) => { t += s.textContent });
     return t;
+  }
+
+  // 工具卡插入到最后一个思考段之后（穿插显示，不堆积在末尾）
+  function insertToolCardInterleaved(container, card) {
+    const think = container._thinkWrap;
+    if (think) {
+      const body = think.querySelector(".agent-think-body");
+      const segs = body.querySelectorAll(".think-seg");
+      if (segs.length) body.insertBefore(card, segs[segs.length - 1].nextSibling);
+      else body.appendChild(card);
+    } else {
+      ensureToolsWrap(container).appendChild(card);
+    }
   }
 
   // 工具调用链：优先嵌入思考块内（Claude 风格），无思考时独立显示
@@ -130,13 +142,19 @@
     if (!container) return;
     if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
     const card = App.createToolCard(id, name, args);
-    ensureToolsWrap(container).appendChild(card);
+    insertToolCardInterleaved(container, card);
     // 有工具时展开思考块（实时可见执行状态）
     if (container._thinkWrap) {
       container._thinkWrap.open = true;
       updateThinkSummary(container._thinkWrap);
     }
     App.scrollToBottom();
+  };
+
+  /** 收起思考面板（agent 输出结束后调用） */
+  App.collapseThinkPanels = function() {
+    const c = state.currentAssistantEl;
+    if (c && c._thinkWrap) c._thinkWrap.open = false;
   };
 
   // ── 思考内容（内联到助手消息）──
@@ -160,19 +178,17 @@
   App.renderAssistantContent = function(container, contentParts) {
     const bubbleEl = container.closest(".msg");
     const parts = typeof contentParts === "string" ? [{ type: "text", text: contentParts }] : (contentParts || []);
-    // 固定渲染顺序：思考 → 工具 → 文本（不依赖消息原始 parts 顺序，工具卡必在回复文本前）
-    const thinkParts = [], toolParts = [], textParts = [];
+    // thinking 与 toolCall 按原始顺序穿插（工具卡跟随对应思考段），text 统一最后渲染
+    const textParts = [];
     for (const part of parts) {
       if (part.type === "text" && part.text) textParts.push(part);
-      else if (part.type === "thinking" && part.thinking) thinkParts.push(part);
-      else if (part.type === "toolCall") toolParts.push(part);
-    }
-    for (const part of thinkParts) App.addThinking(part.thinking, bubbleEl);
-    for (const part of toolParts) {
-      const card = App.createToolCard(part.id, part.name, part.arguments);
-      const summary = App.summarizeArgs(part.arguments);
-      if (summary) card.querySelector(".tool-args").textContent = summary;
-      ensureToolsWrap(container).appendChild(card);
+      else if (part.type === "thinking" && part.thinking) App.addThinking(part.thinking, bubbleEl);
+      else if (part.type === "toolCall") {
+        const card = App.createToolCard(part.id, part.name, part.arguments);
+        const summary = App.summarizeArgs(part.arguments);
+        if (summary) card.querySelector(".tool-args").textContent = summary;
+        insertToolCardInterleaved(container, card);
+      }
     }
     for (const part of textParts) {
         if (!state.currentTextDiv) {
