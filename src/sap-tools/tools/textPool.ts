@@ -72,10 +72,11 @@ export const translateTextPoolTool = {
   write: true,
   title: "Translate Text Pool (Program Text Elements)",
   description:
+    "程序文本池多语言翻译工具：用户要求翻译/多语言/文本池/加英文/复制语言时用本工具。" +
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
     "两种模式：copy（把源语言 text pool 整体复制为目标语言）或 set（按 [{key,text}] 覆盖/新增指定条目）。" +
     "key: T=程序描述/标题, I=文本符号(如 '001' 对应 TEXT-001), S=选择文本(如 'P_COMP')。" +
-    "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活。",
+    "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活；文本池随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
     mode: z.enum(["copy", "set"]).describe("copy=复制源语言 text pool; set=按 key 覆盖/新增"),
