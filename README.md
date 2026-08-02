@@ -88,12 +88,12 @@ sapbuddy tools                     # 列出 42 个工具
 
 ```
 用户 ──CLI / Web──► pi SDK (AgentSession)
-                       │  42 个 SAP 工具（方案 C：直接函数调用，无 MCP 进程）
+                       │  42 个 SAP 工具（直接函数调用）
                        ▼
                   abap-adt-api ──ADT HTTPS──► SAP /sap/bc/adt
 ```
 
-- **方案 C 集成**：42 个工具是纯函数模块直接注册为 Agent customTools，无 MCP 服务器/进程/端口
+- **直接集成**：42 个工具是纯函数模块，直接注册为 Agent customTools，不依赖 MCP 框架
 - 工具注册在扩展加载期完成；MCP 服务器（可选）通过 async factory 动态注册
 
 ## 📁 项目结构

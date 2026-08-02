@@ -39,7 +39,7 @@ export function loadAuth() {
 }
 
 /**
- * MCP 服务器工具动态注册（方案 C 扩展）：
+ * MCP 服务器工具动态注册（扩展）：
  * 读取 .pi/mcp.json 的服务器 → 连接拉取 tools/list → 注册为 customTools（前缀 mcp_<server>_）
  */
 async function registerMcpTools(pi) {

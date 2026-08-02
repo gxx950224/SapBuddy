@@ -16,7 +16,7 @@ cli.mjs ──► src/agent-core.mjs ──► pi SDK (AgentSession)
                     └── register.ts     ★ 注册适配（zod → TypeBox → pi.registerTool）
 ```
 
-- **方案 C 直接集成**：工具是纯函数模块，无 MCP 服务器/进程/端口
+- **直接集成**：工具是纯函数模块，直接注册为 pi customTools，不依赖 MCP 框架
 - 工具注册在扩展加载期完成（`pi.registerTool` 可用；**不能调 `getAllTools` 等 action method**）
 
 ## 开发命令

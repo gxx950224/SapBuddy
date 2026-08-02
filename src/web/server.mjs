@@ -533,7 +533,7 @@ const ids = models.map((m) => m.id)
       try { fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
       catch (e) { return json(res, 500, { error: e.message }) }
     }
-    // ── MCP（方案 C 已直接集成 42 工具，返回空配置）──
+    // ── MCP（已直接集成 42 工具，返回空配置）──
     if (p === "/api/mcp") {
       const { loadMcpServers, saveMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
       if (req.method === "POST") {

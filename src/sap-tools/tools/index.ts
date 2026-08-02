@@ -1,4 +1,4 @@
-/** 工具注册表：导出全部 42 个工具（方案 C：直接作为 pi customTools 注册，无 MCP 框架） */
+/** 工具注册表：导出全部 42 个工具（直接作为 pi customTools 注册） */
 import { z } from "zod"
 import { connectedSystemsTool } from "./connectedSystems.js"
 import { searchObjectsTool } from "./searchObjects.js"
