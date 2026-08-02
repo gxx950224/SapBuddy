@@ -589,7 +589,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
    ============================ */
 .msg {
   width: 100%;
-  max-width: 880px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 0 24px;
   display: flex;
@@ -607,7 +607,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .msg-content {
   display: flex; flex-direction: column;
   min-width: 0;
-  max-width: 720px;
+  max-width: 960px;
   flex: 1 1 auto;
   width: 100%;
 }
@@ -656,13 +656,13 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .msg.system-note {
   text-align: center;
   font-size: 12px; color: var(--text-faint);
-  padding: 6px 0; margin: 0 auto; max-width: 880px;
+  padding: 6px 0; margin: 0 auto; max-width: 1100px;
   animation: none;
 }
 
 .token-usage-note {
   font-size: 11px; color: var(--text-dim);
-  padding: 2px 0 10px 0; margin: 0 auto; max-width: 880px;
+  padding: 2px 0 10px 0; margin: 0 auto; max-width: 1100px;
   text-align: left; user-select: none;
   font-variant-numeric: tabular-nums;
 }
@@ -747,7 +747,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
    ============================ */
 .msg-thinking {
   display: block;
-  width: 100%; max-width: 880px;
+  width: 100%; max-width: 1100px;
   margin: 0 auto;
   background: transparent; border: none;
   border-radius: 0;
@@ -890,7 +890,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   background: transparent;
 }
 #input-card {
-  max-width: 880px; margin: 0 auto;
+  max-width: 1100px; margin: 0 auto;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
