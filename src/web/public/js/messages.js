@@ -28,7 +28,7 @@
   };
 
   // ── 用户气泡 ──
-  // 精简附件消息：把「【用户附带的文件…】- name → path」转为「📎 name」（历史兼容）
+  // 精简附件消息：把「【用户附带的文件…】- name → path」转为文件名（历史兼容）
   function simplifyAttachmentText(text) {
     if (!text || !text.includes("【用户附带的文件")) return text;
     const idx = text.indexOf("【用户附带的文件");
@@ -39,7 +39,7 @@
       .filter((l) => l.trim().startsWith("- "))
       .map((l) => l.replace(/^- /, "").split(" → ")[0])
       .filter(Boolean);
-    const attach = names.map((n) => "📎 " + n).join("\n");
+    const attach = names.map((n) => n).join("\n");
     return (prefix ? prefix + "\n" : "") + attach;
   }
 

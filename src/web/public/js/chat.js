@@ -47,7 +47,7 @@
 
     // 气泡显示：用户文本 + 附件名（简洁）
     let displayText = raw;
-    if (atts.length) displayText = (displayText ? displayText + "\n" : "") + atts.map((a) => "📎 " + a.name).join("\n");
+    if (atts.length) displayText = (displayText ? displayText + "\n" : "") + atts.map((a) => a.name).join("\n");
 
     // 发给 AI：完整文本 + 隐藏的文件路径引用（AI 用 read 读取）
     let sendText = raw;
