@@ -23,19 +23,19 @@
   // ── 文件树状态 ──
   const outputExpanded = new Set();
 
-  // ── 刷新文件列表（数据无变化时跳过 DOM 重建） ──
+  // ── 刷新文件列表（force=true 时强制重建，如点击刷新按钮） ──
   let _lastFileTreeSig = "";
-  App.refreshFiles = async function() {
+  App.refreshFiles = async function(force) {
     try {
-      const r = await fetch("/api/output-tree");
+      const r = await fetch("/api/output-tree", { cache: "no-store" });
       const j = await r.json();
       if (!j || j.success === false) return;
       const list = $("#file-list");
       if (list.querySelector(".file-menu.open")) return;
       const tree = j.data?.tree || [];
-      // 计算签名，数据未变则跳过 DOM 重建
-      const sig = JSON.stringify(tree).slice(0, 2000);
-      if (sig === _lastFileTreeSig && tree.length > 0) return;
+      // 计算签名（完整树），数据未变且非强制则跳过 DOM 重建
+      const sig = JSON.stringify(tree);
+      if (!force && sig === _lastFileTreeSig && tree.length > 0) return;
       _lastFileTreeSig = sig;
       if (!tree.length) {
         list.innerHTML = '<div class="empty-hint">暂无输出文件</div>';
@@ -133,7 +133,7 @@
     }
   }
 
-  $("#refresh-files").addEventListener("click", App.refreshFiles);
+  $("#refresh-files").addEventListener("click", () => App.refreshFiles(true));
 
   // ── 文件菜单管理 ──
   function closeAllFileMenus() {
