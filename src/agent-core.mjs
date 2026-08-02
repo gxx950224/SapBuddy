@@ -20,7 +20,7 @@ export const HOME_SAPBUDDY = path.join(os.homedir(), ".SapBuddy")
 /** 兼容旧版：cwd/.pi（历史配置，优先于包内默认） */
 export const LEGACY_PI = path.join(process.cwd(), ".pi")
 
-// pi SDK 通过绝对路径 require 加载（项目结构特殊，与 webide/server.mjs 一致）
+// pi SDK 通过绝对路径 require 加载（项目结构特殊）
 const PI_SDK_PATH = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent")
 const {
   createAgentSession,
