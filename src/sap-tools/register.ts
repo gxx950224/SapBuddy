@@ -61,6 +61,14 @@ export function handleUserMessage(text: string): void {
   // 中性/继续类消息不清除窗口，避免同一需求反复授权
 }
 
+/** 只读模式开关：settings.security.readOnly=true 时拒绝一切写工具（默认 false，靠确认机制） */
+function isReadOnly(): boolean {
+  try {
+    const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "settings.json"), "utf8").toString())
+    return cfg.security?.readOnly === true
+  } catch { return false }
+}
+
 /**
  * 安装写操作拦截器（pi tool_call 事件）
  * - TUI/CLI：ctx.ui.confirm 原生确认弹窗
@@ -106,6 +114,13 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       }
     }
     if (!isWriteTool(name)) return
+    // 只读模式开关（settings.security.readOnly=true 时全部写操作拒绝）
+    if (isReadOnly()) {
+      return {
+        block: true,
+        reason: `⛔ 当前为只读模式（security.readOnly=true），写操作已禁止：${name}\n请在设置中关闭只读模式后再试。`,
+      }
+    }
     // 批准窗口内放行（Web 确认后 AI 重放）
     if (isWriteApproved()) return
     if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {

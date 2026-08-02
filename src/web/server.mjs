@@ -198,6 +198,16 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}:${PORT}`)
   const p = url.pathname
   try {
+    // ── 安全：CSRF/跨站来源校验（只信任本机页面，防远程网页篡改本地服务）──
+    const origin = req.headers.origin
+    if (origin && !["http://127.0.0.1:" + PORT, "http://localhost:" + PORT, "http://127.0.0.1", "http://localhost"].includes(origin)) {
+      return json(res, 403, { error: "Forbidden: 来源不被信任（仅允许本机页面访问）" })
+    }
+    // 写操作接口：本机浏览器外（如外部工具）默认拒绝非本机来源
+    if (req.method === "POST" && req.headers["user-agent"]?.includes("Mozilla") && !origin) {
+      // 浏览器同源 POST 必带 Origin；无 Origin 的浏览器 POST 视为异常
+      return json(res, 403, { error: "Forbidden: 缺少来源标识" })
+    }
     // SSE
     if (p === "/api/events" && req.method === "GET") {
       res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "Connection": "keep-alive" })
@@ -525,6 +535,12 @@ const server = http.createServer(async (req, res) => {
       const name = b.path || b.name || ""
       let target = name
       if (!path.isAbsolute(target)) target = path.join(OUTPUT_DIR, name)
+      // 安全：仅允许打开产物目录/项目目录内的位置（防任意目录访问）
+      const resolved = path.resolve(target)
+      const allowedRoots = [path.resolve(OUTPUT_DIR), path.resolve(ROOT)]
+      if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
+        return json(res, 403, { error: "Forbidden: 仅允许打开 output/ 或项目目录内的位置" })
+      }
       try {
         const dir = fs.statSync(target).isDirectory() ? target : path.dirname(target)
         if (!dir) return json(res, 200, { success: false, error: "文件不存在" })
@@ -646,9 +662,14 @@ const ids = models.map((m) => m.id)
     }
     if (p === "/api/prompt" && req.method === "POST") {
       const { file, content } = await readBody(req)
+      // 安全：仅允许编辑白名单根文件（防 ../ 路径穿越写任意位置）
+      const base = String(file || "").split("/").pop()
+      const WHITELIST = ["AGENTS.md", "AGENTS.MD", "SYSTEM.md", "Memory.md", "CLAUDE.md"]
+      if (!WHITELIST.includes(base)) {
+        return json(res, 403, { error: "Forbidden: 仅允许编辑 AGENTS.md / SYSTEM.md / Memory.md" })
+      }
       try {
-        const target = path.join(promptsDir, file || "")
-        fs.mkdirSync(path.dirname(target), { recursive: true })
+        const target = path.join(ROOT, base)
         fs.writeFileSync(target, content ?? "")
         return json(res, 200, { success: true, data: { path: target } })
       } catch (e) { return json(res, 500, { error: e.message }) }
