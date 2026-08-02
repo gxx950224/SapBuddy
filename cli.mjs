@@ -146,6 +146,17 @@ async function cmdChat() {
   if (tl && tl !== "off") args.push("--thinking", tl)
   // 会话目录不存在时创建（pi --session-dir 需要存在）
   fs.mkdirSync(path.join(process.cwd(), ".SapBuddy", "sessions"), { recursive: true })
+  // 复用已有 fd/rg 二进制（PI_CODING_AGENT_DIR 隔离后 bin 目录在 .SapBuddy/bin，避免内网重新下载）
+  try {
+    const srcBin = path.join(os.homedir(), ".pi", "agent", "bin")
+    const dstBin = path.join(process.cwd(), ".SapBuddy", "bin")
+    fs.mkdirSync(dstBin, { recursive: true })
+    for (const f of ["fd", "fd.exe", "rg", "rg.exe"]) {
+      const s = path.join(srcBin, f)
+      const d = path.join(dstBin, f)
+      if (fs.existsSync(s) && !fs.existsSync(d)) fs.copyFileSync(s, d)
+    }
+  } catch {}
   // quietStartup：禁用 pi 启动公告（What's New / 版本说明）
   try {
     const sf = path.join(process.cwd(), ".SapBuddy", "settings.json")
