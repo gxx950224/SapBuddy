@@ -152,11 +152,22 @@ export const textElementsTool = {
         return "update 需要提供 elements 列表，如 [{id:'001', text:'场景'}]（id 为 3 字符符号键）。"
       }
       // symbols 必须带 @MaxLength（SAP 校验，缺失报 DS512 文本池不一致）
-      const elements = args.elements.map((e) =>
-        args.category === "symbols"
-          ? { ...e, maxLength: Math.max(30, e.text.length) }
-          : e
-      ) as never
+      // symbols 必须带 @MaxLength（SAP 校验，缺失报 DS512 文本池不一致）
+      // ⚠️ ADT setTextElements 是全量替换语义：先读取现有 symbols 合并（新条目覆盖/新增，旧条目保留），
+      // 避免只传新增条目导致原有 TEXT-001/002/003 等被删除
+      let elements: unknown[] = args.elements
+      if (args.category === "symbols") {
+        try {
+          const existing = await client.getTextElements(url, "symbols" as never)
+          const merged = new Map<string, string>()
+          for (const el of existing?.textElements ?? []) merged.set(el.id, el.text)
+          for (const el of args.elements) merged.set(el.id, el.text)
+          elements = [...merged.entries()].map(([id, text]) => ({ id, text, maxLength: Math.max(30, text.length) }))
+        } catch {
+          // 读取失败则仅用传入列表（不阻塞写入）
+          elements = args.elements.map((e) => ({ ...e, maxLength: Math.max(30, e.text.length) }))
+        }
+      }
       const oldState = client.stateful
       client.stateful = session_types.stateful
       try {
