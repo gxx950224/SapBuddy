@@ -815,9 +815,9 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card.expanded .tool-caret { transform: rotate(90deg); }
 .tool-card .tool-body {
   border-top: 1px solid var(--border);
-  padding: 8px 10px; font-family: var(--font-mono); font-size: 12px;
+  padding: 6px 10px; font-family: var(--font-mono); font-size: 12px;
   white-space: pre-wrap; word-break: break-word;
-  max-height: 320px; overflow-y: auto; color: var(--text-dim);
+  max-height: 180px; overflow-y: auto; color: var(--text-dim);
   display: none;
 }
 .tool-card.expanded .tool-body { display: block; }
@@ -1749,9 +1749,11 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   padding: 10px 14px;
   font-size: 12.5px; line-height: 1.7;
   color: var(--text-dim);
-  max-height: 240px; overflow-y: auto;
   white-space: pre-wrap;
+  max-height: 520px; overflow-y: auto;
 }
+.agent-think-body .agent-tools { margin-top: 8px; }
+.agent-think-body .agent-tools .tool-card { margin-bottom: 4px; }
 
 /* 工具调用链（助手消息内，回复文本前） */
 .agent-tools {
@@ -1765,7 +1767,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border-left: 3px solid var(--accent);
   border-radius: 10px;
 }
-.agent-tools .tool-card .tool-head { padding: 8px 12px; }
+.agent-tools .tool-card .tool-head { padding: 6px 10px; }
 .agent-tools .tool-card .tool-body {
   background: rgba(0,0,0,0.15);
   border-radius: 0 0 10px 10px;
