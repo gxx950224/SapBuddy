@@ -634,8 +634,19 @@ const ids = models.map((m) => m.id)
   }
 })
 
+server.on("error", (err) => {
+  if (err?.code === "EADDRINUSE") {
+    console.error(`\n  ❌ 端口 ${PORT} 已被占用（可能已有 SapBuddy 在运行）`)
+    console.error(`  请先关闭旧进程（Ctrl+C 或任务管理器结束 node.exe），或指定新端口：`)
+    console.error(`  node cli.mjs web --port 7401\n`)
+  } else {
+    console.error(err)
+  }
+  process.exit(1)
+})
+
 server.listen(PORT, HOST, () => {
-  // 首次运行：初始化 ~/.SapBuddy（技能/提示词/模型/连接迁移）
+  // 首次运行：初始化 .SapBuddy（技能/提示词/模型/连接迁移）
   import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
     .then((m) => m.ensureRuntimeFiles?.())
     .catch(() => undefined)
