@@ -10,7 +10,8 @@ export const transportTool = {
   title: "Manage Transport Requests",
   write: true,
   description:
-    "查询和管理传输请求（CTS）：列出用户的传输请求/任务、查看请求详情（对象列表）、按传输号查详情、修改请求描述。用于了解变更内容和发布准备。",
+    "查询和管理传输请求（CTS）：列出用户的传输请求/任务、查看请求详情（对象列表）、按传输号查详情、修改请求描述、释放请求。用于了解变更内容和发布准备。\n" +
+    "状态码：D=可修改(Modifiable)、R=已发布(Released)；释放请求前必须先释放其所有任务。",
   inputSchema: z.object({
     action: z
       .enum(["list_user_transports", "get_transport_details", "get_object_transport", "update_description", "release"])
@@ -45,9 +46,11 @@ export const transportTool = {
             lines.push(`📍 ${t["tm:name"]} ${t["tm:desc"] ?? ""}`)
             for (const group of ["modifiable", "released"] as const) {
               for (const req of t[group] ?? []) {
-                lines.push(`  ${group === "modifiable" ? "✏️" : "📦"} ${req["tm:number"]} [${req["tm:status"] ?? "?"}] ${req["tm:desc"] ?? ""}`)
+                const st = req["tm:status"] === "D" ? "可修改" : req["tm:status"] === "R" ? "已发布" : (req["tm:status"] ?? "?")
+                lines.push(`  ${group === "modifiable" ? "✏️" : "📦"} ${req["tm:number"]} [${st}] ${req["tm:desc"] ?? ""}`)
                 for (const task of req.tasks ?? []) {
-                  lines.push(`     └─ ${task["tm:number"]} [${task["tm:status"] ?? "?"}] ${task["tm:desc"] ?? ""}`)
+                  const tst = task["tm:status"] === "D" ? "可修改" : task["tm:status"] === "R" ? "已发布" : (task["tm:status"] ?? "?")
+                  lines.push(`     └─ ${task["tm:number"]} [${tst}] ${task["tm:desc"] ?? ""}`)
                 }
               }
             }
@@ -59,7 +62,7 @@ export const transportTool = {
           const details = await client.transportDetails(args.transportNumber)
           const lines = [
             `传输 ${args.transportNumber}: ${details["tm:desc"] ?? ""}`,
-            `状态: ${details["tm:status"] ?? "?"} | 负责人: ${details["tm:owner"] ?? "?"}`,
+            `状态: ${details["tm:status"] === "D" ? "可修改" : details["tm:status"] === "R" ? "已发布" : (details["tm:status"] ?? "?")} | 负责人: ${details["tm:owner"] ?? "?"}`,
             "",
             `对象列表（${details.objects?.length ?? 0} 个）:`,
           ]
