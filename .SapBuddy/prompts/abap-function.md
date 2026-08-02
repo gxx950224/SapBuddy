@@ -9,7 +9,7 @@
 
 ## 前置阅读
 - 编码规范：`SYSTEM.md`
-- 代码模板与最佳实践：`.pi/skills/abap-function/SKILL.md`
+- 代码模板与最佳实践：`.pi/skills/abap-templates/SKILL.md`
 - SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `create_object_programmatically` / `replace_string_in_abap_object` / `abap_activate` 等）
 
 ## 工作流程（含确认门禁，⚠ 处必须等用户明确确认）

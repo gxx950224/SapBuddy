@@ -6,7 +6,7 @@
 
 ## 前置阅读
 - 编码规范：`SYSTEM.md`
-- 代码模板与最佳实践：`.pi/skills/abap-report/SKILL.md`
+- 代码模板与最佳实践：`.pi/skills/abap-templates/SKILL.md`
 - SAP 工具：直接使用内置 42 个 SAP 工具（`search_abap_objects` / `get_abap_object_lines` / `get_abap_object_info` / `replace_string_in_abap_object` / `abap_activate` 等）
 
 ## 工作流程（含确认门禁，⚠ 处必须等用户明确确认）
@@ -50,7 +50,7 @@
 ⛔ 此步骤不可跳过。即使用户需求简单、改动少，也必须展示逻辑等确认。
 
 ### 6. 生成代码并展示 — 先展示再写文件
-遵循 `SYSTEM.md` 规范生成代码（模板见 `.pi/skills/abap-report/SKILL.md`）。
+遵循 `SYSTEM.md` 规范生成代码（模板见 `.pi/skills/abap-templates/SKILL.md`）。
 
 ⛔ 先生成代码全文展示给用户 → 用户确认 → 才允许写入 SAP。
 本地文件 `output/<程序名>.abap` **默认不生成**，仅当用户明确要求时才保存留档。
