@@ -28,11 +28,26 @@
   };
 
   // ── 用户气泡 ──
+  // 精简附件消息：把「【用户附带的文件…】- name → path」转为「📎 name」（历史兼容）
+  function simplifyAttachmentText(text) {
+    if (!text || !text.includes("【用户附带的文件")) return text;
+    const idx = text.indexOf("【用户附带的文件");
+    const prefix = text.slice(0, idx).trimEnd();
+    const body = text.slice(idx);
+    const names = body
+      .split("\n")
+      .filter((l) => l.trim().startsWith("- "))
+      .map((l) => l.replace(/^- /, "").split(" → ")[0])
+      .filter(Boolean);
+    const attach = names.map((n) => "📎 " + n).join("\n");
+    return (prefix ? prefix + "\n" : "") + attach;
+  }
+
   App.addUserBubble = function(text) {
     const el = document.createElement("div");
     el.className = "msg user";
     el.innerHTML = '<div class="msg-content"><div class="meta">你</div><div class="body"></div></div>';
-    el.querySelector(".body").textContent = text;
+    el.querySelector(".body").textContent = simplifyAttachmentText(text);
     messagesEl.appendChild(el);
     App.scrollToBottom(true);
   };

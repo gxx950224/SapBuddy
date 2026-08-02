@@ -41,17 +41,22 @@
 
   // ── 发送消息 ──
   App.sendMessage = async function() {
-    let text = inputEl.value.trim();
-    if ((!text && (!state.attachments || !state.attachments.length)) || state.streaming) return;
-
-    // 拼接附件引用（文件已保存，AI 用 read 工具读取）
+    const raw = inputEl.value.trim();
     const atts = state.attachments || [];
+    if ((!raw && !atts.length) || state.streaming) return;
+
+    // 气泡显示：用户文本 + 附件名（简洁）
+    let displayText = raw;
+    if (atts.length) displayText = (displayText ? displayText + "\n" : "") + atts.map((a) => "📎 " + a.name).join("\n");
+
+    // 发给 AI：完整文本 + 隐藏的文件路径引用（AI 用 read 读取）
+    let sendText = raw;
     if (atts.length) {
       const ref = atts.map((a) => "- " + a.name + " → " + a.path).join("\n");
-      text = (text ? text + "\n\n" : "") + "【用户附带的文件（已保存到本地，请用 read 工具读取内容）】\n" + ref;
+      sendText = (sendText ? sendText + "\n\n" : "") + "【用户附带的文件（已保存到本地，请用 read 工具读取内容）】\n" + ref;
     }
 
-    App.addUserBubble(text);
+    App.addUserBubble(displayText);
     inputEl.value = "";
     App.clearAttachments();
     autoGrow();
@@ -63,7 +68,7 @@
     const r = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text: sendText }),
     });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
