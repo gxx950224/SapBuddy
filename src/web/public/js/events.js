@@ -8,49 +8,6 @@
   const state = App.state;
   const $ = App.$;
 
-  // ── 写操作确认卡（AI 要调用写工具时，先出计划等用户确认）──
-  function renderWriteConfirm(payload) {
-    const old = document.querySelector(".confirm-card.write-confirm-card");
-    if (old) old.remove();
-    const card = document.createElement("div");
-    card.className = "confirm-card write-confirm-card";
-    const detail = JSON.stringify(payload.input || {}).slice(0, 200);
-    const q = document.createElement("div");
-    q.className = "confirm-question";
-    q.innerHTML =
-      "<b>✋ 写操作待确认</b>（已拦截，AI 正在展示改动计划）<br>" +
-      `工具：<code>${App.escapeHtml(payload.toolName || "")}</code>` +
-      (detail ? `<br><span class="confirm-detail">${App.escapeHtml(detail)}</span>` : "");
-    card.appendChild(q);
-    const btns = document.createElement("div");
-    btns.className = "confirm-btns";
-    const disableAll = () => btns.querySelectorAll("button").forEach((b) => (b.disabled = true));
-    const mk = (label, cls, approved) => {
-      const b = document.createElement("button");
-      b.className = "confirm-btn " + cls;
-      b.textContent = label;
-      b.addEventListener("click", async () => {
-        disableAll();
-        b.textContent = approved ? "⏳ 已允许，继续执行…" : "已拒绝";
-        App.setStreaming(true); // 立即切停止按钮（AI 即将开始新一轮，可随时停止）
-        try {
-          await fetch("/api/write-approve", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ approved }),
-          });
-        } catch { /* 忽略 */ }
-        setTimeout(() => card.remove(), 1200);
-      });
-      return b;
-    };
-    btns.appendChild(mk("✅ 允许执行", "confirm-ok", true));
-    btns.appendChild(mk("🚫 拒绝", "confirm-no", false));
-    card.appendChild(btns);
-    document.getElementById("messages").appendChild(card);
-    App.scrollToBottom();
-  }
-
   // ── 用户确认卡片 ──
   function renderConfirmation(payload) {
     const id = payload.toolCallId;
@@ -152,8 +109,6 @@
           handleAgentEvent(payload.event, payload.elapsed, payload.usage);
         } else if (payload.kind === "user_confirmation") {
           renderConfirmation(payload);
-        } else if (payload.kind === "write_confirm") {
-          renderWriteConfirm(payload);
         } else if (payload.kind === "session_reset") {
           const g = payload.state?.gen ?? 0;
           if (payload.state && payload.state.sessionFile && g >= state.currentGen) {

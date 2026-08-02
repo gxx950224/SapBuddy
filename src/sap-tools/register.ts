@@ -71,14 +71,14 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       if (ok) return
       return { block: true, reason: `⛔ 用户拒绝了写操作 ${name}。请调整方案，不要再次尝试该写操作。` }
     }
-    // Web/headless：拦截并通知 AI 先出计划，等待用户确认
-    opts?.onBlocked?.({ toolName: name, input: event.input })
+    // Web/headless：拦截并提示 AI 先出计划，等待用户手动输入确认
+    opts?.onBlocked?.({"toolName": name, "input": event.input})
     return {
       block: true,
       reason:
         `⛔ 写操作需人工确认（已拦截，未执行）：${name}\n` +
         `请先把本次改动计划完整展示给用户（改哪个对象/文件、具体改动内容），并明确请求确认。\n` +
-        `用户在界面确认后系统会自动继续执行，请等待确认结果。`,
+        `用户在对话中输入"确认/同意/可以/执行"后重试本工具即可放行；若用户提出修改意见，则按新需求调整计划后再请求确认。`,
     }
   })
 }

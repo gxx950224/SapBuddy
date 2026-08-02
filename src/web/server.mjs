@@ -64,17 +64,10 @@ async function ensureAgent() {
       lastFile = files[0]
     }
   } catch { /* 忽略 */ }
-  agent = lastFile ? await createAgent({ sessionFile: lastFile, onWriteBlocked: writeConfirmBroadcast }) : await createAgent({ onWriteBlocked: writeConfirmBroadcast })
+  agent = lastFile ? await createAgent({ sessionFile: lastFile }) : await createAgent()
   session = agent.session
   attachStreaming(session)
   return agent
-}
-
-/** 写操作被拦截：广播确认浮层事件给前端 */
-function writeConfirmBroadcast(info) {
-  try {
-    broadcast({ kind: "write_confirm", toolName: info?.toolName, input: info?.input ?? {}, ts: Date.now() })
-  } catch { /* 忽略 */ }
 }
 
 /** 切换会话：销毁旧会话，重建到指定文件 */
@@ -83,7 +76,7 @@ async function rebuildAgent(sessionFile) {
   agent = null
   session = null
   const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-  agent = await createAgent({ sessionFile, onWriteBlocked: writeConfirmBroadcast })
+  agent = await createAgent({ sessionFile })
   session = agent.session
   attachStreaming(session)
   return agent
@@ -212,8 +205,14 @@ const server = http.createServer(async (req, res) => {
       busy = true
       json(res, 200, { ok: true, ts: Date.now() })
       try {
-        const { clearWriteApproval } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
-        clearWriteApproval() // 新用户消息重置写操作批准窗口
+        const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+        // 手动确认机制：用户输入含确认词 → 开启批准窗口（AI 重试写工具放行）；否则重置
+        const CONFIRM_RE = /确认|同意|允许|批准|可以|好的|好，|好、|好 |ok|okay|yes|继续|执行|就这么办|没问题|没问题|行，|行 |行$|行，就|go ahead/i
+        if (CONFIRM_RE.test(text.trim())) {
+          r.setWriteApprovalWindow()
+        } else {
+          r.clearWriteApproval()
+        }
         const a = await ensureAgent()
         await a.session.prompt(text.trim())
       } catch (e) {
