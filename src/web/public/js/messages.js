@@ -89,8 +89,12 @@
 
   function updateThinkSummary(det) {
     const n = countChars(containerText(det));
-    det.querySelector("summary").textContent =
-      "💭 思考过程" + (n > 0 ? " · " + (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n) + " 字（点击展开）" : "");
+    const tools = det.querySelectorAll(".tool-card").length;
+    let label = "💭 思考过程"
+    if (n > 0) label += " · " + (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n) + " 字"
+    if (tools) label += " · " + tools + " 个工具"
+    label += "（点击展开）"
+    det.querySelector("summary").textContent = label;
   }
   function containerText(det) {
     let t = "";
@@ -98,12 +102,24 @@
     return t;
   }
 
-  // 工具调用链（Claude 风格：内联在回复前）
+  // 工具调用链：优先嵌入思考块内（Claude 风格），无思考时独立显示
   function ensureToolsWrap(container) {
     if (container._toolsWrap) return container._toolsWrap;
-    const wrap = document.createElement("div");
+    let wrap = null
+    // 有思考块 → 嵌入其 body（思考文本之后）
+    if (container._thinkWrap) {
+      const thinkBody = container._thinkWrap.querySelector(".agent-think-body");
+      if (thinkBody) {
+        wrap = document.createElement("div");
+        wrap.className = "agent-tools";
+        thinkBody.appendChild(wrap);
+        container._toolsWrap = wrap;
+        return wrap;
+      }
+    }
+    // 无思考块 → 独立工具区（消息内，文本前）
+    wrap = document.createElement("div");
     wrap.className = "agent-tools";
-    // 插在思考后、文本前
     const think = container._thinkWrap;
     if (think && think.nextSibling) container.insertBefore(wrap, think.nextSibling);
     else container.appendChild(wrap);
@@ -117,6 +133,11 @@
     if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
     const card = App.createToolCard(id, name, args);
     ensureToolsWrap(container).appendChild(card);
+    // 有工具时展开思考块（实时可见执行状态）
+    if (container._thinkWrap) {
+      container._thinkWrap.open = true;
+      updateThinkSummary(container._thinkWrap);
+    }
     App.scrollToBottom();
   };
 
