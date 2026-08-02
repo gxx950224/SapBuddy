@@ -161,7 +161,7 @@ export const replaceStringTool = {
       .describe("对象的 adt:// 工作区 URI（先用 get_abap_object_workspace_uri 获取）或 ADT 对象 URI"),
     oldString: z.string().describe("要替换的原文（必须恰好匹配一处，含缩进）"),
     newString: z.string().describe("替换后的文本"),
-    requestText: z.string().optional().describe("对象无未释放传输请求时自动新建请求的描述（可选，默认 'AI 修改 <对象>'）"),
+    requestText: z.string().optional().describe("对象无未释放传输请求时自动新建请求的描述（可选；推荐格式：sapbuddy_<修改内容摘要>_<YYYYMMDD>，如 sapbuddy_修改ZAIR004文本_20260802）"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: { fileUri: string; oldString: string; newString: string; requestText?: string; connectionId?: string }): Promise<string> {
@@ -198,7 +198,7 @@ export const replaceStringTool = {
               const { getClient: gc } = await import("../adtManager.js")
               const info = await gc(finalConnId).then((c) => c.transportInfo(sourceUri))
               const devclass = String(info?.DEVCLASS || info?.PDEVCLASS || "$TMP").trim()
-              const desc = (args.requestText && String(args.requestText).trim()) || `AI 修改 ${args.fileUri.split("/").pop()}`
+              const desc = (args.requestText && String(args.requestText).trim()) || `sapbuddy_修改${String(args.fileUri || "").split("/").pop()}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`
               const newReq = await client.createTransport(sourceUri, desc, devclass)
               if (newReq && newReq !== "") {
                 transport = newReq
