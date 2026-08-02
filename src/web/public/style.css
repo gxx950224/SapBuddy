@@ -608,7 +608,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   display: flex; flex-direction: column;
   min-width: 0;
   max-width: 720px;
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  width: 100%;
 }
 .msg.user .msg-content { align-items: flex-end; }
 .msg.agent .msg-content { align-items: flex-start; }
@@ -648,6 +649,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   overflow-wrap: break-word; line-height: 1.7;
   box-shadow: none; color: var(--text);
   font-size: 14px;
+  width: 100%;
 }
 
 /* 系统提示 */
@@ -1737,6 +1739,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 .agent-think summary {
   display: flex; align-items: center; gap: 6px;
@@ -1770,6 +1774,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   display: flex; flex-direction: column; gap: 4px;
   margin: 4px 0 6px;
   max-width: 880px;
+  width: 100%;
 }
 .agent-tools .tool-card {
   background: var(--bg-hover, #26263a);
