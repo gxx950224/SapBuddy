@@ -179,6 +179,9 @@ export async function createAgent(opts = {}) {
   const { registerSapTools } = await import(
     pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href
   )
+  const { installWriteGate } = await import(
+    pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href
+  )
 
   const settings = loadSettings()
 
@@ -212,6 +215,14 @@ export async function createAgent(opts = {}) {
         try {
           const n = registerSapTools(pi)
           console.log(`[sapbuddy] 已注册 ${n} 个 SAP 工具`)
+          // 写操作人工确认：Web 模式 block 后通过回调通知 server 广播确认浮层
+          installWriteGate(pi, {
+            onBlocked: (info) => {
+              try {
+                opts.onWriteBlocked?.(info)
+              } catch { /* 回调失败不影响主流程 */ }
+            },
+          })
         } catch (e) {
           console.log(`[sapbuddy] 工具注册失败: ${e.message}`)
         }

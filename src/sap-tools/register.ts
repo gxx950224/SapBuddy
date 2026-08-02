@@ -14,6 +14,57 @@ import { tools } from "./tools/index.js"
 import { assertDevClient } from "./adtManager.js"
 import { resolveConnectionId } from "./tools/shared.js"
 
+// ── 写操作人工确认（human-in-the-loop）──
+// 所有写工具执行前必须获得用户确认：TUI 弹窗（CLI）或 Web 确认浮层（block 后重放）。
+// 批准后有一个时间窗口，让 AI 一轮内连续完成多个写操作（create→replace→activate）无需逐次确认。
+let writeApprovalUntil = 0
+const WRITE_TOOL_NAMES = new Set(
+  tools.filter((t) => t.write).map((t) => t.name).concat(["translate_text_pool", "manage_text_elements"]),
+)
+export function isWriteTool(name: string): boolean {
+  return WRITE_TOOL_NAMES.has(name)
+}
+export function setWriteApprovalWindow(ms = 60_000): void {
+  writeApprovalUntil = Date.now() + ms
+}
+export function isWriteApproved(): boolean {
+  return Date.now() < writeApprovalUntil
+}
+export function clearWriteApproval(): void {
+  writeApprovalUntil = 0
+}
+
+/**
+ * 安装写操作拦截器（pi tool_call 事件）
+ * - TUI/CLI：ctx.ui.confirm 原生确认弹窗
+ * - Web/headless：block 并提示 AI 先展示计划，等待前端确认后重放（isWriteApproved）
+ * @param onBlocked Web 模式回调（通知 server 广播确认浮层）
+ */
+export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: { toolName: string; input: unknown }) => void }): void {
+  pi.on("tool_call" as never, async (event: { toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
+    const name = event?.toolName
+    if (!name || !isWriteTool(name)) return
+    // 批准窗口内放行（Web 确认后 AI 重放）
+    if (isWriteApproved()) return
+    if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+      // CLI/TUI：原生确认弹窗
+      const summary = JSON.stringify(event.input ?? {})?.slice(0, 300)
+      const ok = await ctx.ui.confirm("SapBuddy 写操作确认", `AI 请求执行写操作：${name}\n${summary}\n\n允许执行吗？`)
+      if (ok) return
+      return { block: true, reason: `⛔ 用户拒绝了写操作 ${name}。请调整方案，不要再次尝试该写操作。` }
+    }
+    // Web/headless：拦截并通知 AI 先出计划，等待用户确认
+    opts?.onBlocked?.({ toolName: name, input: event.input })
+    return {
+      block: true,
+      reason:
+        `⛔ 写操作需人工确认（已拦截，未执行）：${name}\n` +
+        `请先把本次改动计划完整展示给用户（改哪个对象/文件、具体改动内容），并明确请求确认。\n` +
+        `用户在界面确认后系统会自动继续执行，请等待确认结果。`,
+    }
+  })
+}
+
 /**
  * 扫描 ABAP 代码：硬编码中文文案 + 裸内置类型
  * @returns 违规列表（空 = 通过）

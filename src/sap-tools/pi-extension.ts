@@ -3,7 +3,7 @@
  * 加载期直接注册 42 个 SAP 工具 + 打印启动图标
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
-import { registerSapTools } from "./register.js"
+import { registerSapTools, installWriteGate } from "./register.js"
 import { SAPBUDDY_BANNER } from "./banner.js"
 
 export default function (pi: ExtensionAPI): void {
@@ -15,5 +15,11 @@ export default function (pi: ExtensionAPI): void {
     console.log(`  [sapbuddy] 已注册 ${n} 个 SAP 工具`)
   } catch (e) {
     console.log(`  [sapbuddy] 工具注册失败: ${e instanceof Error ? e.message : e}`)
+  }
+  // 写操作人工确认：CLI/TUI 模式原生弹窗
+  try {
+    installWriteGate(pi)
+  } catch (e) {
+    console.log(`  [sapbuddy] 写操作拦截器安装失败: ${e instanceof Error ? e.message : e}`)
   }
 }

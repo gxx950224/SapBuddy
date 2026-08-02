@@ -73,10 +73,17 @@
     card.querySelector(".tool-args").textContent = isSkill ? "加载技能说明" : App.summarizeArgs(args);
     const bodyEl = card.querySelector(".tool-body");
     bodyEl.style.display = "none"; // 内联兜底：折叠必隐藏（不依赖 CSS）
-    card.querySelector(".tool-head").addEventListener("click", () => {
-      const expanded = card.classList.toggle("expanded");
-      bodyEl.style.display = expanded ? "block" : "none"; // JS 直接控制展开/折叠
-    });
+    if (isSkill) {
+      // Skill 卡：只显示调用了哪个 skill，不可展开看内容
+      bodyEl.innerHTML = "";
+      card.querySelector(".tool-head").style.cursor = "default";
+      card.querySelector(".tool-head").title = "Skill 调用";
+    } else {
+      card.querySelector(".tool-head").addEventListener("click", () => {
+        const expanded = card.classList.toggle("expanded");
+        bodyEl.style.display = expanded ? "block" : "none"; // JS 直接控制展开/折叠
+      });
+    }
     if (id) state.toolCards.set(id, card);
     // 强制兜底：非展开状态 body 必隐藏（定时扫描也兜底）
     bodyEl.style.display = "none";

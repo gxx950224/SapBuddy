@@ -88,12 +88,10 @@
   }
 
   function updateThinkSummary(det) {
-    const n = countChars(containerText(det));
     const tools = det.querySelectorAll(".tool-card").length;
-    let label = "💭 思考过程"
-    if (n > 0) label += " · " + (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n) + " 字"
-    if (tools) label += " · " + tools + " 个工具"
-    label += "（点击展开）"
+    let label = "💭 思考过程";
+    if (tools) label += " · " + tools + " 个工具";
+    label += "（点击展开）";
     det.querySelector("summary").textContent = label;
   }
   function containerText(det) {

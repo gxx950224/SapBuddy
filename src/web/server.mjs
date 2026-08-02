@@ -64,10 +64,17 @@ async function ensureAgent() {
       lastFile = files[0]
     }
   } catch { /* 忽略 */ }
-  agent = lastFile ? await createAgent({ sessionFile: lastFile }) : await createAgent()
+  agent = lastFile ? await createAgent({ sessionFile: lastFile, onWriteBlocked: writeConfirmBroadcast }) : await createAgent({ onWriteBlocked: writeConfirmBroadcast })
   session = agent.session
   attachStreaming(session)
   return agent
+}
+
+/** 写操作被拦截：广播确认浮层事件给前端 */
+function writeConfirmBroadcast(info) {
+  try {
+    broadcast({ kind: "write_confirm", toolName: info?.toolName, input: info?.input ?? {}, ts: Date.now() })
+  } catch { /* 忽略 */ }
 }
 
 /** 切换会话：销毁旧会话，重建到指定文件 */
@@ -76,7 +83,7 @@ async function rebuildAgent(sessionFile) {
   agent = null
   session = null
   const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-  agent = await createAgent({ sessionFile })
+  agent = await createAgent({ sessionFile, onWriteBlocked: writeConfirmBroadcast })
   session = agent.session
   attachStreaming(session)
   return agent
@@ -205,6 +212,8 @@ const server = http.createServer(async (req, res) => {
       busy = true
       json(res, 200, { ok: true, ts: Date.now() })
       try {
+        const { clearWriteApproval } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+        clearWriteApproval() // 新用户消息重置写操作批准窗口
         const a = await ensureAgent()
         await a.session.prompt(text.trim())
       } catch (e) {
@@ -218,6 +227,28 @@ const server = http.createServer(async (req, res) => {
 
     // 停止 / 压缩 / 思考级别
     if (p === "/api/abort") { try { await session?.abort() } catch {} busy = false; return json(res, 200, { ok: true }) }
+
+    // 写操作确认：用户点击允许/拒绝后，注入批准窗口并提示 AI 继续
+    if (p === "/api/write-approve" && req.method === "POST") {
+      const { approved } = await readBody(req)
+      if (busy) return json(res, 409, { error: "上一轮仍在处理中" })
+      json(res, 200, { ok: true })
+      try {
+        const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+        if (approved) r.setWriteApprovalWindow() // 60 秒批准窗口：AI 重放写工具放行
+        const a = await ensureAgent()
+        await a.session.prompt(
+          approved
+            ? "用户已在界面确认允许执行本次写操作，请继续完成（重试刚才被拦截的写工具调用）。"
+            : "用户拒绝执行本次写操作。请调整方案：不要执行被拒绝的写操作，向用户说明替代方案。",
+        )
+      } catch (e) {
+        broadcast({ kind: "error", error: e.message, ts: Date.now() })
+      } finally {
+        busy = false
+      }
+      return
+    }
     if (p === "/api/compress" && req.method === "POST") {
       try {
         const before = session?.agent?.state?.messages?.length ?? 0
