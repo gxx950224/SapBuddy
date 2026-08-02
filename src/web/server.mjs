@@ -232,6 +232,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/write-approve" && req.method === "POST") {
       const { approved } = await readBody(req)
       if (busy) return json(res, 409, { error: "上一轮仍在处理中" })
+      busy = true
       json(res, 200, { ok: true })
       try {
         const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
@@ -240,7 +241,7 @@ const server = http.createServer(async (req, res) => {
         await a.session.prompt(
           approved
             ? "用户已在界面确认允许执行本次写操作，请继续完成（重试刚才被拦截的写工具调用）。"
-            : "用户拒绝执行本次写操作。请调整方案：不要执行被拒绝的写操作，向用户说明替代方案。",
+            : "用户拒绝执行本次写操作。请先向用户询问具体修改需求：希望调整哪些内容（功能、字段、界面、逻辑等）？有哪些更详细的要求或变更点？在获得用户明确的修改意见之前，不要执行新的写操作，也不要直接生成替代方案。请用简洁的问题引导用户说明。",
         )
       } catch (e) {
         broadcast({ kind: "error", error: e.message, ts: Date.now() })

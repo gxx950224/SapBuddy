@@ -32,6 +32,7 @@
       b.addEventListener("click", async () => {
         disableAll();
         b.textContent = approved ? "⏳ 已允许，继续执行…" : "已拒绝";
+        App.setStreaming(true); // 立即切停止按钮（AI 即将开始新一轮，可随时停止）
         try {
           await fetch("/api/write-approve", {
             method: "POST",

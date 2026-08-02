@@ -43,7 +43,25 @@ export function clearWriteApproval(): void {
 export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: { toolName: string; input: unknown }) => void }): void {
   pi.on("tool_call" as never, async (event: { toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
     const name = event?.toolName
-    if (!name || !isWriteTool(name)) return
+    if (!name) return
+    // ── 生成源码路径强制规则：ABAP 源码必须保存到 .SapBuddy/output/（相对路径 output/）──
+    if ((name === "write" || name === "edit")) {
+      const input = (event.input ?? {}) as Record<string, unknown>
+      const p = String(input.path ?? input.file ?? "").replace(/\\/g, "/")
+      const lower = p.toLowerCase()
+      const isAbap = lower.endsWith(".abap")
+      const inOutput =
+        lower.startsWith("output/") || lower.includes("/output/") || lower.includes(".sapbuddy/output")
+      if (isAbap && !inOutput) {
+        return {
+          block: true,
+          reason:
+            `⛔ 生成的 ABAP 源码必须统一保存到 output/ 目录（相对路径 .SapBuddy/output/），不要写到其他位置（如 ${p || "当前路径"}）。\n` +
+            `请用 write 工具写入 output/<程序名>.abap（文件不存在会自动创建）。`,
+        }
+      }
+    }
+    if (!isWriteTool(name)) return
     // 批准窗口内放行（Web 确认后 AI 重放）
     if (isWriteApproved()) return
     if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
