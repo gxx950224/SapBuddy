@@ -796,28 +796,28 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card:hover { border-color: var(--border-strong); }
 .tool-card.expanded { box-shadow: var(--shadow-sm); }
 .tool-card .tool-head {
-  display: flex; align-items: center; gap: 7px;
-  padding: 7px 10px; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 6px;
+  padding: 2px 8px; cursor: pointer; user-select: none;
   transition: background var(--ease);
 }
 .tool-card .tool-head:hover { background: var(--bg-hover); }
 .tool-card .tool-icon {
-  width: 18px; height: 18px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center; font-size: 12px;
+  width: 14px; height: 14px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 11px;
 }
-.tool-card .tool-name { font-family: var(--font-mono); font-size: 12px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
-.tool-card .tool-args { color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
-.tool-card .tool-state { font-size: 11px; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+.tool-card .tool-name { font-family: var(--font-mono); font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+.tool-card .tool-args { color: var(--text-dim); font-family: var(--font-mono); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.tool-card .tool-state { font-size: 10px; flex-shrink: 0; display: flex; align-items: center; gap: 3px; }
 .tool-card .tool-state.running { color: var(--warning); }
 .tool-card .tool-state.done { color: var(--success); }
 .tool-card .tool-state.failed { color: var(--error); }
-.tool-card .tool-caret { display: inline-block; font-size: 10px; color: var(--text-faint); transition: transform var(--ease); width: 12px; flex-shrink: 0; }
+.tool-card .tool-caret { display: inline-block; font-size: 9px; color: var(--text-faint); transition: transform var(--ease); width: 10px; flex-shrink: 0; }
 .tool-card.expanded .tool-caret { transform: rotate(90deg); }
-.tool-card .tool-body {
+ .tool-card .tool-body {
   border-top: 1px solid var(--border);
-  padding: 6px 10px; font-family: var(--font-mono); font-size: 12px;
+  padding: 3px 8px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5;
   white-space: pre-wrap; word-break: break-word;
-  max-height: 180px; overflow-y: auto; color: var(--text-dim);
+  max-height: 60px; overflow-y: auto; color: var(--text-dim);
   display: none;
 }
 .tool-card.expanded .tool-body { display: block; }
@@ -1767,7 +1767,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border-left: 3px solid var(--accent);
   border-radius: 10px;
 }
-.agent-tools .tool-card .tool-head { padding: 6px 10px; }
+.agent-tools .tool-card .tool-head { padding: 2px 8px; }
 .agent-tools .tool-card .tool-body {
   background: rgba(0,0,0,0.15);
   border-radius: 0 0 10px 10px;
