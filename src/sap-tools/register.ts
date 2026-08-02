@@ -148,7 +148,7 @@ export function scanCodeViolations(code: string): string[] {
     if (bareType && !noComment.match(/TYPE\s+(REF|TABLE|LINE|STANDARD|SORTED|HASHED)\s+/i)) {
       const t = bareType[1].toLowerCase()
       const banned = new Set([
-        "c", "n", "i", "p", "string", "xstring", "decfloat16", "decfloat34",
+        "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
         "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
         "char10", "char12", "char20", "char30", "char40", "char50", "char60",
         "char80", "char100", "char120", "char132", "char133", "char200", "char255",
