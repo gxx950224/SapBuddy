@@ -108,7 +108,7 @@ export const textElementsTool = {
     objectType: z.string().describe("对象类型，如 PROG、CLAS、FUGR"),
     category: z.enum(["symbols", "selections", "headings"]).optional().describe("文本元素类别；update 时必填"),
     elements: z
-      .array(z.object({ id: z.string().describe("符号 ID，如 TEXT-001"), text: z.string().describe("文本内容") }))
+      .array(z.object({ id: z.string().describe("符号 ID：symbols 用 3 字符键（'001' 对应源码 TEXT-001）；selections 用参数名（如 P_COMP）；headings 用 listHeader 等"), text: z.string().describe("文本内容") }))
       .optional()
       .describe("update 时必填：要写入的文本元素列表"),
     connectionId: connectionIdSchema,
