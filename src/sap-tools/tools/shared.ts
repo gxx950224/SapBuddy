@@ -53,11 +53,11 @@ export async function findObject(
   searchTypes?: string[]
 ): Promise<SearchResult | undefined> {
   const client = await getClient(connId)
-  const types = objectType ? [objectType] : searchTypes ?? DEFAULT_SEARCH_TYPES
+  const typesArr: string[] = objectType ? [objectType] : searchTypes ?? ([...DEFAULT_SEARCH_TYPES] as unknown as string[])
   const pattern = objectName.toUpperCase()
   // 性能：常用类型优先并行查（与 search_abap_objects 一致），命中即返回；未命中再查剩余
   const COMMON = ["PROG", "CLAS", "INTF", "FUGR", "TABL", "DTEL", "DDLS", "DOMA", "TTYP", "MSAG", "DEVC", "FUNC"]
-  const ordered = COMMON.filter((t) => types.includes(t)).concat(types.filter((t) => !COMMON.includes(t)))
+  const ordered = COMMON.filter((t) => typesArr.includes(t)).concat(typesArr.filter((t) => !COMMON.includes(t)))
 
   async function batch(ts: string[]): Promise<SearchResult | undefined> {
     const settled = await Promise.allSettled(
