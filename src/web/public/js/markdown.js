@@ -87,6 +87,30 @@
   };
 
   /**
+   * Mermaid 容错：对未引号的节点文本自动加引号（AI 生成的图常漏引号导致解析失败）
+   * 例：A[入口 IS_DATA (抬头+行项目)] → A["入口 IS_DATA (抬头+行项目)"]
+   */
+  function fixMermaid(code) {
+    // 节点文本含中文/括号/特殊符号但未引号 → 加引号（跳过已引号/含子图/注释行）
+    let out = code.replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\[([^\]"\n]*)\]/g, (m, id, txt) => {
+      if (txt.includes('"') || txt.includes('<br')) return m
+      if (!/[\(\[\{\)\]\}\u4e00-\u9fa5:：;；,，。、+/=]/.test(txt)) return m
+      return `${id}["${txt.replace(/"/g, "'")}"]`
+    })
+    out = out.replace(/(\b[A-Za-z_][A-Za-z0-9_]*)\{([^\}"\n]*)\}/g, (m, id, txt) => {
+      if (txt.includes('"') || txt.includes('<br')) return m
+      if (!/[\(\[\{\)\]\}\u4e00-\u9fa5:：;；,，。、+/=]/.test(txt)) return m
+      return `${id}{"${txt.replace(/"/g, "'")}"}`
+    })
+    // 边标签 |文本|（中文/括号未引号）
+    out = out.replace(/\|([^\|"\n]*[\u4e00-\u9fa5\u0028\u0029][^\|"\n]*)\|/g, (m, txt) => {
+      if (txt.includes('"')) return m
+      return `|"${txt.replace(/"/g, "'")}"|`
+    })
+    return out
+  }
+
+  /**
    * 渲染容器内所有未渲染的 .mermaid 节点
    * 首次调用初始化 mermaid（theme 跟随页面主题），渲染失败降级显示源码
    */
@@ -102,7 +126,8 @@
       }
     } catch { /* 忽略 */ }
     nodes.forEach((el) => {
-      const code = decodeURIComponent(el.dataset.code || "");
+      const raw = decodeURIComponent(el.dataset.code || "");
+      const code = fixMermaid(raw)
       try {
         window.mermaid.parse(code);
         const id = "mermaid-" + Math.random().toString(36).slice(2, 8);

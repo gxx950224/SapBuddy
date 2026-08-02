@@ -45,6 +45,11 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 - **对象**：优先面向对象；函数模块/报表逐步迁移为类与方法；`IF_OO_*` 接口解耦。
 - **注释**：解释「为什么」而非「做什么」；代码自解释，注释不冗余。
 - **单元测试**：ABAP 单元测试（`cl_abap_unit_assert`）覆盖关键逻辑。
+- **Mermaid 图规范（生成时必须遵守）**：
+  - 节点文本含中文、空格、括号、特殊符号（`→` `/` `+` 等）时**必须用双引号包裹**：`A["入口 IS_DATA (抬头+行项目)"]`、`D{"判断 TCODE"}`。
+  - 边标签含中文用引号：`A -->|"调用接口"| B`。
+  - 节点间用清晰方向；图首行声明类型（`flowchart TD` / `sequenceDiagram` 等）。
+  - 生成后用 `validate_mermaid_syntax` 校验；渲染失败时检查引号。
 
 写作/重构/审查代码时遇到规则歧义，先查 `clean-abap` 技能的 `CleanABAP_zh.md`；
 英文原版：https://github.com/SAP/styleguides/blob/main/clean-abap/CleanABAP.md
