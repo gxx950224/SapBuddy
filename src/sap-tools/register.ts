@@ -60,6 +60,23 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
             `请用 write 工具写入 output/<程序名>.abap（文件不存在会自动创建）。`,
         }
       }
+      // ── 审查 HTML 报告需人工确认（代码审查产物，先展示结论再生成）──
+      const isReviewHtml = /_CodeReview\.html$/i.test(lower) || /_code_review\.html$/i.test(lower)
+      if (isReviewHtml && !isWriteApproved()) {
+        if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+          const ok = await ctx.ui.confirm("SapBuddy 审查报告确认", `AI 请求生成代码审查 HTML 报告：${p}\n\n允许生成吗？`)
+          if (ok) return
+          return { block: true, reason: "⛔ 用户拒绝了审查报告生成。请向用户说明审查结论（不生成文件）。" }
+        }
+        opts?.onBlocked?.({ toolName: name, input: event.input })
+        return {
+          block: true,
+          reason:
+            `⛔ 生成代码审查 HTML 报告需人工确认（已拦截，未生成）：${p}\n` +
+            `请先把审查结论摘要展示给用户（发现的问题/风险/建议），并明确请求确认。\n` +
+            `用户在对话中输入"确认"后重试即可生成报告文件。`,
+        }
+      }
     }
     if (!isWriteTool(name)) return
     // 批准窗口内放行（Web 确认后 AI 重放）
