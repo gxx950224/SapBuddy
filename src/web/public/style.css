@@ -797,7 +797,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card.expanded { box-shadow: var(--shadow-sm); }
 .tool-card .tool-head {
   display: flex; align-items: center; gap: 6px;
-  padding: 0 8px; height: 30px; max-height: 30px;
+  padding: 0 10px; height: 40px; max-height: 40px;
   overflow: hidden;
   cursor: pointer; user-select: none;
   transition: background var(--ease);
