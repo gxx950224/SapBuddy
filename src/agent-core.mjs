@@ -108,7 +108,7 @@ export function ensureRuntimeFiles() {
       const legacy = path.join(LEGACY_PI, sub)
       const pkg = path.join(ROOT, ".SapBuddy", sub)
       if (fs.existsSync(legacy)) fs.cpSync(legacy, dst, { recursive: true })
-      else if (fs.existsSync(home)) fs.cpSync(home, dst, { recursive: true })
+      else if (fs.existsSync(HOME_SAPBUDDY)) fs.cpSync(HOME_SAPBUDDY, dst, { recursive: true })
       else if (fs.existsSync(pkg)) fs.cpSync(pkg, dst, { recursive: true })
     }
     for (const f of ["models.json", "auth.json", "settings.json"]) {
