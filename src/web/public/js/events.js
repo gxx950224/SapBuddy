@@ -200,11 +200,7 @@
 
       case "tool_execution_start": {
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
-        const bubble = state.currentAssistantEl ? state.currentAssistantEl.closest(".msg") : null;
-        const proc = App.ensureProcessCard(bubble);
-        proc.querySelector(".process-body").appendChild(App.createToolCard(ev.toolCallId, ev.toolName, ev.args));
-        App.updateProcessSummary();
-        App.scrollToBottom();
+        App.addToolCallToAgent(ev.toolCallId, ev.toolName, ev.args);
         break;
       }
 
@@ -258,8 +254,11 @@
         state.currentAssistantEl = null;
         state.currentTextDiv = null;
         state.pendingTexts = [];
-        if (state.processEl && state.processEl.querySelector(".process-body").children.length === 0) {
-          state.processEl.remove();
+        // 清理空的思考块（无内容时移除）
+        const thinkEl = document.querySelector(".agent-think .agent-think-body");
+        if (thinkEl && !thinkEl.textContent.trim()) {
+          const det = thinkEl.closest(".agent-think");
+          if (det) det.remove();
         }
         App.setStreaming(false);
         App.refreshFiles();

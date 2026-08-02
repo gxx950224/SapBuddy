@@ -1719,3 +1719,54 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   padding: 0 2px;
 }
 .attach-remove:hover { color: var(--error, #e5484d); }
+
+/* ── ChatGPT/Claude 风格：思考折叠 + 内联工具链 ── */
+.agent-think {
+  margin: 4px 0 6px;
+  background: var(--bg-hover, #26263a);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.agent-think summary {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  font-size: 12px; font-weight: 600;
+  color: var(--text-dim);
+  cursor: pointer; user-select: none;
+  list-style: none;
+  background: var(--bg-app);
+}
+.agent-think summary::-webkit-details-marker { display: none; }
+.agent-think summary::before {
+  content: "▸"; display: inline-block;
+  font-size: 11px; transition: transform 0.15s ease;
+  color: var(--text-faint);
+}
+.agent-think[open] summary::before { transform: rotate(90deg); }
+.agent-think[open] summary { border-bottom: 1px solid var(--border); }
+.agent-think-body {
+  padding: 10px 14px;
+  font-size: 12.5px; line-height: 1.7;
+  color: var(--text-dim);
+  max-height: 240px; overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+/* 工具调用链（助手消息内，回复文本前） */
+.agent-tools {
+  display: flex; flex-direction: column; gap: 6px;
+  margin: 6px 0 10px;
+  max-width: 880px;
+}
+.agent-tools .tool-card {
+  background: var(--bg-hover, #26263a);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+}
+.agent-tools .tool-card .tool-head { padding: 8px 12px; }
+.agent-tools .tool-card .tool-body {
+  background: rgba(0,0,0,0.15);
+  border-radius: 0 0 10px 10px;
+}

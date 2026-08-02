@@ -52,58 +52,67 @@
     App.scrollToBottom(true);
   };
 
-  // ── Assistant 气泡 ──
+  // ── Assistant 消息（ChatGPT/Claude 风格：思考 → 工具 → 回复 内联）──
   App.ensureAssistantBubble = function() {
     if (state.currentAssistantEl) return state.currentAssistantEl;
     const el = document.createElement("div");
     el.className = "msg agent";
-    el.innerHTML = '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><circle cx="18.5" cy="18.5" r="1.3" fill="white" stroke="none"/></svg></div><div class="msg-content"><div class="meta">SapBuddy</div><div class="body md"></div></div>';
+    el.innerHTML =
+      '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><circle cx="18.5" cy="18.5" r="1.3" fill="white" stroke="none"/></svg></div>' +
+      '<div class="msg-content"><div class="meta">SapBuddy</div><div class="body md"></div></div>';
     messagesEl.appendChild(el);
     state.currentAssistantEl = el.querySelector(".body");
+    state.currentAssistantEl._thinkWrap = null;   // 思考折叠区（Claude 风格）
+    state.currentAssistantEl._toolsWrap = null;   // 工具调用链
     return state.currentAssistantEl;
   };
 
-  // ── 过程卡片 ──
-  App.ensureProcessCard = function(beforeEl) {
-    if (state.processEl && state.processEl.parentNode) return state.processEl;
-    state.processEl = null;
+  // 思考折叠区（Claude 风格：灰块可折叠）
+  function ensureThinkWrap(container) {
+    if (container._thinkWrap) return container._thinkWrap;
     const det = document.createElement("details");
-    det.className = "thinking-block msg-thinking process-card";
-    det.innerHTML = "<summary>深度思考</summary><div class='process-body'></div>";
-    det.open = false;
-    if (beforeEl) {
-      messagesEl.insertBefore(det, beforeEl);
-    } else {
-      messagesEl.appendChild(det);
-    }
-    state.processEl = det;
+    det.className = "agent-think";
+    det.innerHTML = "<summary>💭 思考过程</summary><div class='agent-think-body'></div>";
+    container.prepend(det);
+    container._thinkWrap = det;
     return det;
+  }
+
+  // 工具调用链（Claude 风格：内联在回复前）
+  function ensureToolsWrap(container) {
+    if (container._toolsWrap) return container._toolsWrap;
+    const wrap = document.createElement("div");
+    wrap.className = "agent-tools";
+    // 插在思考后、文本前
+    const think = container._thinkWrap;
+    if (think && think.nextSibling) container.insertBefore(wrap, think.nextSibling);
+    else container.appendChild(wrap);
+    container._toolsWrap = wrap;
+    return wrap;
+  }
+
+  App.addToolCallToAgent = function(id, name, args) {
+    const container = state.currentAssistantEl;
+    if (!container) return;
+    if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
+    const card = App.createToolCard(id, name, args);
+    ensureToolsWrap(container).appendChild(card);
+    App.scrollToBottom();
   };
 
-  App.updateProcessSummary = function() {
-    if (!state.processEl) return;
-    const tools = state.processEl.querySelectorAll(".tool-card").length;
-    const segs = state.processEl.querySelectorAll(".think-seg").length;
-    const parts = [];
-    if (segs) parts.push(`${segs} 段思考`);
-    if (tools) parts.push(`${tools} 次工具调用`);
-    const prefix = segs > 0 ? "深度思考" : "执行过程";
-    state.processEl.querySelector("summary").textContent =
-      prefix + (parts.length ? " · " + parts.join(" · ") : "");
-  };
-
-  // ── 思考内容 ──
+  // ── 思考内容（内联到助手消息）──
   App.addThinking = function(text, beforeEl) {
     if (!text) return;
-    const card = App.ensureProcessCard(beforeEl);
-    const body = card.querySelector(".process-body");
+    const container = state.currentAssistantEl;
+    if (!container) return;
+    const det = ensureThinkWrap(container);
+    const body = det.querySelector(".agent-think-body");
     if (!state.currentThinkSeg) {
       state.currentThinkSeg = document.createElement("div");
       state.currentThinkSeg.className = "think-seg";
       body.appendChild(state.currentThinkSeg);
     }
     state.currentThinkSeg.textContent = text;
-    App.updateProcessSummary();
     App.scrollToBottom();
   };
 
@@ -143,8 +152,7 @@
         const card = App.createToolCard(part.id, part.name, part.arguments);
         const summary = App.summarizeArgs(part.arguments);
         if (summary) card.querySelector(".tool-args").textContent = summary;
-        App.ensureProcessCard(bubbleEl).querySelector(".process-body").appendChild(card);
-        App.updateProcessSummary();
+        ensureToolsWrap(container).appendChild(card);
       }
     }
     updateBubbleVisibility(container);
@@ -160,30 +168,28 @@
 
   // ── 回复合并（流式结束后做最终 markdown 渲染） ──
   App.consolidateAssistantReplies = function() {
-    if (!state.currentAssistantEl || state.pendingTexts.length <= 1) return;
-    const bubble = state.currentAssistantEl.closest(".msg");
-    const lastIdx = state.pendingTexts.length - 1;
-    const procBody = App.ensureProcessCard(bubble).querySelector(".process-body");
-    for (let i = 0; i < lastIdx; i++) {
-      const div = state.pendingTexts[i];
-      const text = div.textContent.trim();
-      if (!text) { div.remove(); continue; }
-      const seg = document.createElement("div");
-      seg.className = "think-seg md";
-      seg.innerHTML = div.innerHTML;
-      procBody.appendChild(seg);
-      div.remove();
+    if (!state.currentAssistantEl || state.pendingTexts.length <= 1) {
+      // 单段也做最终渲染
+      const d = state.currentAssistantEl && state.pendingTexts[0];
+      if (d && !d._finalized && d._renderedLen > 0) {
+        const fullText = d._fullText || d.textContent;
+        d.innerHTML = renderMarkdown(fullText);
+        d._finalized = true;
+      }
+      if (state.currentAssistantEl) updateBubbleVisibility(state.currentAssistantEl);
+      App.scrollToBottom();
+      return;
     }
-    App.updateProcessSummary();
-    // 流式结束后，对最后一个文本块做完整 markdown 渲染（流式中只追加了纯文本）
+    const lastIdx = state.pendingTexts.length - 1;
+    // 合并所有文本段为完整 markdown
+    const merged = state.pendingTexts.map((d) => d._fullText || d.textContent).join("\n\n");
     const lastDiv = state.pendingTexts[lastIdx];
-    if (lastDiv && lastDiv._renderedLen > 0) {
-      const fullText = lastDiv._fullText || lastDiv.textContent;
-      lastDiv.innerHTML = renderMarkdown(fullText);
-      lastDiv._renderedLen = fullText.length;
+    if (lastDiv) {
+      lastDiv.innerHTML = renderMarkdown(merged);
       lastDiv._finalized = true;
     }
-    state.pendingTexts = [state.pendingTexts[lastIdx]];
+    for (let i = 0; i < lastIdx; i++) state.pendingTexts[i].remove();
+    state.pendingTexts = [lastDiv];
     updateBubbleVisibility(state.currentAssistantEl);
     App.scrollToBottom();
   };
