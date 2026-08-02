@@ -118,15 +118,24 @@ async function cmdChat() {
   let spinnerTimer = null
   let renderTimer = null
   let exitDone = false
+  // 懒创建 agent（首次对话时才创建，避免启动等待）
+  let agentPromise = null
+  function getSession() {
+    if (!agentPromise) agentPromise = createAgent().then((a) => a.session)
+    return agentPromise
+  }
 
   function ctxUsed() {
     try {
-      const msgs = session?.agent?.state?.messages ?? []
+      const s = sessionRef()
+      const msgs = s?.agent?.state?.messages ?? []
       let n = 0
       for (const m of msgs) n += (m.usage?.input ?? 0) + (m.usage?.output ?? 0)
       return n
     } catch { return 0 }
   }
+  let _sessionRef = null
+  function sessionRef() { return _sessionRef }
 
   function statusBar() {
     const used = ctxUsed()
@@ -181,7 +190,7 @@ async function cmdChat() {
     try { process.stdin.setRawMode(false) } catch {}
     process.stdout.write("\x1b[?25h\x1b[?1049l\x1b[2J\x1b[H")
     console.log("👋 再见\n")
-    try { session.dispose() } catch {}
+    getSession().then((s) => { try { s.dispose() } catch {} }).catch(() => undefined)
     process.exit(0)
   }
 
@@ -216,13 +225,15 @@ async function cmdChat() {
         history.push({ role: "user", text: t })
         history.push({ role: "assistant", text: "🧹 正在压缩上下文…" })
         render()
-        try { await session.compact(); history[history.length - 1].text = "✅ 压缩完成" }
+        const s = await getSession()
+        try { await s.compact(); history[history.length - 1].text = "✅ 压缩完成" }
         catch (e) { history[history.length - 1].text = "⚠️ 压缩失败: " + e.message }
         return render()
       }
       if (t === "/model") {
         history.push({ role: "user", text: t })
-        const r = await session.cycleModel().catch(() => undefined)
+        const s = await getSession()
+        const r = await s.cycleModel().catch(() => undefined)
         history.push({ role: "assistant", text: r?.model ? ("🔄 已切换: " + r.model.provider + "/" + r.model.id) : "⚠️ 没有可切换的模型" })
         return render()
       }
@@ -234,6 +245,8 @@ async function cmdChat() {
       if (t === "/stop") { history.push({ role: "assistant", text: "当前没有生成中的内容" }); return render() }
 
       // ── 普通对话 ──
+      const s = await getSession()
+      _sessionRef = s
       history.push({ role: "user", text: t })
       streaming = true
       reply = ""
@@ -243,13 +256,13 @@ async function cmdChat() {
         process.stdout.write("\r" + ANSI.dim + " " + spin[si++ % spin.length] + " Working..." + ANSI.reset)
       }, 100)
       render()
-      const unsub = session.subscribe((event) => {
+      const unsub = s.subscribe((event) => {
         if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
           reply += event.assistantMessageEvent.delta
           scheduleRender()
         }
       })
-      await session.prompt(t).catch(() => {})
+      await s.prompt(t).catch(() => {})
       unsub()
       streaming = false
       if (spinnerTimer) { clearInterval(spinnerTimer); spinnerTimer = null }
