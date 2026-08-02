@@ -8,7 +8,7 @@
 
 [![npm version](https://img.shields.io/npm/v/sapbuddy.svg)](https://www.npmjs.com/package/sapbuddy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/<yourname>/sapbuddy/ci.yml?branch=main)](https://github.com/<yourname>/sapbuddy/actions)
+[![CI](https://img.shields.io/github/actions/workflow/status/gxx950224/sapbuddy/ci.yml?branch=main)](https://github.com/gxx950224/sapbuddy/actions)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-green)](package.json)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -51,7 +51,7 @@ sapbuddy doctor    # 环境自检
 ### 方式 B：源码运行
 
 ```bash
-git clone https://github.com/<yourname>/sapbuddy.git
+git clone https://github.com/gxx950224/sapbuddy.git
 cd sapbuddy
 npm install
 npm run build

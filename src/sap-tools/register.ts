@@ -9,6 +9,8 @@
  */
 import { z } from "zod"
 import { Type } from "typebox"
+import { readFileSync } from "node:fs"
+import { join } from "node:path"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
 import { assertDevClient } from "./adtManager.js"
@@ -37,13 +39,24 @@ export function clearWriteApproval(): void {
 // ── 用户消息处理（确认词/拒绝词 → 授权窗口；CLI 与 Web 共用同一套规则）──
 const CONFIRM_RE = /确认|同意|允许|批准|可以|好的|好，|好、|好 |ok|okay|yes|继续|执行|就这么办|没问题|没问题|行，|行 |行$|行，就|go ahead/i
 const REJECT_RE = /拒绝|不要|取消|算了|不干|停止|换个方案|重新来|推翻|改回|不用了|撤回/i
+
+/** 授权窗口毫秒数：读设置 .SapBuddy/settings.json 的 approvalWindowMinutes（默认 120 分钟） */
+function approvalWindowMs(): number {
+  try {
+    const cfg = JSON.parse(readFileSync(join(process.cwd(), ".SapBuddy", "settings.json"), "utf8").toString())
+    const m = Number(cfg.approvalWindowMinutes)
+    if (m > 0 && Number.isFinite(m)) return m * 60 * 1000
+  } catch { /* 默认 */ }
+  return 2 * 60 * 60 * 1000
+}
+
 export function handleUserMessage(text: string): void {
   const t = String(text || "").trim()
   if (REJECT_RE.test(t)) {
     clearWriteApproval()
   } else if (CONFIRM_RE.test(t)) {
-    // 授权保持：确认后 2 小时内该需求所有写操作不再重复授权
-    setWriteApprovalWindow(2 * 60 * 60 * 1000)
+    // 授权窗口时长可配置（settings.approvalWindowMinutes，默认 120 分钟）
+    setWriteApprovalWindow(approvalWindowMs())
   }
   // 中性/继续类消息不清除窗口，避免同一需求反复授权
 }

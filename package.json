@@ -48,9 +48,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourname/sapbuddy.git"
+    "url": "git+https://github.com/gxx950224/sapbuddy.git"
   },
-  "homepage": "https://github.com/yourname/sapbuddy#readme",
+  "homepage": "https://github.com/gxx950224/sapbuddy#readme",
   "files": [
     "cli.mjs",
     "src/",
@@ -68,5 +68,11 @@
     "SYSTEM.md",
     "Memory.md",
     "CONTRIBUTING.md"
-  ]
+  ],
+  "bugs": {
+    "url": "https://github.com/gxx950224/sapbuddy/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

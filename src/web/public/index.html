@@ -233,6 +233,11 @@
               <input id="llm-context-tokens" type="number" min="10000" max="1000000" step="10000" placeholder="200000" />
               <span class="field-hint">Token 上限（默认 200K），超出时自动压缩历史对话</span>
             </label>
+            <label class="settings-field">
+              <span>授权窗口（分钟）</span>
+              <input id="llm-approval-window" type="number" min="1" max="1440" step="5" placeholder="120" />
+              <span class="field-hint">写操作确认后放行时长（默认 120 分钟），期间不重复授权</span>
+            </label>
           </div>
         </div>
         <div class="settings-panel" data-panel="sap">
