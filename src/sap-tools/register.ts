@@ -262,6 +262,10 @@ export function scanCodeViolations(code: string): string[] {
     const raw = lines[i]
     // 去掉 ABAP 注释（" 之后到行尾），避免误报注释中的中文/类型
     const noComment = raw.split('"')[0]
+    // CDS 注解行（@EndUserText.label / @AbapCatalog.* 等）：值是 DDIC 元数据文本（视图描述），
+    // 不是运行时用户可见文案，且 CDS 源码无 DATA 声明 → 两类扫描都豁免
+    const isAnnotationLine = noComment.trim().startsWith("@")
+    if (isAnnotationLine) continue
 
     // 1) 硬编码中文：单引号字符串字面量含中文（MESSAGE WITH '中文'、VALUE #( message = '中文' ) 等）
     const cnMatches = noComment.match(/'([^']*[\u4e00-\u9fa5][^']*)'/g)

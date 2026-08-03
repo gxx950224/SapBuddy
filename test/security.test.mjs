@@ -52,6 +52,17 @@ test("scanCodeViolations：空代码通过", () => {
   assert.deepEqual(scanCodeViolations(""), [])
 })
 
+test("scanCodeViolations：CDS 注解中文（@EndUserText.label 等 DDIC 元数据）不误报", () => {
+  const code = [
+    `@EndUserText.label: '物料编码与描述查询'`,
+    `@AbapCatalog.sqlViewName: 'ZCTEST'`,
+    `DEFINE VIEW ZC_TEST AS SELECT FROM I_Product`,
+    `  KEY ProductID AS ProductId,`,
+  ].join("\n")
+  const v = scanCodeViolations(code)
+  assert.deepEqual(v, [], `CDS 注解中的中文描述不应违规，实际: ${v.join("|")}`)
+})
+
 // ── 授权窗口（handleUserMessage）────────────────────────────────────────────
 test("授权窗口：明确批准词打开窗口", () => {
   clearWriteApproval()

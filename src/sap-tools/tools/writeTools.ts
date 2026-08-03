@@ -136,6 +136,10 @@ export const createObjectTool = {
         description: args.description,
         parentPath,
         transport,
+        // 语言跟随连接配置（abap-adt-api 默认 EN，在 ZH 主语言系统上创建描述会报
+        // "Language EN for creation of description is not equal to original ZH"）
+        language: client.language || undefined,
+        masterLanguage: client.language || undefined,
       })
       return (
         `✅ 对象创建成功: ${args.objectType} ${args.name.toUpperCase()}\n` +
