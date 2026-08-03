@@ -59,20 +59,20 @@ npm run build
 
 ### 首次配置（两种方式相同）
 
-> 所有配置保存在 `~/.SapBuddy/`（主目录下隐藏目录，固定位置，无论在哪运行 sapbuddy 都用这一份）：auth.json / connections.json / settings.json / sessions / skills / prompts / output。首次运行自动初始化默认技能与提示词。
+> 所有配置保存在 `~/.SapBuddy/`（主目录下隐藏目录，固定位置，无论在哪运行 sapbuddy 都用这一份）：auth.json / connections.json / settings.json / sessions / skills / prompts / output。首次运行 `sapbuddy` 后自动生成配置文件与示例模板（模板副本在 `~/.SapBuddy/config/`），按下面填即可。
 
 ```bash
-# 1. AI 模型 API Key
-mkdir -p ~/.SapBuddy
-cp config/auth.example.json ~/.SapBuddy/auth.json
-#    编辑 ~/.SapBuddy/auth.json 填入你的 Key
+# 1. AI 模型 API Key（必填）
+#    打开 ~/.SapBuddy/auth.json，把 key 里的示例文字换成你的 API Key
+#    （参考 ~/.SapBuddy/config/auth.example.json）
 
 # 2. SAP 连接（ADT 需在 SICF 激活 /sap/bc/adt）
-cp config/connections.example.json ~/.SapBuddy/connections.json
-#    编辑 ~/.SapBuddy/connections.json 填入系统地址/客户端/账号
+#    打开 ~/.SapBuddy/connections.json，填入系统地址/客户端/账号
+#    （参考 ~/.SapBuddy/config/connections.example.json）
 
 # 3.（可选）模型与思考级别
-cp config/settings.example.json ~/.SapBuddy/settings.json
+#    打开 ~/.SapBuddy/settings.json
+#    （参考 ~/.SapBuddy/config/settings.example.json）
 ```
 
 ### 开始对话

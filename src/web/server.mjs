@@ -327,8 +327,9 @@ const server = http.createServer(async (req, res) => {
       const usage = msgs.reduce((a, m) => ({ input: a.input + (m.usage?.input ?? 0), output: a.output + (m.usage?.output ?? 0) }), { input: 0, output: 0 })
       const t = (txt) => Math.max(1, Math.ceil(String(txt ?? "").length / 3))
       let agents = 0, systemMd = 0, memory = 0, skills = 0
-      try { agents = t(fs.readFileSync(path.join(ROOT, "AGENTS.md"), "utf8")) } catch {}
-      try { systemMd = t(fs.readFileSync(path.join(ROOT, "SYSTEM.md"), "utf8")) } catch {}
+      const readPrompt = (name) => { try { return t(fs.readFileSync(path.join(USER_PI, "prompts", name), "utf8")) } catch { try { return t(fs.readFileSync(path.join(ROOT, name), "utf8")) } catch { return 0 } } }
+      try { agents = readPrompt("AGENTS.md") } catch {}
+      try { systemMd = readPrompt("SYSTEM.md") } catch {}
       try { memory = t(fs.readFileSync(memoryFile, "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
       try { for (const base of [skillsDir, path.join(ROOT, "defaults", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
       const piAgent = 1500
@@ -594,11 +595,11 @@ const server = http.createServer(async (req, res) => {
       const name = b.path || b.name || ""
       let target = name
       if (!path.isAbsolute(target)) target = path.join(OUTPUT_DIR, name)
-      // 安全：仅允许打开产物目录/项目目录内的位置（防任意目录访问）
+      // 安全：仅允许打开产物目录/主目录配置/项目目录内的位置（防任意目录访问）
       const resolved = path.resolve(target)
-      const allowedRoots = [path.resolve(OUTPUT_DIR), path.resolve(ROOT)]
+      const allowedRoots = [path.resolve(OUTPUT_DIR), path.resolve(USER_PI), path.resolve(ROOT)]
       if (!allowedRoots.some((r) => resolved === r || resolved.startsWith(r + path.sep))) {
-        return json(res, 403, { error: "Forbidden: 仅允许打开 output/ 或项目目录内的位置" })
+        return json(res, 403, { error: "Forbidden: 仅允许打开 ~/.SapBuddy 或项目目录内的位置" })
       }
       try {
         const dir = fs.statSync(target).isDirectory() ? target : path.dirname(target)
@@ -668,15 +669,18 @@ const ids = models.map((m) => m.id)
         return json(res, 200, { success: true, models: [] })
       }
     }
-    // 记忆：统一使用项目根 Memory.md（唯一位置）
-    const memoryFile = path.join(ROOT, "Memory.md")
+    // 记忆：主目录 ~/.SapBuddy/prompts/Memory.md（首次从包内默认 seed，用户定制优先）
+    const memoryFile = path.join(USER_PI, "prompts", "Memory.md")
     if (p === "/api/memory" && req.method === "GET") {
+      if (!fs.existsSync(memoryFile)) {
+        try { fs.mkdirSync(path.dirname(memoryFile), { recursive: true }); fs.copyFileSync(path.join(ROOT, "Memory.md"), memoryFile) } catch { /* seed 失败则返回空 */ }
+      }
       try { return json(res, 200, { success: true, data: { content: fs.readFileSync(memoryFile, "utf8"), path: memoryFile } }) } catch { /* 文件不存在则返回空 */ }
       return json(res, 200, { success: true, data: { content: "", path: memoryFile } })
     }
     if (p === "/api/memory" && req.method === "POST") {
       const { content } = await readBody(req)
-      try { fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
+      try { fs.mkdirSync(path.dirname(memoryFile), { recursive: true }); fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
       catch (e) { return json(res, 500, { error: e.message }) }
     }
     // ── MCP（已直接集成 42 工具，返回空配置）──
@@ -707,7 +711,7 @@ const ids = models.map((m) => m.id)
       return json(res, 200, { success: true, config: servers, status: mcpStatusCache ?? [] })
     }
 
-    // ── Prompts（提示词）──
+    // ── Prompts（提示词）：主目录 ~/.SapBuddy/prompts 优先（首次从包内默认 seed），回退包内 ──
     const promptsDir = path.join(USER_PI, "prompts")
     if (p === "/api/prompt" && req.method === "GET") {
       // 安全：仅允许白名单根文件（防 ../ 路径穿越读任意文件，与 POST 同规则）
@@ -717,22 +721,25 @@ const ids = models.map((m) => m.id)
       if (!WHITELIST.includes(base)) {
         return json(res, 403, { error: "Forbidden: 仅允许读取 AGENTS.md / SYSTEM.md / Memory.md / CLAUDE.md" })
       }
-      const candidates = [path.join(ROOT, base), path.join(promptsDir, base), path.join(ROOT, ".SapBuddy", "prompts", base), path.join(ROOT, "defaults", "skills", base)]
-      for (const c of candidates) {
-        if (fs.existsSync(c)) return json(res, 200, { success: true, data: { content: fs.readFileSync(c, "utf8"), path: c } })
+      const local = path.join(promptsDir, base)
+      if (!fs.existsSync(local)) {
+        const srcSeed = path.join(ROOT, base)
+        if (fs.existsSync(srcSeed)) { try { fs.mkdirSync(promptsDir, { recursive: true }); fs.copyFileSync(srcSeed, local) } catch { /* seed 失败忽略 */ } }
       }
+      if (fs.existsSync(local)) return json(res, 200, { success: true, data: { content: fs.readFileSync(local, "utf8"), path: local } })
       return json(res, 200, { success: true, data: { content: "", path: base } })
     }
     if (p === "/api/prompt" && req.method === "POST") {
       const { file, content } = await readBody(req)
       // 安全：仅允许编辑白名单根文件（防 ../ 路径穿越写任意位置）
-      const base = String(file || "").split("/").pop()
+      const base = String(file || "").split(/[/\\]/).pop()
       const WHITELIST = ["AGENTS.md", "AGENTS.MD", "SYSTEM.md", "Memory.md", "CLAUDE.md"]
       if (!WHITELIST.includes(base)) {
         return json(res, 403, { error: "Forbidden: 仅允许编辑 AGENTS.md / SYSTEM.md / Memory.md" })
       }
       try {
-        const target = path.join(ROOT, base)
+        const target = path.join(promptsDir, base)
+        fs.mkdirSync(promptsDir, { recursive: true })
         fs.writeFileSync(target, content ?? "")
         return json(res, 200, { success: true, data: { path: target } })
       } catch (e) { return json(res, 500, { error: e.message }) }

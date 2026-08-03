@@ -104,7 +104,7 @@ async function cmdDoctor() {
   }
   const auth = loadAuth()
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
-  console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（复制 config/auth.example.json 为 ~/.SapBuddy/auth.json）"}`)
+  console.log(`API Key: ${hasKey ? "✅ 已配置" : "❌ 未配置（编辑 ~/.SapBuddy/auth.json 填入 API Key，模板见 ~/.SapBuddy/config/auth.example.json）"}`)
   const settings = loadSettings()
   console.log(`默认模型: ${settings.defaultProvider ?? "deepseek"}/${settings.defaultModel ?? "deepseek-v4-flash"}`)
   const confPath = [path.join(CONFIG_DIR, "connections.json"), path.join(process.cwd(), "connections.json")].find((f) => fs.existsSync(f))
@@ -114,7 +114,7 @@ async function cmdDoctor() {
       console.log(`SAP 连接: ✅ ${conf.connections?.length ?? 0} 个已配置（${confPath}）`)
     } catch { console.log("SAP 连接: ⚠️ connections.json 格式错误") }
   } else {
-    console.log("SAP 连接: ⚠️ 未找到 connections.json（复制 config/connections.example.json 为 ~/.SapBuddy/connections.json）")
+    console.log("SAP 连接: ⚠️ 未找到 connections.json（编辑 ~/.SapBuddy/connections.json，模板见 ~/.SapBuddy/config/connections.example.json）")
   }
 }
 
@@ -143,15 +143,20 @@ async function cmdChat() {
   const auth = loadAuth()
   const hasKey = Object.values(auth).some((v) => v?.type === "api_key" && v.key && v.key !== "请输入你的API_KEY")
   if (!hasKey) {
-    console.log("⚠️  未配置 AI 模型 API Key。请先：")
-    console.log("    mkdir -p ~/.SapBuddy && cp config/auth.example.json ~/.SapBuddy/auth.json   # 然后填入你的 API Key")
-    console.log("    或运行: node cli.mjs doctor\n")
+    console.log("⚠️  未配置 AI 模型 API Key。请：")
+    console.log("    打开 ~/.SapBuddy/auth.json，把 key 里的示例文字换成你的 API Key")
+    console.log("    （模板已自动放到 ~/.SapBuddy/config/；或运行: node cli.mjs doctor）\n")
   }
   const settings = loadSettings()
   const piCli = path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "cli.js")
   if (!fs.existsSync(piCli)) {
     console.error("❌ 未找到 pi CLI（node_modules/@earendil-works/pi-coding-agent），请先 npm install")
     process.exit(1)
+  }
+  // 系统提示/记忆：主目录 ~/.SapBuddy/prompts 优先（用户定制），不存在回退包内默认
+  const promptFile = (name) => {
+    const f = path.join(CONFIG_DIR, "prompts", name)
+    return fs.existsSync(f) ? f : path.join(ROOT, name)
   }
   const args = [
     piCli,
@@ -160,8 +165,8 @@ async function cmdChat() {
     "--model", settings.defaultModel ?? "deepseek-v4-flash",
     "--session-dir", path.join(CONFIG_DIR, "sessions"),
     "--skill", path.join(CONFIG_DIR, "skills"),
-    "--append-system-prompt", path.join(ROOT, "SYSTEM.md"),
-    "--append-system-prompt", path.join(ROOT, "Memory.md"),
+    "--append-system-prompt", promptFile("SYSTEM.md"),
+    "--append-system-prompt", promptFile("Memory.md"),
   ]
   // API Key（从 .SapBuddy/auth.json 读取，避免手工配置）
   const apiKey = Object.values(auth).find((v) => v?.type === "api_key" && v.key)?.key

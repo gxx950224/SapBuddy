@@ -263,7 +263,7 @@
       const j = await r.json();
       if (j.success) {
         $("#memory-editor").value = j.data.content;
-        $("#memory-path").textContent = "Memory.md";
+        $("#memory-path").textContent = j.data.path || "Memory.md";
         setEditorStatus("memory-status", "ok", "");
         activatePreview("memory-editor", "memory-preview");
       }

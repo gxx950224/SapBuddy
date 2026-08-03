@@ -81,17 +81,40 @@ export function ensureRuntimeFiles() {
         if (fs.existsSync(src)) { fs.cpSync(src, dst, { recursive: true }); break }
       }
     }
+    // 配置示例模板：拷贝到 ~/.SapBuddy/config/（用户照着填，存在不覆盖）
+    const dstCfg = path.join(CONFIG_DIR, "config")
+    fs.mkdirSync(dstCfg, { recursive: true })
+    for (const ex of ["auth.example.json", "connections.example.json", "settings.example.json"]) {
+      const d = path.join(dstCfg, ex)
+      if (fs.existsSync(d)) continue
+      const s = path.join(ROOT, "config", ex)
+      if (fs.existsSync(s)) { try { fs.copyFileSync(s, d) } catch { /* 忽略 */ } }
+    }
+    // 配置文件初始生成：缺失时用 config/ 下的示例模板 seed（auth/settings），旧配置/默认值仍可作源
+    const EXAMPLE_MAP = { "auth.json": "auth.example.json", "settings.json": "settings.example.json" }
     for (const f of ["models.json", "auth.json", "settings.json"]) {
       const dst = path.join(CONFIG_DIR, f)
       if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, f), path.join(ROOT, "defaults", f)]) {
+      const srcs = [path.join(LEGACY_PI, f)]
+      if (EXAMPLE_MAP[f]) srcs.push(path.join(ROOT, "config", EXAMPLE_MAP[f]))
+      srcs.push(path.join(ROOT, "defaults", f))
+      for (const src of srcs) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
       }
     }
     if (!fs.existsSync(path.join(CONFIG_DIR, "connections.json"))) {
-      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json")]) {
+      for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json"), path.join(ROOT, "config", "connections.example.json")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
       }
+    }
+    // 系统提示/记忆默认内容 seed（AGENTS/SYSTEM/Memory → ~/.SapBuddy/prompts，不存在才拷，用户定制优先）
+    const dstPrompts = path.join(CONFIG_DIR, "prompts")
+    fs.mkdirSync(dstPrompts, { recursive: true })
+    for (const f of ["AGENTS.md", "SYSTEM.md", "Memory.md"]) {
+      const d = path.join(dstPrompts, f)
+      if (fs.existsSync(d)) continue
+      const s = path.join(ROOT, f)
+      if (fs.existsSync(s)) { try { fs.copyFileSync(s, d) } catch { /* 忽略 */ } }
     }
     // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
     const dstSessions = path.join(CONFIG_DIR, "sessions")
@@ -169,11 +192,13 @@ export async function createAgent(opts = {}) {
     model = undefined
   }
 
+  // 系统提示/记忆：主目录 ~/.SapBuddy/prompts 优先（用户定制），不存在回退包内默认
+  const promptFile = (name) => { const f = path.join(CONFIG_DIR, "prompts", name); return fs.existsSync(f) ? f : path.join(ROOT, name) }
   const loader = new DefaultResourceLoader({
     cwd: ROOT,
     agentDir: CONFIG_DIR,
     settingsManager: SettingsManager.inMemory(),
-    appendSystemPrompt: [path.join(ROOT, "SYSTEM.md"), path.join(ROOT, "Memory.md")], // 与 CLI 一致：SYSTEM.md + 项目根 Memory.md 记忆
+    appendSystemPrompt: [promptFile("SYSTEM.md"), promptFile("Memory.md")], // 与 CLI 一致：主目录优先，回退包内
     extensionFactories: [
       (pi) => {
         // 加载期直接注册（不能调 getAllTools 等 action method，registerTool 本身可用）
