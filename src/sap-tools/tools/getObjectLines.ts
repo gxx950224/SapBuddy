@@ -15,6 +15,7 @@ export const getObjectLinesTool = {
   title: "Get ABAP Object Lines",
   description:
     "读取 ABAP 对象的完整源码或指定行区间。支持类、报表、函数组、表等所有 ADT 对象。" +
+    "函数组内部程序（SAPL<函数组> 主程序 / L<函数组><后缀> 如 LSDTXTOP、LZMYFGUXX）可直接按程序名读取，自动解析到函数组。" +
     "通过对象名称+类型定位（对象不存在时会先给出搜索建议）。" +
     "读取类时可用 methodName 只提取某个方法，节省上下文。",
   inputSchema: z.object({

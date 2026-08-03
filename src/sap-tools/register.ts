@@ -72,7 +72,13 @@ function isReadOnly(): boolean {
   } catch { return false }
 }
 
+/** 函数组内部程序是否属于客户命名空间：SAPL<FG>/L<FG><后缀>，所属函数组（FG）为 Z/Y 开头即为客户对象（SE38 可直接编辑） */
+function isCustomerFunctionGroupProgram(name: string): boolean {
+  return /^(SAPL|L)[ZY]/i.test(name)
+}
+
 /** 命名空间强制：写操作对象名必须以 Z 或 Y 开头（SAP 标准对象只读不写）。
+ * 函数组内部程序（SAPL<FG>/L<FG>*）按所属函数组判断：函数组为 Z/Y 开头时放行。
  * 只检查明确的"对象名"字段（name/objectName/className），传输请求号等不参与。
  * 返回违规说明；空串 = 通过。 */
 export function namespaceViolation(input: unknown): string {
@@ -82,6 +88,8 @@ export function namespaceViolation(input: unknown): string {
     if (typeof v !== "string" || !v.trim()) continue
     const n = v.trim()
     if (/^[A-Za-z0-9_/-]+$/.test(n) && !/^[ZY]/i.test(n)) {
+      // 函数组内部程序（SAPL<FG>/L<FG><后缀>）：所属函数组为 Z*/Y* 即为客户对象，放行
+      if (isCustomerFunctionGroupProgram(n)) continue
       return `对象名 "${n}" 不是 Z*/Y* 开头（SAP 标准对象只读不写）。请确认对象名，或改用只读工具查询。`
     }
   }

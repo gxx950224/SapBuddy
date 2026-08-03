@@ -89,7 +89,52 @@ export async function findObject(
 
   let found = await batch(ordered.slice(0, 12))
   if (!found && ordered.length > 12) found = await batch(ordered.slice(12))
+  // 函数组内部程序（SAPL<FG>/L<FG>*）在 ADT 中不是独立 PROGRAM 资源，按名称直接搜永远找不到，
+  // 只能通过函数组（FUGR）对象访问 —— 自动解析到函数组主程序或 include
+  if (!found) found = await findFunctionGroupProgram(connId, objectName)
   return found
+}
+
+/** 函数组内部程序名识别：SAPL<FG> 主程序 → { fgName, isMain:true }；L<FG><后缀> include → { fgName, isMain:false } */
+export function matchFunctionGroupProgram(name: string): { fgName: string; isMain: boolean } | undefined {
+  const upper = (name || "").toUpperCase()
+  if (upper.startsWith("SAPL") && upper.length > 4) return { fgName: upper.slice(4), isMain: true }
+  if (upper.startsWith("L") && upper.length > 4) {
+    const rest = upper.slice(1)
+    // 经典函数组 include 后缀：TOP / UXX / <字母><2 位数字或 X>（F01、U04、I01、UXX ...）
+    if (/^(TOP|[A-Z][0-9X]{2})$/i.test(rest.slice(-3))) {
+      return { fgName: rest.slice(0, -3), isMain: false }
+    }
+  }
+  return undefined
+}
+
+/** 函数组内部程序解析（ADT 架构：SAPL<FG>/L<FG>* 不是独立 PROGRAM 资源）：
+ *  SAPL<FG> → FUGR/F（读 /source/main 得 include 骨架，即 SE38 中 SAPL<FG> 的内容）
+ *  L<FG><后缀> → FUGR/I（读 /functions/groups/<fg>/includes/<include>/source/main 得完整源码）
+ *  找不到对应函数组返回 undefined */
+export async function findFunctionGroupProgram(connId: string, objectName: string): Promise<SearchResult | undefined> {
+  const m = matchFunctionGroupProgram(objectName)
+  if (!m) return undefined
+  const client = await getClient(connId)
+  try {
+    const hits = await client.searchObject(m.fgName, "FUGR", 5)
+    const fg = hits.find((h) => (h["adtcore:name"] ?? "").toUpperCase() === m.fgName)
+    if (!fg) return undefined
+    const upper = objectName.toUpperCase()
+    if (m.isMain) {
+      return { ...fg, "adtcore:name": upper, "adtcore:type": "FUGR/F" }
+    }
+    const base = fg["adtcore:uri"] ?? `/sap/bc/adt/functions/groups/${m.fgName.toLowerCase()}`
+    return {
+      ...fg,
+      "adtcore:name": upper,
+      "adtcore:type": "FUGR/I",
+      "adtcore:uri": `${base}/includes/${upper.toLowerCase()}`,
+    }
+  } catch {
+    return undefined
+  }
 }
 
 /** 按名称+类型搜索对象（找不到抛错，附带搜索建议） */
