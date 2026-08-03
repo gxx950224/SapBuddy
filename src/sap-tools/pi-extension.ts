@@ -9,9 +9,13 @@ import { registerSapTools, installWriteGate, handleUserMessage } from "./registe
 import { SAPBUDDY_BANNER } from "./banner.js"
 
 export default async function (pi: ExtensionAPI): Promise<void> {
-  // 启动图标（pi CLI 顶部信息区显示）
-  console.log(SAPBUDDY_BANNER)
-  console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具 · author:guoxiaoxi")
+  // 启动图标：仅进程首次加载打印一次。reload 时扩展重载会再次执行本函数，
+  // 若重复打印，TUI 已绘制，多行 ASCII 图标会被界面重绘覆盖只剩一行（残缺）。
+  if (!(globalThis as any).__sapbuddy_banner_shown) {
+    ;(globalThis as any).__sapbuddy_banner_shown = true
+    console.log(SAPBUDDY_BANNER)
+    console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具 · author:guoxiaoxi")
+  }
   try {
     registerSapTools(pi)
   } catch (e) {
