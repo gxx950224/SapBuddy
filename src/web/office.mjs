@@ -61,6 +61,54 @@ function xmlText(xml) {
   return out.join("")
 }
 
+/** 解析 xlsx 工作表 → [{ name, rows: string[][] }]（共享字符串 + 内联字符串 + 数值；空行跳过） */
+function parseXlsxSheets(buf) {
+  const entries = listZipEntries(buf)
+  if (!entries) return null
+  // 共享字符串表
+  const strings = []
+  const ssEntry = entries.find((x) => x.name === "xl/sharedStrings.xml")
+  if (ssEntry) {
+    const xml = readEntry(buf, ssEntry).toString("utf8")
+    const re = /<si>[\s\S]*?<\/si>/g
+    let m
+    while ((m = re.exec(xml)) !== null) strings.push(xmlText(Buffer.from(m[0])))
+  }
+  const sheets = entries
+    .filter((x) => /^xl\/worksheets\/sheet\d+\.xml$/.test(x.name))
+    .sort((a, b) => parseInt(a.name.match(/sheet(\d+)/)[1]) - parseInt(b.name.match(/sheet(\d+)/)[1]))
+  const out = []
+  for (const e of sheets) {
+    const xml = readEntry(buf, e).toString("utf8")
+    const rows = []
+    const rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g
+    let rm
+    while ((rm = rowRe.exec(xml)) !== null) {
+      const cells = []
+      const cRe = /<c\b([^>]*)>([\s\S]*?)<\/c>/g
+      let cm
+      while ((cm = cRe.exec(rm[1])) !== null) {
+        const tAttr = (cm[1].match(/\bt="([^"]+)"/) || [])[1]
+        const inner = cm[2]
+        let val = ""
+        if (tAttr === "s") {
+          const idx = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1]
+          const n = idx !== undefined ? parseInt(idx) : -1
+          val = n >= 0 && n < strings.length ? strings[n] : ""
+        } else if (tAttr === "inlineStr") {
+          val = (inner.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/) || [])[1] || ""
+        } else {
+          val = (inner.match(/<v>([\s\S]*?)<\/v>/) || [])[1] || ""
+        }
+        cells.push(val.trim())
+      }
+      if (cells.length) rows.push(cells)
+    }
+    out.push({ name: e.name.match(/sheet(\d+)/)?.[1] ?? "?", rows })
+  }
+  return out
+}
+
 /** 提取 Office 文件文本；非 Office 返回 null */
 export function extractOfficeText(buf, fileName) {
   const lower = String(fileName || "").toLowerCase()
@@ -90,53 +138,11 @@ export function extractOfficeText(buf, fileName) {
     return { text: parts.join("\n\n") || "（演示文稿无文本）", ok: parts.length > 0 }
   }
   if (lower.endsWith(".xlsx")) {
-    // 共享字符串 + 工作表
-    const ssEntry = entries.find((x) => x.name === "xl/sharedStrings.xml")
-    const strings = []
-    if (ssEntry) {
-      const xml = readEntry(buf, ssEntry).toString("utf8")
-      const re = /<si>[\s\S]*?<\/si>/g
-      let m
-      while ((m = re.exec(xml)) !== null) {
-        const t = xmlText(Buffer.from(m[0]))
-        strings.push(t)
-      }
-    }
-    const sheets = entries.filter((x) => /^xl\/worksheets\/sheet\d+\.xml$/.test(x.name)).sort((a, b) => {
-      const na = parseInt(a.name.match(/sheet(\d+)/)[1]), nb = parseInt(b.name.match(/sheet(\d+)/)[1])
-      return na - nb
-    })
-    for (const e of sheets) {
-      const xml = readEntry(buf, e).toString("utf8")
-      const rows = []
-      // 每行 <row ...>...</row>，每个 <c> 取 <v> 或内联 <t>
-      const rowRe = /<row[^>]*>([\s\S]*?)<\/row>/g
-      let rm
-      while ((rm = rowRe.exec(xml)) !== null) {
-        const cells = []
-        const cRe = /<c\b([^>]*)>([\s\S]*?)<\/c>/g
-        let cm
-        while ((cm = cRe.exec(rm[1])) !== null) {
-          const attrs = cm[1]
-          const tAttr = (attrs.match(/\bt="([^"]+)"/) || [])[1]
-          const inner = cm[2]
-          let val = ""
-          if (tAttr === "s") {
-            const vm = inner.match(/<v>([\s\S]*?)<\/v>/)
-            const idx = vm ? parseInt(vm[1]) : -1
-            val = idx >= 0 && idx < strings.length ? strings[idx] : ""
-          } else if (tAttr === "inlineStr") {
-            const im = inner.match(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/)
-            val = im ? im[1] : ""
-          } else {
-            const vm = inner.match(/<v>([\s\S]*?)<\/v>/)
-            val = vm ? vm[1] : ""
-          }
-          if (val) cells.push(val.trim())
-        }
-        if (cells.length) rows.push(cells.join(" | "))
-      }
-      if (rows.length) parts.push("【Sheet " + (e.name.match(/sheet(\d+)/)?.[1] ?? "?") + "】\n" + rows.join("\n"))
+    const sheets = parseXlsxSheets(buf)
+    if (!sheets) return { text: "（无法解析的 Office 文件）", ok: false }
+    for (const s of sheets) {
+      const lines = s.rows.map((r) => r.join(" | "))
+      if (lines.length) parts.push("【Sheet " + s.name + "】\n" + lines.join("\n"))
     }
     return { text: parts.join("\n\n") || "（工作簿无数据）", ok: parts.length > 0 }
   }

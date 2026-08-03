@@ -20,6 +20,9 @@
     return `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
   }
 
+  // ── 二进制文件（不提供网页预览，提示打开位置查看）──
+  const BINARY_RE = /\.(xlsx|xls|docx|doc|pptx|ppt|pdf|zip|rar|7z|gz|tar|png|jpe?g|gif|bmp|ico|mp4|mp3|exe|msi|bin|dll|iso)$/i;
+
   // ── 文件树状态 ──
   const outputExpanded = new Set();
 
@@ -228,6 +231,25 @@
     openExt.style.display = "none";
     $("#preview-body").textContent = "加载中…";
     overlay.classList.add("open");
+
+    // 二进制文件（Excel/Word/PPT/PDF/图片等）：不提供网页预览，提示打开位置查看
+    if (BINARY_RE.test(name)) {
+      const pb = $("#preview-body");
+      pb.classList.remove("md-preview");
+      pb.innerHTML = "";
+      const box = document.createElement("div");
+      box.style.cssText = "padding:4px 2px;";
+      box.textContent = "这个文件是二进制格式（Excel / Word / PPT 等），网页里不预览。点击下方「打开位置查看」，在文件夹里直接打开。";
+      const btn = document.createElement("button");
+      btn.className = "btn-sm";
+      btn.textContent = "打开位置查看";
+      btn.style.cssText = "margin-top:14px;";
+      btn.addEventListener("click", () => App.openFileLocation(name));
+      pb.appendChild(box);
+      pb.appendChild(btn);
+      return;
+    }
+
     try {
       const r = await fetch(url);
       if (!r.ok) throw new Error("HTTP " + r.status);

@@ -124,6 +124,14 @@
         {
           "id": "deepseek-v4-flash",
           "name": "DeepSeek V4 Flash",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "max": "max"
+          },
           "contextWindow": 1000000,
           "maxTokens": 16384
         },
