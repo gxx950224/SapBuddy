@@ -72,7 +72,8 @@ export const translateTextPoolTool = {
   write: true,
   title: "Translate Text Pool (Program Text Elements)",
   description:
-    "程序文本池多语言翻译工具：用户要求翻译/多语言/文本池/加英文/复制语言时用本工具。" +
+    "程序文本池多语言翻译工具：用户要求翻译/多语言/文本池/加英文/复制语言/中文文本时用本工具。" +
+    "中文文本元素（如符号/选择文本的简体中文）一律用本工具写入（targetLanguage='1'），不要用 manage_text_elements 直接写中文。" +
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
     "两种模式：copy（把源语言 text pool 整体复制为目标语言）或 set（按 [{key,text}] 覆盖/新增指定条目）。" +
     "key: T=程序描述/标题, I=文本符号(如 '001' 对应 TEXT-001), S=选择文本(如 'P_COMP')。" +

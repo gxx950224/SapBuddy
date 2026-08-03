@@ -34,6 +34,11 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
    - 选择屏幕标签/块标题/ALV 列文本 → **文本元素**（`TEXT-001`、Selection Text）。
    - 找不到合适消息类/文本元素时，创建 Z 消息类（`create_object_programmatically` MSAG/N）或维护文本元素。
    - 技术性注释可用中文（注释非运行时文案），但用户可见文案必须走消息类/文本元素。
+8b. **文本元素写法（强制）**：`manage_text_elements` 写的是**对象主语言**文本（通常英文）。要中英文双语时：
+   - **① 先 `manage_text_elements` 写英文主语言文本**（symbols id 用 3 字符，如 'E06' / '001'；可带 `transportNumber` 指定请求号）。
+   - **② 再用 `translate_text_pool`（mode=`set`, targetLanguage=`1`）写中文翻译**（key 对应：文本符号如 `E06`/`001`、选择文本 `P_COMP`、标题 `T`）。
+   - **禁止**用 `manage_text_elements` 直接写中文 —— 会把中文写进主语言位置，导致文本池语言不一致（维护时提示"显示不一致"、出现 I 前缀重复符号）；代码级已拦截（返回"⛔ 文本元素主语言禁止直接写中文"时按上面两步执行）。
+   - 写前先 `read` 现有文本元素，避免重复符号/漏合并；写入需指定或沿用传输请求号。
 
 ## 编码规范（默认：SAP 官方 Clean ABAP）
 

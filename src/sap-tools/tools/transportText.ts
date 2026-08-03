@@ -181,8 +181,10 @@ export const textElementsTool = {
   description:
     "读取或修改对象的文本元素（text elements）：标题/文本符号（symbols）、选择文本（selections）、表头（headings）。" +
     "读取所有系统均支持；修改（update）需关闭只读模式，提供 elements 列表 [{id,text}]。\n" +
+    "⚠️ 写的是对象主语言文本（通常英文）：要写中文/翻译必须先用本工具写英文主语言，再用 translate_text_pool 写中文翻译；直接写中文会被代码级拦截。" +
     "⚠️ 规则：symbols 的 id 为 3 字符（源码 TEXT-001 对应 id='001'）；工具自动补 maxLength（SAP 文本符号必须声明长度，缺失报 DS512）；" +
-    "写入后自动激活。headings 的 id 如 listHeader/columnHeader_1；selections 的 id 为参数名（如 P_COMP）。",
+    "写入后自动激活。headings 的 id 如 listHeader/columnHeader_1；selections 的 id 为参数名（如 P_COMP）。" +
+    "写前建议先 read 现有文本元素（避免重复符号）；修改时用 transportNumber 指定传输请求号。",
   inputSchema: z.object({
     action: z.enum(["read", "update"]).describe("read=读取文本元素; update=修改（需 readOnly=false）"),
     objectName: z.string().describe("对象名称"),
@@ -192,6 +194,7 @@ export const textElementsTool = {
       .array(z.object({ id: z.string().describe("符号 ID：symbols 用 3 字符键（'001' 对应源码 TEXT-001）；selections 用参数名（如 P_COMP）；headings 用 listHeader 等"), text: z.string().describe("文本内容") }))
       .optional()
       .describe("update 时必填：要写入的文本元素列表"),
+    transportNumber: z.string().optional().describe("传输请求号（如 DEVK900001）。写文本元素时指定请求号；省略则用对象现有请求"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: {
@@ -200,6 +203,7 @@ export const textElementsTool = {
     objectType: string
     category?: string
     elements?: Array<{ id: string; text: string }>
+    transportNumber?: string
     connectionId?: string
   }): Promise<string> {
     try {
@@ -232,6 +236,21 @@ export const textElementsTool = {
       if (!args.elements || args.elements.length === 0) {
         return "update 需要提供 elements 列表，如 [{id:'001', text:'场景'}]（id 为 3 字符符号键）。"
       }
+      // ⛔ 代码级强制：文本元素写入的是对象主语言文本。直接写中文会把中文写进主语言位置，
+      // 导致文本池语言不一致（维护时提示"显示不一致"、出现 I 前缀重复符号）。
+      // 正确流程：① manage_text_elements 写英文主语言 → ② translate_text_pool(mode=set, targetLanguage='1') 写中文翻译。
+      const cn = args.elements.find((e) => /[一-鿿]/.test(e.text))
+      if (cn) {
+        return (
+          `⛔ 文本元素主语言禁止直接写中文（代码级强制，未写入）：${cn.id} = ${cn.text}\n` +
+          `manage_text_elements 写的是对象主语言文本（通常英文），直接写中文会导致文本池语言不一致（显示不一致/重复符号）。\n` +
+          `正确流程：\n` +
+          `  ① 用 manage_text_elements（本工具）先写英文主语言文本：elements=[{id:'${cn.id}', text:'<英文>'}]\n` +
+          `  ② 再用 translate_text_pool（mode='set', targetLanguage='1'）写中文翻译：texts=[{key:'${cn.id}', text:'${cn.text}'}]\n` +
+          `  ③ 传输请求号：用 transportNumber 参数指定（如 manage_text_elements/translate_text_pool 都传）。\n` +
+          `若对象主语言确实为中文（罕见），请用 translate_text_pool(targetLanguage='1') 直接写入。`
+        )
+      }
       // symbols 必须带 @MaxLength（SAP 校验，缺失报 DS512 文本池不一致）
       // ⚠️ ADT setTextElements 是全量替换语义：先读取现有 symbols 合并（新条目覆盖/新增，旧条目保留），
       // 避免只传新增条目导致原有 TEXT-001/002/003 等被删除
@@ -255,7 +274,8 @@ export const textElementsTool = {
         const lock = await client.lock(url, "MODIFY")
         try {
           const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
-          const transport = lockInfo.IS_LOCAL === "X" ? undefined : lockInfo.CORRNR
+          // 传输请求号：优先用用户指定的 transportNumber；否则取对象现有请求（本地修改 CORRNR 可能为空）
+          const transport = args.transportNumber ?? lockInfo.CORRNR
           await client.setTextElements(url, args.category as never, elements as never, lock.LOCK_HANDLE, transport)
         } finally {
           await client.unLock(url, lock.LOCK_HANDLE).catch(() => undefined)
