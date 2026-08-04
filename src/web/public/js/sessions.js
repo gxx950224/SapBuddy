@@ -115,6 +115,8 @@
       if (!j.success) return;
       if (token !== _refreshToken) return;
       const sessions = j.data.sessions || [];
+      state.sessions = sessions;
+      App.updateTopbarTitle();
       // 计算签名，数据未变则跳过 DOM 重建
       const sig = JSON.stringify(sessions.map((s) => s.path + "|" + s.modified + "|" + s.messageCount + "|" + !!s.current));
       if (!force && sig === _lastSessionsSig && sessions.length > 0) return;
@@ -189,6 +191,17 @@
         list.appendChild(item);
       }
     } catch { /* 忽略 */ }
+  };
+
+  // ── 顶栏当前会话标题 ──
+  App.updateTopbarTitle = function() {
+    const el = document.getElementById("topbar-title");
+    if (!el) return;
+    const norm = (p) => String(p || "").replace(/\\/g, "/").toLowerCase();
+    const cur = norm(state.currentPath);
+    const s = (state.sessions || []).find((x) => norm(x.path) === cur);
+    el.textContent = s ? (s.name || s.firstMessage || "新对话") : "新对话";
+    el.title = el.textContent;
   };
 
   // ── 新建对话按钮 ──

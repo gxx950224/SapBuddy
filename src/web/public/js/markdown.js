@@ -23,7 +23,9 @@
     text = text.replace(/^```(\w*)\n([\s\S]*?)^```\s*$/gm, (m, lang, code) => {
       const blockId = 'code-' + Math.random().toString(36).slice(2, 8);
       const langTag = lang ? '<span class="code-lang">' + lang + '</span>' : '';
-      return stashBlock('<div class="code-block-wrapper">' + langTag + '<button class="code-copy-btn" data-target="' + blockId + '" title="\u590D\u5236\u4EE3\u7801">\u590D\u5236</button><pre id="' + blockId + '"><code>' + escapeHtml(code.replace(/\n$/, "")) + '</code></pre></div>');
+      // language-{lang} \u7C7B\u9A71\u52A8 highlight.js \u9AD8\u4EAE\uFF08abap \u547D\u4E2D\u7B2C\u4E09\u65B9\u8BED\u6CD5\uFF09
+      const langClass = lang ? ' class="language-' + escapeHtml(lang) + '"' : '';
+      return stashBlock('<div class="code-block-wrapper">' + langTag + '<button class="code-copy-btn" data-target="' + blockId + '" title="\u590D\u5236\u4EE3\u7801">\u590D\u5236</button><pre id="' + blockId + '"><code' + langClass + '>' + escapeHtml(code.replace(/\n$/, "")) + '</code></pre></div>');
     });
 
     // 表格 | a | b |
@@ -83,6 +85,28 @@
       r = r.replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, "<em>$1</em>");
       r = r.replace(/\[([^\]]+)\]\((https?:[^)"\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
       return r;
+    }
+  };
+
+  /**
+   * 渲染 markdown 到容器；opts.highlight 时对代码块做语法高亮。
+   * 高亮只应在"全文渲染"时机调用（非流式/流结束/历史），流式增量 tick 内绝不调用，
+   * 否则增量 textNode 会破坏 hljs 生成的 span 结构。
+   */
+  App.mountMarkdown = function(container, src, opts) {
+    container.innerHTML = App.renderMarkdown(src);
+    if (opts?.highlight) App.highlightCodeBlocks(container);
+    return container;
+  };
+
+  /** 对容器内所有 pre code 做语法高亮（跳过 .mermaid 回退源码与已高亮节点） */
+  App.highlightCodeBlocks = function(container) {
+    if (!container || !window.hljs) return;
+    try { hljs.configure({ ignoreUnescapedHTML: true }); } catch {}
+    for (const code of container.querySelectorAll("pre code")) {
+      if (code.classList.contains("hljs") || code.dataset.highlighted) continue;
+      if (code.closest(".mermaid")) continue;
+      try { hljs.highlightElement(code); } catch { /* 单块失败不影响整体 */ }
     }
   };
 

@@ -13,6 +13,8 @@
 
   // ── 流式状态 ──
   App.setStreaming = function(on) {
+    // 无条件清残留光标：覆盖 abort/error/点停止等不经过 consolidate 的路径，防光标残留
+    document.querySelectorAll(".stream-cursor").forEach((c) => c.remove());
     const prev = state.streaming;
     state.streaming = on;
     sendBtn.textContent = on ? "停止" : "发送";
@@ -24,7 +26,8 @@
       const lastDiv = state.pendingTexts?.[state.pendingTexts.length - 1];
       if (lastDiv && lastDiv._renderedLen > 0 && !lastDiv._finalized) {
         lastDiv._finalized = true;
-        lastDiv.innerHTML = App.renderMarkdown(lastDiv._fullText || lastDiv.textContent);
+        App.mountMarkdown(lastDiv, lastDiv._fullText || lastDiv.textContent, { highlight: true });
+        lastDiv._cursor = null;
       }
     }
   };
@@ -140,6 +143,7 @@
       }
       state.currentPath = j.data?.path || null;
       if (j.data?.gen) state.currentGen = j.data.gen;
+      App.updateTopbarTitle();
       await App.refreshSessions();
       await App.refreshState();
     } catch (e) {
@@ -160,6 +164,7 @@
     state.creating = true;
     // 先清掉旧消息并立即加载历史（读文件毫秒级，不等后台重建）
     state.currentPath = path;
+    App.updateTopbarTitle();
     App.clearChat();
     App.loadHistory(path);
     // 后台重建 Agent 会话（耗时约 10s），不阻塞 UI

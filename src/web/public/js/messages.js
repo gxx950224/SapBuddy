@@ -7,7 +7,6 @@
   const App = window.SapBuddy;
   const state = App.state;
   const $ = App.$;
-  const renderMarkdown = App.renderMarkdown;
 
   const messagesEl = $("#messages");
 
@@ -79,12 +78,12 @@
     return state.currentAssistantEl;
   };
 
-  // 思考折叠区（Claude 风格：灰块可折叠，默认收起）
+  // 思考折叠区（DeepSeek 风格：浅色圆角卡片，标题"深度思考"，默认收起）
   function ensureThinkWrap(container) {
     if (container._thinkWrap) return container._thinkWrap;
     const det = document.createElement("details");
     det.className = "agent-think";
-    det.innerHTML = "<summary>💭 思考过程</summary><div class='agent-think-body'></div>";
+    det.innerHTML = "<summary>思考过程</summary><div class='agent-think-body'></div>";
     det.open = false;
     container.prepend(det);
     container._thinkWrap = det;
@@ -101,7 +100,7 @@
 
   function updateThinkSummary(det) {
     const tools = det.querySelectorAll(".tool-card").length;
-    let label = "💭 思考过程";
+    let label = "思考过程";
     if (tools) label += " · " + tools + " 个工具";
     det.querySelector("summary").textContent = label;
   }
@@ -186,6 +185,17 @@
     App.scrollToBottom();
   };
 
+  // ── 流式光标：确保文本 div 末尾有闪烁光标 span（DeepSeek 打字机感） ──
+  function ensureStreamCursor(div) {
+    if (!div._cursor || !div._cursor.isConnected) {
+      const c = document.createElement("span");
+      c.className = "stream-cursor";
+      div.appendChild(c);
+      div._cursor = c;
+    }
+    return div._cursor;
+  }
+
   // ── 渲染 assistant 内容（流式输出时增量更新，避免全量 markdown 重绘） ──
   App.renderAssistantContent = function(container, contentParts) {
     const bubbleEl = container.closest(".msg");
@@ -214,15 +224,17 @@
         div._fullText = part.text;
         if (!state.streaming) {
           // 非流式：直接全量渲染
-          div.innerHTML = renderMarkdown(part.text);
+          App.mountMarkdown(div, part.text, { highlight: true });
           div._renderedLen = part.text.length;
         } else if (div._renderedLen === 0) {
-          // 流式首段：markdown 渲染，保证代码块等初始格式正确
-          div.innerHTML = renderMarkdown(part.text);
+          // 流式首段：markdown 渲染，保证代码块等初始格式正确（不高亮，避免流式中破坏结构）
+          App.mountMarkdown(div, part.text);
           div._renderedLen = part.text.length;
+          ensureStreamCursor(div);
         } else if (part.text.length > div._renderedLen) {
           // 流式增长：只追加增量纯文本（轻量），避免全量重绘
-          div.appendChild(document.createTextNode(part.text.slice(div._renderedLen)));
+          ensureStreamCursor(div);
+          div.insertBefore(document.createTextNode(part.text.slice(div._renderedLen)), div._cursor);
           div._renderedLen = part.text.length;
         } else if (part.text.length < div._renderedLen) {
           // 文本变短（模型改写）：重置偏移，下一轮从首段重渲，避免切片错位；
@@ -249,7 +261,8 @@
       const d = state.currentAssistantEl && state.pendingTexts[0];
       if (d && !d._finalized && d._renderedLen > 0) {
         const fullText = d._fullText || d.textContent;
-        d.innerHTML = renderMarkdown(fullText);
+        App.mountMarkdown(d, fullText, { highlight: true });
+        d._cursor = null;
         d._finalized = true;
       }
       if (state.currentAssistantEl) updateBubbleVisibility(state.currentAssistantEl);
@@ -261,7 +274,8 @@
     const merged = state.pendingTexts.map((d) => d._fullText || d.textContent).join("\n\n");
     const lastDiv = state.pendingTexts[lastIdx];
     if (lastDiv) {
-      lastDiv.innerHTML = renderMarkdown(merged);
+      App.mountMarkdown(lastDiv, merged, { highlight: true });
+      lastDiv._cursor = null;
       lastDiv._finalized = true;
     }
     for (let i = 0; i < lastIdx; i++) state.pendingTexts[i].remove();

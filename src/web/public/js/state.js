@@ -23,6 +23,7 @@ App.state = {
   processEl: null,
   currentThinkSeg: null,
   messageCount: 0,
+  sessions: [],
 };
 
 // ── 工具函数 ──

@@ -55,6 +55,14 @@
   --statusbar-h: 28px;
   --sidebar-w: 286px;
   --right-w: 312px;
+
+  /* 代码块固定深色（两主题一致，DeepSeek 观感） */
+  --code-block-bg: #0d1117;
+  --code-block-border: #30363d;
+  --code-block-fg: #e6edf3;
+  --code-block-fg-dim: #8b949e;
+  /* 用户消息气泡底色 */
+  --user-bubble-bg: #ececf0;
 }
 
 /* ============================
@@ -93,6 +101,8 @@
   --shadow-md: 0 6px 20px rgba(0,0,0,0.45);
   --shadow-lg: 0 16px 48px rgba(0,0,0,0.55);
   --shadow-composer: 0 8px 30px rgba(0,0,0,0.5);
+
+  --user-bubble-bg: #232733;
 }
 
 /* ============================
@@ -163,6 +173,20 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .topbar-left  { display: flex; align-items: center; gap: 10px; }
 .topbar-center { flex: 1; display: flex; justify-content: center; min-width: 0; }
 .topbar-right { display: flex; align-items: center; gap: 8px; }
+
+/* 顶栏当前会话标题（DeepSeek 风格居中标题） */
+#topbar-title {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 55%;
+  min-width: 0;
+  padding: 4px 12px;
+  border-radius: var(--radius-full);
+}
+#topbar-title:hover { background: var(--bg-hover); color: var(--text); }
 
 .logo {
   display: flex; align-items: center; gap: 8px;
@@ -598,7 +622,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
    ============================ */
 .msg {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1000px;
   margin: 0 auto;
   padding: 0 24px;
   display: flex;
@@ -640,16 +664,21 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .user-avatar { display: none; }
 .agent-avatar svg { width: 18px; height: 18px; }
 
-/* 用户消息 - 无气泡 */
+/* 用户消息 - DeepSeek 风格浅色圆角气泡 */
 .msg.user .body {
-  background: transparent; color: var(--text);
-  border-radius: 0; padding: 0;
+  background: var(--user-bubble-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  color: var(--text);
   white-space: pre-wrap; word-break: break-word;
   font-size: 14px; line-height: 1.7;
-  box-shadow: none; max-width: 100%;
+  box-shadow: none; max-width: min(85%, 720px);
   text-align: left;
 }
 .msg.user .body a { color: var(--accent); text-decoration: underline; }
+/* 用户消息不需要"你"标签（DeepSeek 风格纯净气泡） */
+.msg.user .meta { display: none; }
 
 /* Agent 消息 - 无气泡 */
 .msg.agent .body {
@@ -665,46 +694,46 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .msg.system-note {
   text-align: center;
   font-size: 12px; color: var(--text-faint);
-  padding: 6px 0; margin: 0 auto; max-width: 1100px;
-  animation: none;
+  padding: 6px 0; margin: 0 auto; max-width: 1000px; animation: none;
 }
 
 .token-usage-note {
   font-size: 11px; color: var(--text-dim);
-  padding: 2px 0 10px 0; margin: 0 auto; max-width: 1100px;
-  text-align: left; user-select: none;
+  padding: 2px 0 10px 0; margin: 0 auto; max-width: 1000px; text-align: left; user-select: none;
   font-variant-numeric: tabular-nums;
 }
 
-/* 输入中光标 */
-.typing::after {
-  content: ""; display: inline-block;
-  width: 7px; height: 15px;
+/* 流式输出光标：跟随文本末尾的竖线（DeepSeek 打字机感） */
+.stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.2em;
   background: var(--accent);
-  margin-left: 3px; vertical-align: -2px;
-  animation: cursor-blink 1s step-end infinite;
   border-radius: 1px;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: cursor-blink 1s step-end infinite;
 }
 @keyframes cursor-blink { 50% { opacity: 0; } }
 
 /* ============================
    Markdown 内容
    ============================ */
-.md p { margin: 6px 0; line-height: 1.7; }
+.md p { margin: 8px 0; line-height: 1.75; }
 .md p:first-child { margin-top: 0; }
 .md p:last-child { margin-bottom: 0; }
-.md h1, .md h2, .md h3, .md h4 { margin: 16px 0 8px; font-weight: 600; color: var(--text); }
-.md h1 { font-size: 17px; }
-.md h2 { font-size: 16px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
-.md h3 { font-size: 15px; }
-.md h4 { font-size: 14px; }
-.md ul, .md ol { margin: 6px 0 6px 22px; line-height: 1.7; }
+.md h1, .md h2, .md h3, .md h4 { margin: 24px 0 10px; font-weight: 600; color: var(--text); }
+.md h1 { font-size: 21px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+.md h2 { font-size: 19px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md h3 { font-size: 16px; }
+.md h4 { font-size: 15px; }
+.md ul, .md ol { margin: 8px 0 8px 24px; line-height: 1.75; }
 .md li { margin: 2px 0; }
-.md li + li { margin-top: 4px; }
+.md li + li { margin-top: 6px; }
 .md code.inline {
   font-family: var(--font-mono); font-size: 12.5px;
   background: var(--bg-elevated); border: 1px solid var(--border);
-  border-radius: 5px; padding: 1px 6px; color: var(--accent);
+  border-radius: 5px; padding: 2px 7px; color: var(--accent);
 }
 .md pre {
   background: var(--bg-elevated); padding: 12px 14px; margin: 10px 0;
@@ -712,52 +741,67 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   border: 1px solid var(--border);
 }
 .md pre code { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65; color: var(--text); tab-size: 2; }
-.md table { border-collapse: collapse; margin: 10px 0; font-size: 13px; width: 100%; }
-.md th, .md td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
+.md table { border-collapse: collapse; margin: 12px 0; font-size: 13px; width: 100%; }
+.md th, .md td { border: 1px solid var(--border); padding: 8px 14px; text-align: left; }
 .md th { background: var(--bg-elevated); font-weight: 600; font-size: 12px; color: var(--text-dim); }
 .md tr:nth-child(even) td { background: var(--bg-elevated); }
 .md a { color: var(--accent); text-decoration: none; }
 .md a:hover { text-decoration: underline; }
 .md blockquote {
-  border-left: 3px solid var(--accent-dim);
-  padding: 6px 0 6px 14px; color: var(--text-dim);
-  margin: 10px 0; background: var(--bg-elevated);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-soft);
+  padding: 10px 14px; color: var(--text-dim);
+  margin: 12px 0;
+  border-radius: 0 10px 10px 0;
 }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
 .md strong { font-weight: 600; }
 .md img { max-width: 100%; border-radius: var(--radius-sm); }
 
-/* 代码块（带标题 + 复制） */
+/* 代码块（DeepSeek 风格：固定深色圆角 + 语言条 + 复制） */
 .code-block-wrapper {
-  position: relative; margin: 10px 0;
-  border-radius: var(--radius-md); overflow: hidden;
-  border: 1px solid var(--border); box-shadow: var(--shadow-sm);
+  position: relative; margin: 12px 0;
+  border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--code-block-border);
+  background: var(--code-block-bg);
+  box-shadow: var(--shadow-sm);
 }
 .code-lang {
-  display: block; background: var(--bg-surface);
-  color: var(--text-faint); font-size: 11px; font-family: var(--font-mono);
-  padding: 5px 12px; border-bottom: 1px solid var(--border); user-select: none;
+  display: block; padding: 6px 12px;
+  color: var(--code-block-fg-dim);
+  font-size: 11px; font-family: var(--font-mono);
+  text-transform: uppercase; user-select: none;
+  border-bottom: 1px solid var(--code-block-border);
+  background: rgba(255, 255, 255, 0.03);
 }
-.md pre { background: var(--bg-elevated); padding: 12px 14px; margin: 0; border: none; border-radius: 0; }
+/* 代码块内部 pre：透明背景，深色由 wrapper 提供（覆盖 .md pre 的浅色） */
+.code-block-wrapper pre {
+  background: transparent; padding: 12px 14px; margin: 0;
+  border: none; border-radius: 0;
+}
+.code-block-wrapper pre code {
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
+  color: var(--code-block-fg); tab-size: 2;
+}
 .code-copy-btn {
-  position: absolute; top: 6px; right: 8px;
-  background: var(--bg-surface); color: var(--text-dim);
-  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  position: absolute; top: 7px; right: 8px;
+  background: #21262d; color: var(--code-block-fg-dim);
+  border: 1px solid var(--code-block-border); border-radius: 6px;
   font-size: 11px; padding: 3px 10px; z-index: 1; opacity: 0;
   transition: opacity var(--ease), background var(--ease);
   font-family: var(--font-ui);
 }
 .code-block-wrapper:hover .code-copy-btn { opacity: 1; }
-.code-copy-btn:hover { background: var(--bg-hover); color: var(--text); }
+.code-copy-btn:hover { background: #30363d; color: var(--code-block-fg); }
+/* 高亮主题自带背景不用，由 wrapper 提供 */
+.code-block-wrapper .hljs { background: transparent; }
 
 /* ============================
    执行过程 / 深度思考（WorkBuddy 折叠内联风格）
    ============================ */
 .msg-thinking {
   display: block;
-  width: 100%; max-width: 1100px;
-  margin: 0 auto;
+  width: 100%; max-width: 1000px; margin: 0 auto;
   background: transparent; border: none;
   border-radius: 0;
   overflow: visible;
@@ -786,12 +830,12 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 }
 
 .think-seg {
-  color: var(--text-dim); font-style: italic; font-size: 12.5px;
+  color: var(--text-dim); font-size: 13px;
   white-space: pre-wrap; word-break: break-word;
   padding: 0; border-left: none;
-  max-height: 240px; overflow-y: auto; line-height: 1.6;
+  line-height: 1.7;
 }
-.think-seg + .think-seg { border-top: 1px dashed var(--border); padding-top: 10px; }
+.think-seg + .think-seg { border-top: 1px solid var(--border); padding-top: 10px; }
 
 /* ============================
    工具调用卡片
@@ -899,7 +943,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   background: transparent;
 }
 #input-card {
-  max-width: 1100px; margin: 0 auto;
+  max-width: 1000px; margin: 0 auto;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
@@ -1786,48 +1830,54 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 }
 .attach-remove:hover { color: var(--error, #e5484d); }
 
-/* ── ChatGPT/Claude 风格：思考折叠 + 内联工具链 ── */
+/* ── DeepSeek 风格：深度思考卡片 + 内联工具链 ── */
 .agent-think {
-  margin: 4px 0 6px;
-  background: var(--bg-hover, #26263a);
+  margin: 6px 0 8px;
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   overflow: hidden;
   width: 100%;
   box-sizing: border-box;
+  transition: border-color var(--ease);
 }
+.agent-think:hover { border-color: var(--border-strong); }
 .agent-think summary {
   display: flex; align-items: center; gap: 6px;
-  padding: 7px 12px;
-  font-size: 12px; font-weight: 600;
+  padding: 9px 14px;
+  font-size: 12px; font-weight: 500;
   color: var(--text-dim);
   cursor: pointer; user-select: none;
   list-style: none;
-  background: var(--bg-app);
+  letter-spacing: 0.2px;
 }
 .agent-think summary::-webkit-details-marker { display: none; }
+/* 右侧展开箭头：▸ 指向右，展开时旋转 90° 朝下 */
 .agent-think summary::before {
-  content: "▸"; display: inline-block;
-  font-size: 11px; transition: transform 0.15s ease;
-  color: var(--text-faint);
+  content: ""; width: 0; height: 0;
+  margin-left: auto; flex-shrink: 0;
+  border-left: 5px solid var(--text-faint);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.2s ease;
 }
 .agent-think[open] summary::before { transform: rotate(90deg); }
 .agent-think[open] summary { border-bottom: 1px solid var(--border); }
 .agent-think-body {
-  padding: 6px 10px;
-  font-size: 12.5px; line-height: 1.6;
+  padding: 2px 14px 12px;
+  font-size: 13px; line-height: 1.7;
   color: var(--text-dim);
   white-space: pre-wrap;
   max-height: 520px; overflow-y: auto;
 }
-.agent-think-body .agent-tools { margin-top: 4px; }
+.agent-think-body .agent-tools { margin-top: 6px; }
 .agent-think-body .agent-tools .tool-card { margin-bottom: 2px; }
 
 /* 工具调用链（助手消息内，回复文本前） */
 .agent-tools {
   display: flex; flex-direction: column; gap: 4px;
   margin: 4px 0 6px;
-  max-width: 880px;
+  max-width: 1000px;
   width: 100%;
 }
 .agent-tools .tool-card {
