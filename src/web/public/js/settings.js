@@ -213,8 +213,11 @@
         return;
       }
       if (!cfg.url || typeof cfg.url !== "string") {
-        showMcpError(`服务器「${name}」缺少 url`);
-        return;
+        // 已禁用的服务器允许无 url（历史数据展示），启用中的必须可连
+        if (!cfg.disabled) {
+          showMcpError(`服务器「${name}」缺少 url`);
+          return;
+        }
       }
     }
     clearMcpError();

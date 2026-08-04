@@ -32,6 +32,17 @@ export function loadMcpServers() {
   return out
 }
 
+/** 读取 MCP 服务器完整配置（含 disabled/无 url），供设置页展示历史数据 */
+export function loadMcpServersAll() {
+  for (const f of [PROJECT_MCP_FILE, GLOBAL_MCP_FILE]) {
+    try {
+      const j = JSON.parse(fs.readFileSync(f, "utf8"))
+      if (j && j.mcpServers && typeof j.mcpServers === "object") return { ...j.mcpServers }
+    } catch { /* 忽略 */ }
+  }
+  return {}
+}
+
 /** 保存 MCP 服务器配置到项目 + 全局（供 pi mcp gateway 使用） */
 export function saveMcpServers(servers) {
   const payload = JSON.stringify({ mcpServers: servers ?? {} }, null, 2)
@@ -62,8 +73,8 @@ function rpcRequest(urlStr, server, method, params, id) {
         path: u.pathname + u.search,
         method: "POST",
         headers: { ...headers, "Content-Length": Buffer.byteLength(body) },
-        // tls.rejectUnauthorized=false 允许自签名证书（内网 SAP 常用）
-        rejectUnauthorized: server.tls?.rejectUnauthorized !== false,
+        // 默认信任自签名证书（内网 SAP 服务器常见），配置 tls.rejectUnauthorized=true 才严格校验
+        rejectUnauthorized: server.tls?.rejectUnauthorized === true,
       },
       (res) => {
         let data = ""

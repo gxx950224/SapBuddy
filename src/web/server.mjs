@@ -685,7 +685,7 @@ const ids = models.map((m) => m.id)
     }
     // ── MCP（已直接集成 42 工具，返回空配置）──
     if (p === "/api/mcp") {
-      const { loadMcpServers, saveMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
+      const { loadMcpServersAll, saveMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
       if (req.method === "POST") {
         const body = await readBody(req)
         const servers = (body && (body.mcpServers ?? body.config ?? body)) || {}
@@ -702,10 +702,12 @@ const ids = models.map((m) => m.id)
         return json(res, 200, { success: true, config: servers, status })
       }
       // GET：读配置 + 状态缓存（无缓存且配置非空时惰性测一次）
-      const servers = loadMcpServers()
-      if (!mcpStatusCache && Object.keys(servers).length > 0) {
+      // config 用全量读取（含 disabled），设置页需展示历史数据；status 只测可用（有 url 且未禁用）
+      const servers = loadMcpServersAll()
+      const active = Object.fromEntries(Object.entries(servers).filter(([, s]) => s && s.disabled !== true && s.url))
+      if (!mcpStatusCache && Object.keys(active).length > 0) {
         try {
-          mcpStatusCache = await Promise.all(Object.entries(servers).map(([n, s]) => testServer(n, s)))
+          mcpStatusCache = await Promise.all(Object.entries(active).map(([n, s]) => testServer(n, s)))
         } catch {}
       }
       return json(res, 200, { success: true, config: servers, status: mcpStatusCache ?? [] })
