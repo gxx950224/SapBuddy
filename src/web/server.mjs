@@ -57,8 +57,11 @@ try {
 let agent = null
 let session = null
 let busy = false
+let rebuildPromise = null  // 在途重建任务（新建/切换懒重建，防并发双开 agent）
 
 async function ensureAgent() {
+  // 有后台重建在途 → 等它完成（新建/切换后立即发消息的场景）
+  if (rebuildPromise) return rebuildPromise
   if (agent) return agent
   const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
   // 启动后首次对话：默认新建会话（不自动续最近历史会话；用户主动点历史会话才切换）
@@ -68,21 +71,36 @@ async function ensureAgent() {
   return agent
 }
 
-/** 切换会话：销毁旧会话，重建到指定文件 */
+/** 重建 agent 到指定会话文件。懒重建：新建/切换时后台触发，发消息时才真正等待完成。
+ *  重复调用自动去重（目标相同的重建只跑一次；目标不同的等当前完成后再重建）。 */
 async function rebuildAgent(sessionFile) {
-  try { await session?.dispose() } catch {}
-  agent = null
-  session = null
-  // 会话切换时清除写授权窗口，避免旧会话的批准残留到新会话
-  try {
-    const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
-    r.clearWriteApproval?.()
-  } catch { /* 忽略 */ }
-  const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-  agent = await createAgent({ sessionFile })
-  session = agent.session
-  attachStreaming(session)
-  return agent
+  if (rebuildPromise) {
+    const inFlight = rebuildPromise
+    await inFlight.catch(() => {})
+    if (session && path.resolve(session.sessionFile) === path.resolve(sessionFile)) return agent
+  }
+  rebuildPromise = (async () => {
+    const oldSession = session
+    const oldFile = oldSession?.sessionFile
+    agent = null
+    session = null
+    try { await oldSession?.dispose() } catch {}
+    // 旧会话是空会话（无任何消息）→ 顺手删掉，避免列表残留「新会话」空条目
+    if (oldFile && path.resolve(oldFile) !== path.resolve(sessionFile) && isEmptySession(oldFile)) {
+      try { fs.unlinkSync(oldFile); console.log("[session] 已删除空会话", oldFile) } catch {}
+    }
+    // 会话切换时清除写授权窗口，避免旧会话的批准残留到新会话
+    try {
+      const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
+      r.clearWriteApproval?.()
+    } catch { /* 忽略 */ }
+    const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
+    agent = await createAgent({ sessionFile })
+    session = agent.session
+    attachStreaming(session)
+    return agent
+  })()
+  try { return await rebuildPromise } finally { rebuildPromise = null }
 }
 
 function attachStreaming(s) {
@@ -394,17 +412,13 @@ const server = http.createServer(async (req, res) => {
 
     // 新建会话（真正创建新会话文件 + 重建 agent，避免数据叠加）
     if (p === "/api/session/new" && req.method === "POST") {
-      const curFile = session?.sessionFile
       const dir = sessionsDir()
       fs.mkdirSync(dir, { recursive: true })
       const file = path.join(dir, `chat-${Date.now()}.jsonl`)
       fs.writeFileSync(file, "")
-      await rebuildAgent(file)
-      // 旧会话是空会话 → 重建（已释放句柄）后删除，避免残留 chat-xxx.jsonl
-      if (curFile && curFile !== file && isEmptySession(curFile)) {
-        try { fs.unlinkSync(curFile); console.log("[session] 已删除空会话", curFile) } catch (e) { console.error("[session] 删除空会话失败", curFile, e.code) }
-      }
-      return json(res, 200, { success: true, data: { path: file, sessionId: session?.sessionId, gen: Date.now() } })
+      // 懒重建：后台重建 agent（约 10s），立即返回不卡 UI；首条消息时若未就绪再等
+      rebuildAgent(file).catch((err) => console.error("[session] agent 重建失败", err.message))
+      return json(res, 200, { success: true, data: { path: file, sessionId: "", gen: Date.now() } })
     }
 
     // 会话列表
@@ -473,17 +487,9 @@ const server = http.createServer(async (req, res) => {
       const { path: file } = await readBody(req)
       if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
       if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许切换会话文件" })
-      // 当前会话是空会话（无消息）→ 重建（已释放句柄）后自动删除，避免残留 chat-xxx.jsonl
-      const curFile = session?.sessionFile
-      try {
-        await rebuildAgent(file)
-        if (curFile && curFile !== file && isEmptySession(curFile)) {
-          try { fs.unlinkSync(curFile); console.log("[session] 已删除空会话", curFile) } catch (e) { console.error("[session] 删除空会话失败", curFile, e.code) }
-        }
-        return json(res, 200, { success: true, data: { path: file, gen: Date.now() } })
-      } catch (e) {
-        return json(res, 500, { error: e.message })
-      }
+      // 懒重建：后台重建 agent 到目标文件，立即返回不阻塞 UI；发消息时再等待完成
+      rebuildAgent(file).catch((err) => console.error("[session] agent 重建失败", err.message))
+      return json(res, 200, { success: true, data: { path: file, gen: Date.now() } })
     }
 
     // ── SAP 状态（真实检测）──
