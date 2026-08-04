@@ -173,7 +173,7 @@ export const activateTool = {
   async execute(args: { objectName: string; objectType?: string; connectionId?: string }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
-      const obj = await requireObject(connId, args.objectName, args.objectType)
+      const obj = await requireObject(connId, args.objectName, args.objectType, { includeDirectRead: false })
       const client = await getClient(connId)
       const result = await client.activate(
         obj["adtcore:name"],
@@ -350,7 +350,7 @@ export const createTestIncludeTool = {
   async execute(args: { className: string; connectionId?: string }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
-      const obj = await requireObject(connId, args.className, "CLAS/OC")
+      const obj = await requireObject(connId, args.className, "CLAS/OC", { includeDirectRead: false })
       const client = await getClient(connId)
       const oldState = client.stateful
       client.stateful = session_types.stateful
@@ -393,7 +393,7 @@ export const updateDescriptionTool = {
   }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
-      const obj = await requireObject(connId, args.objectName, args.objectType)
+      const obj = await requireObject(connId, args.objectName, args.objectType, { includeDirectRead: false })
       const client = await getClient(connId)
       const uri = obj["adtcore:uri"]
 

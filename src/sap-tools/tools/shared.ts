@@ -54,13 +54,16 @@ export async function resolveConnectionId(connectionId?: string): Promise<string
   return first.id
 }
 
-/** 按名称+类型搜索对象，返回第一条结果的完整信息（含 URI） */
+/** 按名称+类型搜索对象，返回第一条结果的完整信息（含 URI）
+ * opts.includeDirectRead=false 时跳过 include 通用通道直读回退（写操作专用：保持原函数组解析行为） */
 export async function findObject(
   connId: string,
   objectName: string,
   objectType?: string,
-  searchTypes?: string[]
+  searchTypes?: string[],
+  opts?: { includeDirectRead?: boolean }
 ): Promise<SearchResult | undefined> {
+  const useDirectRead = opts?.includeDirectRead !== false
   const client = await getClient(connId)
   const typesArr: string[] = objectType ? [objectType] : searchTypes ?? ([...DEFAULT_SEARCH_TYPES] as unknown as string[])
   const pattern = objectName.toUpperCase()
@@ -89,8 +92,12 @@ export async function findObject(
 
   let found = await batch(ordered.slice(0, 12))
   if (!found && ordered.length > 12) found = await batch(ordered.slice(12))
-  // 函数组内部程序（SAPL<FG>/L<FG>*）在 ADT 中不是独立 PROGRAM 资源，按名称直接搜永远找不到，
-  // 只能通过函数组（FUGR）对象访问 —— 自动解析到函数组主程序或 include
+  // 函数组内部程序（SAPL<FG>/L<FG>*）在 ADT 中不是独立 PROGRAM 资源，按名称直接搜永远找不到。
+  // 优先走 ADT 的 include 通用通道按名直读（源码内容含 INCLUDE 声明即确认），命名再怪也能读；
+  // 读不通再退回按函数组规则解析（SAPL<FG> → 主程序；L<FG><后缀> → include）。
+  // include 直读是"读"路径（返回 /programs/includes 通用 URI）；写操作传 includeDirectRead=false 跳过它，
+  // 保持原函数组解析行为，避免影响写/激活/改描述。
+  if (!found && useDirectRead) found = await findIncludeByDirectRead(connId, objectName)
   if (!found) found = await findFunctionGroupProgram(connId, objectName)
   return found
 }
@@ -107,6 +114,25 @@ export function matchFunctionGroupProgram(name: string): { fgName: string; isMai
     }
   }
   return undefined
+}
+
+/** ADT 的 include 通用通道：/programs/includes/<name>/source/main。
+ * 函数组 include（L<FG><后缀>）与独立 INCLUDE 程序都能经它按名直读，无需知道归属函数组。
+ * 读到源码且内容含 "INCLUDE xxx ." 声明即确认是 include 程序。 */
+async function findIncludeByDirectRead(connId: string, objectName: string): Promise<SearchResult | undefined> {
+  const upper = (objectName || "").toUpperCase()
+  if (!/^[A-Z][A-Z0-9_]{2,}$/.test(upper)) return undefined
+  const client = await getClient(connId)
+  const base = `/sap/bc/adt/programs/includes/${upper.toLowerCase()}`
+  try {
+    const src = await client.getObjectSource(`${base}/source/main`)
+    if (/INCLUDE\s+[A-Z0-9_]+\s*\./i.test(String(src).slice(0, 5000))) {
+      return { "adtcore:name": upper, "adtcore:type": "FUGR/I", "adtcore:uri": base } as unknown as SearchResult
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
 }
 
 /** 函数组内部程序解析（ADT 架构：SAPL<FG>/L<FG>* 不是独立 PROGRAM 资源）：
@@ -166,9 +192,10 @@ export async function findFunctionGroupProgram(connId: string, objectName: strin
 export async function requireObject(
   connId: string,
   objectName: string,
-  objectType?: string
+  objectType?: string,
+  opts?: { includeDirectRead?: boolean }
 ): Promise<SearchResult> {
-  const obj = await findObject(connId, objectName, objectType)
+  const obj = await findObject(connId, objectName, objectType, undefined, opts)
   if (!obj) {
     throw new Error(
       `未找到 ABAP 对象 "${objectName}"${objectType ? `（类型 ${objectType}）` : ""}。` +
