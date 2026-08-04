@@ -114,7 +114,7 @@
    * 渲染容器内所有未渲染的 .mermaid 节点
    * 首次调用初始化 mermaid（theme 跟随页面主题），渲染失败降级显示源码
    */
-  App.renderMermaid = function(container) {
+  App.renderMermaid = async function(container) {
     if (!container) return;
     if (typeof window.mermaid === "undefined") return;
     const nodes = container.querySelectorAll(".mermaid[data-code]:not([data-rendered])");
@@ -125,31 +125,45 @@
         window.mermaid.initialize({ startOnLoad: false, theme: App.isDark?.() ? "dark" : "default", securityLevel: "loose", flowchart: { useMaxWidth: true } });
       }
     } catch { /* 忽略 */ }
-    nodes.forEach((el) => {
+    for (const el of nodes) {
       const raw = decodeURIComponent(el.dataset.code || "");
-      const code = fixMermaid(raw)
+      const code = fixMermaid(raw);
+      let err = null;
       try {
-        window.mermaid.parse(code);
+        // v10 parse 返回 Promise，必须 await 才能真正捕获语法错误
+        await window.mermaid.parse(code);
+      } catch (e) { err = e; }
+      if (err) { markMermaidError(el, raw, err); continue; }
+      try {
         const id = "mermaid-" + Math.random().toString(36).slice(2, 8);
-        window.mermaid.render(id, code).then(({ svg }) => {
-          if (svg) {
-            el.innerHTML = svg;
-            el.dataset.rendered = "1";
-            el.dataset.code = encodeURIComponent(raw); // 保留原始代码供复制
-            attachMermaidToolbar(el, raw);
-          }
-        }).catch((err) => {
-          el.dataset.rendered = "1";
-          el.classList.add("mermaid-error");
-          el.setAttribute("title", "Mermaid 渲染失败: " + (err && err.message ? err.message : String(err)));
-        });
-      } catch (err) {
+        const { svg } = await window.mermaid.render(id, code);
+        // v10 render 解析失败不报错，而是 resolve 一张错误 SVG（含 error-text/Syntax error），需识别后降级
+        if (!svg || /error-text|Syntax error|Parse error/i.test(svg)) {
+          markMermaidError(el, raw, new Error("语法错误"));
+          continue;
+        }
+        el.innerHTML = svg;
         el.dataset.rendered = "1";
-        el.classList.add("mermaid-error");
-        el.setAttribute("title", "Mermaid 渲染失败: " + (err && err.message ? err.message : String(err)));
+        el.dataset.code = encodeURIComponent(raw); // 保留原始代码供复制
+        attachMermaidToolbar(el, raw);
+      } catch (e) {
+        markMermaidError(el, raw, e);
       }
-    });
+    }
   };
+
+  /** mermaid 渲染失败：标记并保留源码（不显示错误图），附一行友好提示 */
+  function markMermaidError(el, raw, err) {
+    el.dataset.rendered = "1";
+    el.classList.add("mermaid-error");
+    el.setAttribute("title", "Mermaid 渲染失败: " + (err && err.message ? err.message : String(err)));
+    if (!el.querySelector(".mermaid-error-hint")) {
+      const hint = document.createElement("div");
+      hint.className = "mermaid-error-hint";
+      hint.textContent = "图未生成成功，已保留源码供查看";
+      el.prepend(hint);
+    }
+  }
 
   /** 给渲染后的 mermaid 图挂工具栏（放大查看 / 复制代码） */
   function attachMermaidToolbar(el, rawCode) {
@@ -188,6 +202,11 @@
     try {
       const id = "mermaid-zoom-" + Math.random().toString(36).slice(2, 8);
       window.mermaid.render(id, code).then(({ svg }) => {
+        // 与列表同规则：render 返回的错误 SVG（Syntax error）也要降级显示源码
+        if (!svg || /error-text|Syntax error|Parse error/i.test(svg)) {
+          body.innerHTML = '<pre class="mermaid-lightbox-fallback">' + App.escapeHtml(rawCode) + "</pre>";
+          return;
+        }
         body.innerHTML = svg || "";
       }).catch(() => {
         body.innerHTML = '<pre class="mermaid-lightbox-fallback">' + App.escapeHtml(rawCode) + "</pre>";

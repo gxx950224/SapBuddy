@@ -1628,6 +1628,14 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   cursor: help;
 }
 .mermaid-error pre { margin: 0; }
+.mermaid-error-hint {
+  text-align: left;
+  font-size: 12px;
+  color: var(--err, #e5484d);
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px dashed var(--err, #e5484d);
+}
 
 /* ── Mermaid 工具栏与放大查看 ── */
 .mermaid { position: relative; }
