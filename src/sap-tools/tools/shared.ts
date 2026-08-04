@@ -112,29 +112,54 @@ export function matchFunctionGroupProgram(name: string): { fgName: string; isMai
 /** 函数组内部程序解析（ADT 架构：SAPL<FG>/L<FG>* 不是独立 PROGRAM 资源）：
  *  SAPL<FG> → FUGR/F（读 /source/main 得 include 骨架，即 SE38 中 SAPL<FG> 的内容）
  *  L<FG><后缀> → FUGR/I（读 /functions/groups/<fg>/includes/<include>/source/main 得完整源码）
+ *  后缀不限于标准 3 字符：如 LCORU_SFD1（函数组 CORU）也能识别——从名字里试探候选函数组名，
+ *  用 FUGR 搜索验证真实存在后命中，避免误判为独立程序（搜索找不到）。
  *  找不到对应函数组返回 undefined */
 export async function findFunctionGroupProgram(connId: string, objectName: string): Promise<SearchResult | undefined> {
-  const m = matchFunctionGroupProgram(objectName)
-  if (!m) return undefined
-  const client = await getClient(connId)
-  try {
-    const hits = await client.searchObject(m.fgName, "FUGR", 5)
-    const fg = hits.find((h) => (h["adtcore:name"] ?? "").toUpperCase() === m.fgName)
-    if (!fg) return undefined
-    const upper = objectName.toUpperCase()
-    if (m.isMain) {
-      return { ...fg, "adtcore:name": upper, "adtcore:type": "FUGR/F" }
+  const upper = (objectName || "").toUpperCase()
+  const candidates: { fgName: string; isMain: boolean }[] = []
+  if (upper.startsWith("SAPL") && upper.length > 4) {
+    candidates.push({ fgName: upper.slice(4), isMain: true })
+  } else if (upper.startsWith("L") && upper.length > 4) {
+    const std = matchFunctionGroupProgram(upper)
+    if (std) {
+      candidates.push(std)
+    } else {
+      const rest = upper.slice(1)
+      // 优先：第一个下划线前的部分作函数组名（如 LCORU_SFD1 → CORU）
+      const under = rest.indexOf("_")
+      if (under > 0) candidates.push({ fgName: rest.slice(0, under), isMain: false })
+      // 逐步缩短后缀试探（fg 从短到长），由 FUGR 搜索验证存在
+      for (let cut = rest.length - 2; cut >= 1; cut--) {
+        const fg = rest.slice(0, -cut)
+        if (fg.length >= 3 && !candidates.some((c) => c.fgName === fg)) {
+          candidates.push({ fgName: fg, isMain: false })
+        }
+      }
     }
-    const base = fg["adtcore:uri"] ?? `/sap/bc/adt/functions/groups/${m.fgName.toLowerCase()}`
-    return {
-      ...fg,
-      "adtcore:name": upper,
-      "adtcore:type": "FUGR/I",
-      "adtcore:uri": `${base}/includes/${upper.toLowerCase()}`,
-    }
-  } catch {
+  } else {
     return undefined
   }
+  const client = await getClient(connId)
+  for (const c of candidates) {
+    if (!c.fgName) continue
+    try {
+      const hits = await client.searchObject(c.fgName, "FUGR", 5)
+      const fg = hits.find((h) => (h["adtcore:name"] ?? "").toUpperCase() === c.fgName)
+      if (!fg) continue
+      if (c.isMain) return { ...fg, "adtcore:name": upper, "adtcore:type": "FUGR/F" }
+      const base = fg["adtcore:uri"] ?? `/sap/bc/adt/functions/groups/${c.fgName.toLowerCase()}`
+      return {
+        ...fg,
+        "adtcore:name": upper,
+        "adtcore:type": "FUGR/I",
+        "adtcore:uri": `${base}/includes/${upper.toLowerCase()}`,
+      }
+    } catch {
+      /* 继续下一个候选函数组 */
+    }
+  }
+  return undefined
 }
 
 /** 按名称+类型搜索对象（找不到抛错，附带搜索建议） */

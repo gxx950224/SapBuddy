@@ -42,7 +42,12 @@ export const searchObjectsTool = {
       const m = matchFunctionGroupProgram(body)
       if (m) return m.fgName
       if (p.startsWith("SAPL") && p.length > 4) return p.slice(4)
-      if (p.startsWith("L") && p.length > 3 && !p.startsWith("LSAPL")) return p.slice(1)
+      if (p.startsWith("L") && p.length > 3 && !p.startsWith("LSAPL")) {
+        const rest = p.slice(1)
+        // 带下划线的 L 程序优先取下划线前作函数组名（如 LCORU_SFD1 → CORU）
+        const under = rest.indexOf("_")
+        return under > 0 ? rest.slice(0, under) : rest
+      }
       return undefined
     }
     try {
