@@ -5,8 +5,12 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
+import { createRequire } from "node:module"
 import { registerSapTools, installWriteGate, handleUserMessage } from "./register.js"
 import { SAPBUDDY_BANNER } from "./banner.js"
+
+const require = createRequire(import.meta.url)
+const SAPBUDDY_VERSION: string = require("../../package.json").version
 
 export default async function (pi: ExtensionAPI): Promise<void> {
   // 启动图标：仅进程首次加载打印一次。reload 时扩展重载会再次执行本函数，
@@ -14,7 +18,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   if (!(globalThis as any).__sapbuddy_banner_shown) {
     ;(globalThis as any).__sapbuddy_banner_shown = true
     console.log(SAPBUDDY_BANNER)
-    console.log("  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具 · author:guoxiaoxi")
+    console.log(`  SapBuddy · SAP ABAP AI 全能助手 · 42 个 SAP 工具 · author:guoxiaoxi · 版本:${SAPBUDDY_VERSION}`)
   }
   try {
     registerSapTools(pi)
