@@ -11,9 +11,9 @@ const { createObjectTool } = require("../dist/sap-tools/tools/writeTools.js")
 
 const base = { name: "ZTEST001", description: "测试对象", packageName: "ZPKG", connectionId: "none" }
 
-test("create_object_programmatically：PROG/I 被拦截（报表必须用 PROG/P）", async () => {
+test("create_object_programmatically：PROG/I（Include）放行，进入连接阶段", async () => {
   const out = await createObjectTool.execute({ ...base, objectType: "PROG/I" })
-  assert.ok(out.includes("PROG/P"), `应提示改用 PROG/P，实际: ${out.slice(0, 160)}`)
+  assert.ok(!out.includes("必须用 PROG/P"), `Include 创建不应被报表规则拦截，实际: ${out.slice(0, 200)}`)
 })
 
 test("create_object_programmatically：FUGR/F 被拦截（必须用 FUGR/FF）", async () => {
