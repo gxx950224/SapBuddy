@@ -38,12 +38,24 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
     for (const t of opts.texts ?? []) {
       const key = t.key.toUpperCase()
-      L.push(`    READ TABLE lt_tp INTO ls_tp WITH KEY key = ${abapStr(key)}.`)
-      L.push("    IF sy-subrc = 0.")
-      L.push(`      ls_tp-entry = ${abapStr(t.text)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
-      L.push("    ELSE.")
-      L.push(`      CLEAR ls_tp. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
-      L.push("    ENDIF.")
+      if (key === "T") {
+        // 标题：READ TEXTPOOL 返回的标题 key 是空串 ''，INSERT 用 '' 才写对标题；
+        // 若按 'T' 去匹配会追加一条垃圾键（曾导致标题重复）。先删历史 'T' 垃圾键再匹配空键。
+        L.push(`    DELETE lt_tp WHERE key = ${abapStr(key)}.`)
+        L.push("    READ TABLE lt_tp INTO ls_tp WITH KEY key = ''.")
+        L.push("    IF sy-subrc = 0.")
+        L.push(`      ls_tp-entry = ${abapStr(t.text)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
+        L.push("    ELSE.")
+        L.push(`      CLEAR ls_tp. ls_tp-key = ''. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
+        L.push("    ENDIF.")
+      } else {
+        L.push(`    READ TABLE lt_tp INTO ls_tp WITH KEY key = ${abapStr(key)}.`)
+        L.push("    IF sy-subrc = 0.")
+        L.push(`      ls_tp-entry = ${abapStr(t.text)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
+        L.push("    ELSE.")
+        L.push(`      CLEAR ls_tp. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
+        L.push("    ENDIF.")
+      }
     }
     L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
     L.push("    DATA(lv_msg2) = |added { lv_ins } updated { lv_upd }|.")
@@ -76,7 +88,7 @@ export const translateTextPoolTool = {
     "中文文本元素（如符号/选择文本的简体中文）一律用本工具写入（targetLanguage='1'），不要用 manage_text_elements 直接写中文。" +
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
     "两种模式：copy（把源语言 text pool 整体复制为目标语言）或 set（按 [{key,text}] 覆盖/新增指定条目）。" +
-    "key: T=程序描述/标题, I=文本符号(如 '001' 对应 TEXT-001), S=选择文本(如 'P_COMP')。" +
+    "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=3位编号（如 '001' 对应源码 TEXT-001）；选择文本=参数名（如 'S_CARRID'、'P_COMP'）。不要把类型字母 I/S 当 key 传。" +
     "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活；文本池随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
@@ -105,7 +117,29 @@ export const translateTextPoolTool = {
       const prog = args.objectName.toUpperCase()
 
       if (args.mode === "set" && (!args.texts || args.texts.length === 0)) {
-        return "set 模式需要 texts 参数（[{key, text}]，key: T/I/S）。"
+        return "set 模式需要 texts 参数（[{key, text}]，key: T/符号编号/选择参数名）。"
+      }
+      // ⛔ key 校验+归一化：防止把类型字母(I/S)或内部存储键(I001)当文本池键传入写出垃圾条目（曾导致中文写错键位）
+      if (args.mode === "set" && args.texts) {
+        args.texts = args.texts.map((t) => {
+          const upper = t.key.trim().toUpperCase()
+          const m = upper.match(/^I(\d{3})$/)
+          return m ? { ...t, key: m[1] } : { ...t, key: upper }
+        })
+        const bad = args.texts.filter((t) => {
+          const k = t.key
+          if (k === "T") return false
+          if (k === "I" || k === "S") return true
+          if (/^\d{3}$/.test(k)) return false
+          if (/^[A-Z][A-Z0-9_]{0,19}$/.test(k)) return false
+          return true
+        })
+        if (bad.length > 0) {
+          return (
+            `⛔ 无效的文本键: ${bad.map((b) => b.key).join(", ")}。未写入任何内容。\n` +
+            `正确格式：'T'=标题；文本符号=3位编号（如 '001' 对应 TEXT-001）；选择文本=参数名（如 'S_CARRID'）。不要把类型字母 I/S 当 key 传。`
+          )
+        }
       }
 
       const suffix = randomUUID().slice(0, 4).toUpperCase()
@@ -148,16 +182,17 @@ export const translateTextPoolTool = {
       }
       const result = String(await client.runClass(className)).trim()
 
+      const oldState2 = client.stateful
+      client.stateful = session_types.stateful
       try {
-        const oldState2 = client.stateful
-        client.stateful = session_types.stateful
         const lock2 = await client.lock(uri).catch(() => undefined)
         if (lock2) {
           await client.deleteObject(uri, lock2.LOCK_HANDLE, undefined).catch(() => undefined)
           await client.unLock(uri, lock2.LOCK_HANDLE).catch(() => undefined)
         }
+      } catch { /* 清理失败不影响结果 */ } finally {
         client.stateful = oldState2
-      } catch { /* 清理失败不影响结果 */ }
+      }
 
       if (/^Error:/i.test(result)) {
         return `❌ 程序 ${prog} 文本元素写入失败（目标语言 ${tgt}）：${result}`
