@@ -103,6 +103,8 @@
       overlay.classList.add("open");
     });
   }
+  // 供其他模块复用（如设置页"一键更新"确认）
+  App.confirm = showConfirm;
 
   // ── 刷新会话列表（数据无变化时跳过 DOM 重建） ──
   let _refreshToken = 0;

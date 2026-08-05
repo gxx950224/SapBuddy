@@ -28,6 +28,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import os from "node:os"
+import { spawn } from "node:child_process"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
@@ -39,6 +40,26 @@ const portArg = process.argv.indexOf("--port")
 const PORT = portArg >= 0 ? Number(process.argv[portArg + 1]) : 7400
 const HOST = "127.0.0.1"
 const START_TS = Date.now() // 静态资源版本号（重启变化，强制刷新缓存）
+
+// 当前运行版本（读包内 package.json；"一键更新" 的比较基准）
+const CURRENT_VERSION = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version || "unknown" } catch { return "unknown" }
+})()
+
+// 逐段数值比较 "x.y.z"；任一非数字/未知 → 不判定有更新
+function compareVersions(a, b) {
+  const pa = String(a || "").split(".").map((n) => Number(n))
+  const pb = String(b || "").split(".").map((n) => Number(n))
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0, y = pb[i] ?? 0
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return 0
+    if (x !== y) return x < y ? -1 : 1
+  }
+  return 0
+}
+
+/** 一键更新在跑（防重入） */
+let updating = false
 
 /** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
 let mcpStatusCache = null
@@ -665,6 +686,50 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { success: true })
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
+    // ── 更新：检查 + 一键更新（更新成功自动重启服务，新进程加载新代码）──
+    if (p === "/api/update/check" && req.method === "GET") {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+      try {
+        const r = await fetch("https://registry.npmjs.org/sapbuddy/latest", { signal: controller.signal })
+        const j = await r.json()
+        const latest = String(j?.version || "").trim()
+        return json(res, 200, { success: true, current: CURRENT_VERSION, latest, hasUpdate: latest ? compareVersions(CURRENT_VERSION, latest) < 0 : false })
+      } catch (e) {
+        const msg = e?.name === "AbortError" ? "检查超时，请确认本机网络可访问 npm 仓库" : `无法连接 npm 仓库：${e?.message || e}`
+        return json(res, 200, { success: false, error: msg })
+      } finally { clearTimeout(timer) }
+    }
+    if (p === "/api/update/apply" && req.method === "POST") {
+      if (updating) return json(res, 409, { error: "正在更新中，请稍候" })
+      updating = true
+      // 立即返回（服务马上要重启，HTTP 响应不能等更新跑完）
+      json(res, 200, { success: true, started: true })
+      const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
+      const child = spawn(npmCmd, ["install", "-g", "sapbuddy@latest"], { shell: process.platform === "win32" })
+      const emit = (chunk) => {
+        const line = String(chunk).trim()
+        if (line) broadcast({ kind: "update", line })
+      }
+      child.stdout?.on("data", emit)
+      child.stderr?.on("data", emit)
+      child.on("error", (e) => {
+        updating = false
+        broadcast({ kind: "update", status: "error", line: `无法启动更新：${e?.message || e}。请重启 SapBuddy 后重试。` })
+      })
+      child.on("close", (code) => {
+        updating = false
+        if (code === 0) {
+          broadcast({ kind: "update", status: "done", line: "更新完成，正在重启服务…" })
+          broadcast({ kind: "update", status: "restarting" })
+          restartServer()
+        } else {
+          broadcast({ kind: "update", status: "error", line: `更新失败（退出码 ${code}）。请重启 SapBuddy 后重试。` })
+        }
+      })
+      return
+    }
+
     if (p === "/api/models" && req.method === "GET") {
       try {
         const sdk = await import(pathToFileURL(path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js")).href)
@@ -859,8 +924,26 @@ const ids = models.map((m) => m.id)
   }
 })
 
+/** 一键更新成功后自重启：拉起同端口新进程，旧进程稍后退出 */
+function restartServer() {
+  const selfPath = path.join(HERE, "server.mjs")
+  const child = spawn(process.execPath, [selfPath, ...process.argv.slice(2)], {
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, SAPBUDDY_RESTARTING: "1" },
+  })
+  child.unref()
+  // 给 SSE broadcast 一点刷新时间，再退出释放端口（新进程用重试兜底）
+  setTimeout(() => process.exit(0), 1000)
+}
+
 server.on("error", (err) => {
   if (err?.code === "EADDRINUSE") {
+    // 自重启的新进程：旧进程可能还没释放端口 → 稍后重试而非直接退出
+    if (process.env.SAPBUDDY_RESTARTING === "1") {
+      setTimeout(() => { try { server.close() } catch {} server.listen(PORT, HOST) }, 1500)
+      return
+    }
     console.error(`\n  ❌ 端口 ${PORT} 已被占用（可能已有 SapBuddy 在运行）`)
     console.error(`  请先关闭旧进程（Ctrl+C 或任务管理器结束 node.exe），或指定新端口：`)
     console.error(`  node cli.mjs web --port 7401\n`)

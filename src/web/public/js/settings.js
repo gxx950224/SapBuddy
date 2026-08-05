@@ -549,6 +549,7 @@
       if (target === "mcp") { loadMcpConfig(); startMcpPolling(); } else { stopMcpPolling(); }
       if (target === "memory") loadMemory();
       if (target === "skills") loadSkillTree();
+      if (target === "about") loadAbout();
     });
   });
 
@@ -721,6 +722,135 @@
     } catch (e) {
       st.textContent = "保存失败：" + e.message;
       st.style.color = "var(--error)";
+    }
+  });
+
+  // ============ 关于面板 ============
+  function setAboutStatus(msg, cls) {
+    const el = $("#about-status");
+    if (!el) return;
+    el.textContent = msg || "";
+    el.className = "settings-status";
+    if (cls) el.classList.add(cls);
+  }
+
+  function appendAboutLog(line) {
+    const el = $("#about-log");
+    if (!el) return;
+    el.style.display = "";
+    const div = document.createElement("div");
+    div.textContent = line || "";
+    el.appendChild(div);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function clearAboutLog() {
+    const el = $("#about-log");
+    if (!el) return;
+    el.innerHTML = "";
+    el.style.display = "none";
+  }
+
+  let _aboutChecking = false;
+  let _aboutApplying = false;
+
+  async function loadAbout() {
+    if (_aboutChecking) return;
+    _aboutChecking = true;
+    const btnCheck = $("#about-check");
+    if (btnCheck) btnCheck.disabled = true;
+    setAboutStatus("检查更新中…", "");
+    try {
+      const r = await fetch("/api/update/check");
+      const j = await r.json();
+      if (j.success) {
+        $("#about-current").textContent = j.current || "unknown";
+        $("#about-latest").textContent = j.hasUpdate ? `${j.latest}（有新版本）` : (j.latest || "—");
+        if ($("#about-update")) $("#about-update").disabled = !j.hasUpdate || _aboutApplying;
+        setAboutStatus(j.hasUpdate ? `发现新版本 v${j.latest}，可一键更新` : "已是最新版本", j.hasUpdate ? "warn" : "ok");
+      } else {
+        $("#about-latest").textContent = "—";
+        if ($("#about-update")) $("#about-update").disabled = true;
+        setAboutStatus(j.error || "检查失败", "err");
+      }
+    } catch (e) {
+      $("#about-latest").textContent = "—";
+      if ($("#about-update")) $("#about-update").disabled = true;
+      setAboutStatus("检查失败：" + e.message, "err");
+    } finally {
+      _aboutChecking = false;
+      if (btnCheck) btnCheck.disabled = _aboutApplying;
+    }
+  }
+
+  // 更新成功后轮询 /api/state，新服务起来即刷新页面（START_TS 变化，自动拉新版静态资源）
+  function startWaitForRestart() {
+    let n = 0;
+    const timer = setInterval(async () => {
+      n++;
+      try {
+        const r = await fetch("/api/state", { signal: AbortSignal.timeout(3000) });
+        if (r.ok) {
+          clearInterval(timer);
+          setAboutStatus("已更新，刷新页面…", "ok");
+          setTimeout(() => location.reload(), 500);
+          return;
+        }
+      } catch { /* 服务还没起来，继续等 */ }
+      if (n >= 50) {
+        clearInterval(timer);
+        setAboutStatus("服务已重启，请手动刷新页面", "");
+      }
+    }, 1200);
+  }
+
+  App.onUpdateEvent = function(payload) {
+    if (payload.status === "done") {
+      setAboutStatus("更新完成，正在重启服务…", "ok");
+    } else if (payload.status === "restarting") {
+      setAboutStatus("服务重启中，完成后自动刷新…", "");
+      startWaitForRestart();
+    } else if (payload.status === "error") {
+      _aboutApplying = false;
+      $("#about-check").disabled = false;
+      $("#about-update").disabled = true;
+      setAboutStatus(payload.line || "更新失败", "err");
+    } else if (payload.line) {
+      appendAboutLog(payload.line);
+    }
+  };
+
+  $("#about-check").addEventListener("click", loadAbout);
+
+  $("#about-update").addEventListener("click", async () => {
+    if (_aboutApplying) return;
+    const latest = $("#about-latest").textContent.replace(/（有新版本）/g, "").trim();
+    const ok = await App.confirm({
+      title: "一键更新",
+      message: `将把 SapBuddy 更新到最新版（${latest || "最新版"}）。更新过程中网页会短暂断开，服务更新完成后自动重启并刷新。确定继续？`,
+      confirmText: "开始更新",
+      danger: true,
+    });
+    if (!ok) return;
+    _aboutApplying = true;
+    $("#about-update").disabled = true;
+    $("#about-check").disabled = true;
+    clearAboutLog();
+    setAboutStatus("正在下载并安装新版本…", "");
+    try {
+      const r = await fetch("/api/update/apply", { method: "POST" });
+      const j = await r.json();
+      if (!j.success) {
+        _aboutApplying = false;
+        $("#about-check").disabled = false;
+        setAboutStatus("启动更新失败：" + (j.error || ""), "err");
+        return;
+      }
+      // 成功：等待 SSE 推送 npm 进度 → done → restarting → 轮询刷新
+    } catch (e) {
+      _aboutApplying = false;
+      $("#about-check").disabled = false;
+      setAboutStatus("启动更新失败：" + e.message, "err");
     }
   });
 

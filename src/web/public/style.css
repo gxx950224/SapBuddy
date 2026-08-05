@@ -1366,6 +1366,28 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   font-size: 13px; line-height: 1.5;
 }
 
+/* 关于面板：版本信息 + 更新日志 */
+.about-rows { margin: 4px 0 16px; }
+.about-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elevated); font-size: 13px;
+}
+.about-row > span { color: var(--text-dim); }
+.about-row > strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.settings-status { font-size: 13px; color: var(--text-dim); margin-left: 8px; }
+.settings-status.ok { color: #22c55e; }
+.settings-status.err { color: #f87171; }
+.settings-status.warn { color: #fbbf24; }
+.update-log {
+  margin-top: 10px; max-height: 160px; overflow-y: auto;
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg); font-family: var(--mono, Consolas, monospace);
+  font-size: 12px; color: var(--text-dim); line-height: 1.6;
+  white-space: pre-wrap; word-break: break-all;
+}
+
 /* 记忆 / 提示词面板：编辑器填满高度（80vh弹窗 - 头尾 - 面板内元素） */
 .settings-panel[data-panel="memory"] .code-editor,
 .settings-panel[data-panel="memory"] .md-preview,

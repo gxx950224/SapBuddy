@@ -129,6 +129,8 @@
         } else if (payload.kind === "config_status") {
           state.configStatus = payload.configStatus || "ok";
           App.refreshState().catch(() => {});
+        } else if (payload.kind === "update") {
+          if (typeof App.onUpdateEvent === "function") App.onUpdateEvent(payload);
         }
       }
       _sseProcessing = false;
