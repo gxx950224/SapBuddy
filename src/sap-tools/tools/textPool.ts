@@ -31,44 +31,70 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
   L.push("  METHOD if_oo_adt_classrun~main.")
   // READ/INSERT TEXTPOOL 要求行结构与 text pool 兼容：用系统类型 TABLE OF textpool；
   // INSERT TEXTPOOL ... FROM 接收整个内表（不是逐行）；计数用字符串模板（CONCATENATE 不接受数字）
-  L.push("    DATA: lt_tp TYPE TABLE OF textpool, ls_tp LIKE LINE OF lt_tp, lv_ins TYPE i, lv_upd TYPE i.")
+  L.push("    DATA: lt_tp TYPE TABLE OF textpool, ls_tp LIKE LINE OF lt_tp, lv_ins TYPE i, lv_upd TYPE i,")
+  L.push("          lt_chk TYPE TABLE OF textpool, ls_chk LIKE LINE OF lt_chk, lv_err TYPE i.")
 
   if (mode === "copy") {
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.srcLang ?? "1")}.`)
     L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
     L.push("    DATA(lv_msg) = |copied { lines( lt_tp ) } entries|.")
     L.push("    out->write( lv_msg ).")
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push("    IF lines( lt_chk ) <> lines( lt_tp ). lv_err = lv_err + 1. out->write( 'SELFCHECK-FAIL:copy-count' ). ENDIF.")
   } else {
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
     for (const t of opts.texts ?? []) {
       const key = t.key.toUpperCase()
       if (key === "T") {
-        // 标题：READ TEXTPOOL 返回的标题 key 是空串 ''，INSERT 用 '' 才写对标题；
-        // 若按 'T' 去匹配会追加一条垃圾键（曾导致标题重复）。先删历史 'T' 垃圾键再匹配空键。
-        L.push(`    DELETE lt_tp WHERE key = ${abapStr(key)}.`)
-        L.push("    READ TABLE lt_tp INTO ls_tp WITH KEY key = ''.")
-        L.push("    IF sy-subrc = 0.")
-        L.push(`      ls_tp-entry = ${abapStr(t.text)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
-        L.push("    ELSE.")
-        L.push(`      CLEAR ls_tp. ls_tp-key = ''. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
-        L.push("    ENDIF.")
+        // 标题：text pool 里标题键是空串 ''，id='R'；垃圾键 'T' 需先删（曾导致标题重复）。
+        // 先判存在性计数，再删旧行、追加 ID 正确的干净行（避免垃圾 ID 行被保留）。
+        L.push("    READ TABLE lt_tp TRANSPORTING NO FIELDS WITH KEY key = ''.")
+        L.push("    IF sy-subrc = 0. lv_upd = lv_upd + 1. ELSE. lv_ins = lv_ins + 1. ENDIF.")
+        L.push(`    DELETE lt_tp WHERE key = ${abapStr(key)} OR key = ''.`)
+        L.push(`    CLEAR ls_tp. ls_tp-id = ${abapStr("R")}. ls_tp-key = ''. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp.`)
       } else {
-        // 选择文本（如 S_CARRID / P_COMP）自动补 8 前导空格，3 位数字键（符号 001）不加
+        // 符号(3位编号) id='I'；选择文本(参数名) id='S'，且自动补 8 前导空格（SAP 要求从第 9 列读）。
+        // ⛔ 必须显式设 id：曾漏设导致新写符号 id 为空，SAP 界面/ADT 只认 id='I' 的才是文本符号，
+        //    结果写入成功但界面看不到。先删同键旧行（含垃圾 id 行）再追加，保证 ID 正确且不重复。
         const isSelection = !/^\d{3}$/.test(key)
         const entryText = isSelection ? padSelectionText(t.text) : t.text
-        L.push(`    READ TABLE lt_tp INTO ls_tp WITH KEY key = ${abapStr(key)}.`)
-        L.push("    IF sy-subrc = 0.")
-        L.push(`      ls_tp-entry = ${abapStr(entryText)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
-        L.push("    ELSE.")
-        L.push(`      CLEAR ls_tp. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(entryText)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
-        L.push("    ENDIF.")
+        const id = isSelection ? "S" : "I"
+        L.push(`    READ TABLE lt_tp TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(key)}.`)
+        L.push("    IF sy-subrc = 0. lv_upd = lv_upd + 1. ELSE. lv_ins = lv_ins + 1. ENDIF.")
+        L.push(`    DELETE lt_tp WHERE key = ${abapStr(key)}.`)
+        L.push(`    CLEAR ls_tp. ls_tp-id = ${abapStr(id)}. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(entryText)}. APPEND ls_tp TO lt_tp.`)
       }
     }
     L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    // 写入后自检：重读目标语言池，逐条核对 key/ID/文本；对不上说明写入格式有问题（如漏 ID），
+    // 界面/ADT 读不到，必须报错回滚而不是假装成功
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
     L.push("    DATA(lv_msg2) = |added { lv_ins } updated { lv_upd }|.")
     L.push("    out->write( lv_msg2 ).")
+    for (const t of opts.texts ?? []) {
+      const key = t.key.toUpperCase()
+      if (key === "T") {
+        L.push("    READ TABLE lt_chk INTO ls_chk WITH KEY key = ''.")
+        L.push(`    IF sy-subrc <> 0 OR ls_chk-id <> ${abapStr("R")} OR ls_chk-entry <> ${abapStr(t.text)}. lv_err = lv_err + 1.`)
+        L.push("      out->write( 'SELFCHECK-FAIL:T' ). ENDIF.")
+      } else {
+        const isSelection = !/^\d{3}$/.test(key)
+        const entryText = isSelection ? padSelectionText(t.text) : t.text
+        const id = isSelection ? "S" : "I"
+        L.push(`    READ TABLE lt_chk INTO ls_chk WITH KEY key = ${abapStr(key)}.`)
+        L.push(`    IF sy-subrc <> 0 OR ls_chk-id <> ${abapStr(id)} OR ls_chk-entry <> ${abapStr(entryText)}. lv_err = lv_err + 1.`)
+        L.push(`      out->write( 'SELFCHECK-FAIL:${key}' ). ENDIF.`)
+      }
+    }
   }
-  L.push("    COMMIT WORK.")
+  // 自检通过才提交落库；失败回滚（INSERT TEXTPOOL 在 DB LUW 中，ROLLBACK 可撤销）
+  L.push("    IF lv_err = 0.")
+  L.push("      COMMIT WORK.")
+  L.push("      out->write( 'SELFCHECK-OK' ).")
+  L.push("    ELSE.")
+  L.push("      ROLLBACK WORK.")
+  L.push("      out->write( 'SELFCHECK-FAIL' ).")
+  L.push("    ENDIF.")
   L.push("  ENDMETHOD.")
 
   return (
@@ -96,7 +122,7 @@ export const translateTextPoolTool = {
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
     "两种模式：copy（把源语言 text pool 整体复制为目标语言）或 set（按 [{key,text}] 覆盖/新增指定条目）。" +
     "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=3位编号（如 '001' 对应源码 TEXT-001）；选择文本=参数名（如 'S_CARRID'、'P_COMP'）。不要把类型字母 I/S 当 key 传。" +
-    "选择文本会自动补足前导空格（SAP 要求文字从第 9 列开始，否则界面/ADT 读不到），文本符号与标题无需处理。" +
+    "选择文本会自动补足前导空格（SAP 要求文字从第 9 列开始），且符号/标题/选择文本都会写入正确的类型 ID（I/R/S）——漏写 ID 会导致界面/ADT 读不到写入的内容。" +
     "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活；文本池随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
@@ -202,6 +228,9 @@ export const translateTextPoolTool = {
         client.stateful = oldState2
       }
 
+      if (/SELFCHECK-FAIL/i.test(result)) {
+        return `❌ 程序 ${prog} 文本元素写入后自检未通过（目标语言 ${tgt}），已回滚不落库：\n${result}`
+      }
       if (/^Error:/i.test(result)) {
         return `❌ 程序 ${prog} 文本元素写入失败（目标语言 ${tgt}）：${result}`
       }
