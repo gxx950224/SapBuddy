@@ -1404,6 +1404,24 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   white-space: pre-wrap; word-break: break-all;
 }
 
+/* 关于面板：操作说明 */
+.about-help { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); }
+.about-help h5 { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--text); }
+.help-item {
+  padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elevated); font-size: 13px; line-height: 1.6;
+}
+.help-title { font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.help-cmd { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.help-cmd code {
+  font-family: var(--mono, Consolas, monospace);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px; color: var(--accent);
+}
+.help-text { color: var(--text-dim); font-size: 12px; }
+.help-text b { color: var(--text); }
+
 /* 记忆 / 提示词面板：编辑器填满高度（80vh弹窗 - 头尾 - 面板内元素） */
 .settings-panel[data-panel="memory"] .code-editor,
 .settings-panel[data-panel="memory"] .md-preview,

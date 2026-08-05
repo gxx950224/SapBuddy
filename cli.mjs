@@ -16,10 +16,12 @@ import fs from "node:fs"
 import os from "node:os"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import net from "node:net"
+import { execFileSync, spawn } from "node:child_process"
 import { createAgent, loadAuth, loadSettings, ensureRuntimeFiles, ROOT, CONFIG_DIR } from "./src/agent-core.mjs"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
+const WEB_PORT = 7400
 
 // ===== ANSI 与渲染辅助 =====
 const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", magenta: "\x1b[35m", red: "\x1b[31m", blue: "\x1b[34m" }
@@ -136,6 +138,63 @@ async function cmdPrompt(text, jsonMode) {
 }
 
 // ===== 交互式对话：直接复用 pi CLI（完整 TUI + 42 工具扩展）=====
+// ── Web 端口占用处理：若 7400 被旧的 SapBuddy Web 占用，先关闭旧进程再启动新的 ──
+function portPids(port) {
+  try {
+    if (process.platform === "win32") {
+      const out = execFileSync("netstat", ["-ano"], { encoding: "utf8" })
+      const pids = new Set()
+      for (const line of out.split(/\r?\n/)) {
+        const m = line.match(/^\s*TCP\s+\S+:(\d+)\s+\S+\s+LISTENING\s+(\d+)\s*$/)
+        if (m && Number(m[1]) === port) pids.add(m[2])
+      }
+      return [...pids]
+    }
+    const out = execFileSync("lsof", ["-nP", "-iTCP:" + port, "-sTCP:LISTEN", "-t"], { encoding: "utf8" })
+    return out.split(/\s+/).filter(Boolean)
+  } catch { return [] }
+}
+function isSapBuddyPid(pid) {
+  try {
+    const cmd = process.platform === "win32"
+      ? execFileSync("powershell", ["-NoProfile", "-NonInteractive", "-Command",
+          `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`], { encoding: "utf8" })
+      : execFileSync("ps", ["-p", pid, "-o", "command="], { encoding: "utf8" })
+    return /server\.mjs|sapbuddy|cli\.mjs\s+web/i.test(cmd)
+  } catch { return false }
+}
+function killPid(pid) {
+  try {
+    if (process.platform === "win32") execFileSync("taskkill", ["/PID", String(pid), "/F"], { stdio: "ignore" })
+    else { try { process.kill(Number(pid), "SIGTERM") } catch {} }
+  } catch {}
+}
+function portIsFree(port) {
+  return new Promise((resolve) => {
+    const s = net.connect(port, "127.0.0.1")
+    s.on("connect", () => { s.destroy(); resolve(false) })
+    s.on("error", () => resolve(true))
+  })
+}
+async function ensurePortFree(port) {
+  const pids = portPids(port)
+  if (pids.length === 0) return
+  const mine = pids.filter(isSapBuddyPid)
+  if (mine.length === 0) {
+    console.log(`⚠️  端口 ${port} 被其它程序占用（PID ${pids.join(", ")}），为避免误杀未做处理，Web 版可能无法启动`)
+    return
+  }
+  for (const pid of mine) {
+    console.log(`🔄 端口 ${port} 被旧的 SapBuddy Web 占用（PID ${pid}），先关闭旧进程再启动新的…`)
+    killPid(pid)
+  }
+  // 等待端口释放（最多约 5 秒），避免与正在退出的旧进程抢端口
+  for (let i = 0; i < 25; i++) {
+    await new Promise((r) => setTimeout(r, 200))
+    if (await portIsFree(port)) return
+  }
+}
+
 async function cmdChat() {
   // 首次运行：初始化默认技能/models.json（从包内 defaults/ 拷贝到 .SapBuddy/）
   try { ensureRuntimeFiles() } catch { /* 初始化失败不阻塞，pi CLI 会继续 */ }
@@ -199,28 +258,18 @@ async function cmdChat() {
     if (!sc.quietStartup) { sc.quietStartup = true; fs.writeFileSync(sf, JSON.stringify(sc, null, 2)) }
   } catch {}
 
-  const { spawn } = await import("node:child_process")
-
   // ── 自动附带 Web 服务（子进程隔离，避免同进程干扰 pi CLI 的 TTY/进程生命周期）──
-  const WEB_PORT = 7400
+  // 若 7400 被旧的 SapBuddy Web 占用，先关闭旧的再启动新的，保证网页是全新状态
   let webProcess = null
   if (!process.argv.includes("--no-web")) {
-    const portInUse = await new Promise((resolve) => {
-      const s = net.connect(WEB_PORT, "127.0.0.1")
-      s.on("connect", () => { s.destroy(); resolve(true) })
-      s.on("error", () => resolve(false))
-    })
-    if (portInUse) {
-      console.log(`🌐 Web 版已在 http://127.0.0.1:${WEB_PORT} 运行（同一会话）`)
-    } else {
-      try {
-        webProcess = spawn(process.execPath, [path.join(HERE, "src", "web", "server.mjs")], { cwd: ROOT, stdio: "ignore", detached: false })
-        webProcess.unref()
-        await new Promise((r) => setTimeout(r, 1500)) // 给 server 启动时间（失败静默）
-        console.log(`🌐 Web 版已启动：http://127.0.0.1:${WEB_PORT}（浏览器打开即可；与当前 CLI 共享会话/产物/记忆；--no-web 可禁用）`)
-      } catch (e) {
-        console.log(`⚠️  Web 版启动失败（不影响 CLI）：${e.message}`)
-      }
+    await ensurePortFree(WEB_PORT)
+    try {
+      webProcess = spawn(process.execPath, [path.join(HERE, "src", "web", "server.mjs")], { cwd: ROOT, stdio: "ignore", detached: false })
+      webProcess.unref()
+      await new Promise((r) => setTimeout(r, 1500)) // 给 server 启动时间（失败静默）
+      console.log(`🌐 Web 版已启动：http://127.0.0.1:${WEB_PORT}（浏览器打开即可；与当前 CLI 共享会话/产物/记忆；--no-web 可禁用）`)
+    } catch (e) {
+      console.log(`⚠️  Web 版启动失败（不影响 CLI）：${e.message}`)
     }
   }
 
@@ -237,6 +286,8 @@ async function cmdChat() {
 
 // ===== web：启动 Web 版 =====
 async function cmdWeb() {
+  // 若 7400 被旧 Web 占用，先关闭旧进程，再启动新的
+  await ensurePortFree(WEB_PORT)
   // server.mjs 自身解析 --port 并监听（argv 共享），import 即启动
   await import(pathToFileURL(path.join(HERE, "src", "web", "server.mjs")).href)
   process.stdin.resume()

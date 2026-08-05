@@ -1,7 +1,7 @@
 {
   "connections": [
     {
-      "id": "dev",
+      "id": "AI",
       "url": "https://your-sap-host:44300",
       "client": "100",
       "username": "YOUR_USER",
