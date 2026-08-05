@@ -955,6 +955,7 @@ const NPM = process.env.SB_NPM || "npm"
 const LOG = process.env.SB_LOG || "update.log"
 const SELF = process.env.SB_SELF || ""
 const RESULT = process.env.SB_RESULT || "update-result.json"
+const PS = process.env.SB_PS || "powershell"
 let ARGS = []
 try { ARGS = JSON.parse(process.env.SB_ARGS || "[]") } catch {}
 
@@ -977,10 +978,40 @@ function runInstall() {
   })
 }
 
+// 关闭残留的旧 SapBuddy 进程（桌面主程序/多开的窗口/僵尸进程）——它们锁着全局安装目录，导致 npm 重命名失败(EBUSY)
+function killCompanions() {
+  return new Promise((resolve) => {
+    const psCmd = "Get-CimInstance Win32_Process -Filter \\"Name='node.exe'\\" | Where-Object { $_.CommandLine } | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress"
+    const child = spawn(PS, ["-NoProfile", "-NonInteractive", "-Command", psCmd], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] })
+    let out = ""
+    child.stdout.on("data", (d) => { out += d })
+    child.stderr.on("data", () => {})
+    child.on("error", (e) => { log("无法枚举进程: " + e.message); resolve() })
+    child.on("close", () => {
+      try {
+        const parsed = JSON.parse(out)
+        const list = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : [])
+        let n = 0
+        for (const p of list) {
+          const pid = Number(p.ProcessId)
+          const cmd = String(p.CommandLine || "").replaceAll(String.fromCharCode(92), "/").toLowerCase()
+          if (!pid || pid === process.pid) continue
+          const isSapbuddy = cmd.includes("node_modules/sapbuddy") || cmd.includes("/sapbuddy/cli.mjs") || cmd.includes("/sapbuddy/src/web/server.mjs")
+          if (!isSapbuddy) continue
+          try { process.kill(pid) } catch {}
+          n++
+        }
+        if (n > 0) log("已关闭 " + n + " 个残留的旧 SapBuddy 进程（释放文件锁）")
+      } catch { /* 解析失败忽略 */ }
+      resolve()
+    })
+  })
+}
+
 function explain(code) {
   const n = Number(code) || 0
   const signed = n > 0x7fffffff ? n - 0x100000000 : n
-  if (signed === -4082) return "安装文件正被其他程序占用（可能杀毒软件正在扫描，或仍有旧窗口未关闭）"
+  if (signed === -4082) return "安装文件被占用（残留的旧程序或杀毒软件仍锁着文件）"
   if (signed === -4092) return "没有权限写入安装目录（请右键以管理员身份运行 SapBuddy 后重试）"
   if (n === 1) return "npm 安装报错（详细日志见 ~/.SapBuddy/update.log）"
   return "安装进程退出（退出码 " + n + "）"
@@ -1000,12 +1031,14 @@ function relaunch() {
   }
 }
 
-const MAX = 3, DELAY = 4000
+const MAX = 5, DELAY = 5000
 log("=== 更新代理启动：等待旧程序退出后安装新版 ===")
 await sleep(3000)
 let ok = false
 let lastReason = ""
 for (let i = 1; i <= MAX; i++) {
+  await killCompanions()
+  await sleep(1500)
   log("第 " + i + " 次尝试安装…")
   const code = await runInstall()
   if (code === 0) { ok = true; break }
@@ -1018,7 +1051,7 @@ if (ok) {
   writeResult("ok", "更新完成，正在启动新版本")
 } else {
   log("❌ 安装失败: " + lastReason)
-  writeResult("error", "更新失败：" + lastReason + "。已恢复运行原版本，请按提示操作后重试。")
+  writeResult("error", "更新失败：" + lastReason + "。已恢复运行原版本。请完全关闭 SapBuddy（含任务管理器里的 node.exe 进程）后，以管理员身份运行命令 npm install -g sapbuddy@latest 手动更新一次；若手动装仍失败，多半是杀毒软件锁文件，请把 SapBuddy 加入白名单后再试。")
 }
 relaunch()
 `
