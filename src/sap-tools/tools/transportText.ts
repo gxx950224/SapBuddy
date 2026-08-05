@@ -179,12 +179,11 @@ export const textElementsTool = {
   write: true,
   title: "Manage Text Elements",
   description:
-    "读取或修改对象的文本元素（text elements）：标题/文本符号（symbols）、选择文本（selections）、表头（headings）。" +
-    "读取所有系统均支持；修改（update）需关闭只读模式，提供 elements 列表 [{id,text}]。\n" +
-    "⚠️ 写的是对象主语言文本（通常英文）：要写中文/翻译必须先用本工具写英文主语言，再用 translate_text_pool 写中文翻译；直接写中文会被代码级拦截。" +
-    "⚠️ 规则：symbols 的 id 为 3 字符（源码 TEXT-001 对应 id='001'）；工具自动补 maxLength（SAP 文本符号必须声明长度，缺失报 DS512）；" +
-    "写入后自动激活。headings 的 id 如 listHeader/columnHeader_1；selections 的 id 为参数名（如 P_COMP）。" +
-    "写前建议先 read 现有文本元素（避免重复符号）；修改时用 transportNumber 指定传输请求号。",
+    "读取对象的文本元素（text elements）：标题/文本符号（symbols）、选择文本（selections）、表头（headings）。" +
+    "本工具用于**读取/核对**现有文本元素（action='read'）。" +
+    "**写入文本元素（标题/符号/选择文本，含中英文）一律用 translate_text_pool（mode='set'）**——它自动处理选择文本前导空格、标题空键等格式，本工具不再负责写入。" +
+    "⚠️ 保留 action='update' 仅作历史兼容，不建议使用；直接写中文会被代码级拦截（会把中文写进主语言位置导致文本池语言不一致）。" +
+    "读取规则：symbols 的 id 为 3 字符（源码 TEXT-001 对应 id='001'）；selections 的 id 为参数名（如 P_COMP）；headings 的 id 如 listHeader/columnHeader_1。",
   inputSchema: z.object({
     action: z.enum(["read", "update"]).describe("read=读取文本元素; update=修改（需 readOnly=false）"),
     objectName: z.string().describe("对象名称"),

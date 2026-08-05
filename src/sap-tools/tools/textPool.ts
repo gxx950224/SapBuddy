@@ -15,6 +15,10 @@ import { resolveConnectionId, toToolError, connectionIdSchema } from "./shared.j
 
 const abapStr = (s: string) => `'${s.replace(/'/g, "''")}'`
 
+/** SAP 选择文本要求文字从第 9 列开始（前面必须空 8 格），否则 ADT/SE38 从第 9 列读取时会看不到；
+ *  文本符号（ID=I）与标题无此要求。先去除文字已有前导空格再补足 8 格，保证重复写入幂等。 */
+const padSelectionText = (text: string) => " ".repeat(8) + text.trimStart()
+
 /** 生成可执行类源码 */
 function generateClassSource(className: string, mode: "copy" | "set", opts: {
   prog: string
@@ -49,11 +53,14 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
         L.push(`      CLEAR ls_tp. ls_tp-key = ''. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
         L.push("    ENDIF.")
       } else {
+        // 选择文本（如 S_CARRID / P_COMP）自动补 8 前导空格，3 位数字键（符号 001）不加
+        const isSelection = !/^\d{3}$/.test(key)
+        const entryText = isSelection ? padSelectionText(t.text) : t.text
         L.push(`    READ TABLE lt_tp INTO ls_tp WITH KEY key = ${abapStr(key)}.`)
         L.push("    IF sy-subrc = 0.")
-        L.push(`      ls_tp-entry = ${abapStr(t.text)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
+        L.push(`      ls_tp-entry = ${abapStr(entryText)}. MODIFY lt_tp FROM ls_tp INDEX sy-tabix. lv_upd = lv_upd + 1.`)
         L.push("    ELSE.")
-        L.push(`      CLEAR ls_tp. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
+        L.push(`      CLEAR ls_tp. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(entryText)}. APPEND ls_tp TO lt_tp. lv_ins = lv_ins + 1.`)
         L.push("    ENDIF.")
       }
     }
@@ -89,6 +96,7 @@ export const translateTextPoolTool = {
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
     "两种模式：copy（把源语言 text pool 整体复制为目标语言）或 set（按 [{key,text}] 覆盖/新增指定条目）。" +
     "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=3位编号（如 '001' 对应源码 TEXT-001）；选择文本=参数名（如 'S_CARRID'、'P_COMP'）。不要把类型字母 I/S 当 key 传。" +
+    "选择文本会自动补足前导空格（SAP 要求文字从第 9 列开始，否则界面/ADT 读不到），文本符号与标题无需处理。" +
     "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活；文本池随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
