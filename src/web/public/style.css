@@ -1382,7 +1382,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   font-size: 13px; line-height: 1.5;
 }
 
-/* 关于面板：版本信息 + 更新日志 */
+/* 关于面板：版本信息 */
 .about-rows { margin: 4px 0 16px; }
 .about-row {
   display: flex; justify-content: space-between; align-items: center;
@@ -1392,8 +1392,6 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 }
 .about-row > span { color: var(--text-dim); }
 .about-row > strong { color: var(--text); font-variant-numeric: tabular-nums; }
-.about-row > a { color: var(--accent); text-decoration: none; font-size: 13px; }
-.about-row > a:hover { text-decoration: underline; }
 .settings-status { font-size: 13px; color: var(--text-dim); margin-left: 8px; }
 .settings-status.ok { color: #22c55e; }
 .settings-status.err { color: #f87171; }
