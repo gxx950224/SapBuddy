@@ -706,27 +706,44 @@ const server = http.createServer(async (req, res) => {
       // 立即返回（服务马上要重启，HTTP 响应不能等更新跑完）
       json(res, 200, { success: true, started: true })
       const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
-      const child = spawn(npmCmd, ["install", "-g", "sapbuddy@latest"], { shell: process.platform === "win32" })
+      // Windows 上 npm install 常见瞬时失败：安装文件被占用（杀毒扫描/旧窗口）。自动重试，绕过瞬时锁
       const emit = (chunk) => {
         const line = String(chunk).trim()
         if (line) broadcast({ kind: "update", line })
       }
-      child.stdout?.on("data", emit)
-      child.stderr?.on("data", emit)
-      child.on("error", (e) => {
-        updating = false
-        broadcast({ kind: "update", status: "error", line: `无法启动更新：${e?.message || e}。请重启 SapBuddy 后重试。` })
-      })
-      child.on("close", (code) => {
-        updating = false
-        if (code === 0) {
-          broadcast({ kind: "update", status: "done", line: "更新完成，正在重启服务…" })
-          broadcast({ kind: "update", status: "restarting" })
-          restartServer()
-        } else {
-          broadcast({ kind: "update", status: "error", line: `更新失败（退出码 ${code}）。请重启 SapBuddy 后重试。` })
-        }
-      })
+      let attempt = 0
+      const tryInstall = () => {
+        attempt++
+        const child = spawn(npmCmd, ["install", "-g", "sapbuddy@latest"], { shell: process.platform === "win32" })
+        child.stdout?.on("data", emit)
+        child.stderr?.on("data", emit)
+        child.on("error", (e) => {
+          updating = false
+          broadcast({ kind: "update", status: "error", line: `无法启动更新：${e?.message || e}。请重启 SapBuddy 后重试。` })
+        })
+        child.on("close", (code) => {
+          if (code === 0) {
+            updating = false
+            broadcast({ kind: "update", status: "done", line: "更新完成，正在重启服务…" })
+            broadcast({ kind: "update", status: "restarting" })
+            restartServer()
+            return
+          }
+          const reason = explainUpdateExitCode(code)
+          if (attempt < UPDATE_MAX_ATTEMPTS) {
+            broadcast({ kind: "update", line: `第 ${attempt} 次安装未成功（${reason}）。${UPDATE_RETRY_DELAY_MS / 1000} 秒后自动重试…` })
+            setTimeout(tryInstall, UPDATE_RETRY_DELAY_MS)
+          } else {
+            updating = false
+            broadcast({
+              kind: "update",
+              status: "error",
+              line: `更新失败：${reason}。已自动重试 ${UPDATE_MAX_ATTEMPTS} 次仍未成功，请关闭正在运行的其他 SapBuddy 窗口（含旧版本）后重试；仍不行请重启电脑再试。`,
+            })
+          }
+        })
+      }
+      tryInstall()
       return
     }
 
@@ -923,6 +940,20 @@ const ids = models.map((m) => m.id)
     json(res, 500, { error: e.message })
   }
 })
+
+/** 一键更新：npm install 失败自动重试上限与间隔（Windows 上文件被瞬时占用很常见，重试可绕过） */
+const UPDATE_MAX_ATTEMPTS = 3
+const UPDATE_RETRY_DELAY_MS = 4000
+
+/** 把 npm install 的进程退出码翻译成大白话（Windows 退出码是无符号 32 位，先转回有符号再比对） */
+function explainUpdateExitCode(code) {
+  const n = Number(code) || 0
+  const signed = n > 0x7fffffff ? n - 0x100000000 : n
+  if (signed === -4082) return "安装文件正被其他程序占用（可能是杀毒软件正在扫描，或还开着旧版 SapBuddy 窗口）"
+  if (signed === -4092) return "没有权限写入安装目录（请右键以管理员身份运行后重试）"
+  if (n === 1) return "npm 安装报错（详情见上方日志）"
+  return `安装进程退出（退出码 ${n}）`
+}
 
 /** 一键更新成功后自重启：拉起同端口新进程，旧进程稍后退出 */
 function restartServer() {
