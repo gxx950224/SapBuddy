@@ -697,6 +697,21 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   padding: 6px 0; margin: 0 auto; max-width: 1000px; animation: none;
 }
 
+/* 等待模型响应（提问后、首字输出前的空窗提示） */
+.msg.waiting-note {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 12px; color: var(--text-faint);
+  padding: 6px 0; margin: 0 auto; max-width: 1000px;
+}
+.waiting-note .waiting-spinner {
+  width: 13px; height: 13px; flex: none;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: waiting-spin 0.8s linear infinite;
+}
+@keyframes waiting-spin { to { transform: rotate(360deg); } }
+
 .token-usage-note {
   font-size: 11px; color: var(--text-dim);
   padding: 2px 0 10px 0; margin: 0 auto; max-width: 1000px; text-align: left; user-select: none;
@@ -835,7 +850,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   padding: 0; border-left: none;
   line-height: 1.7;
 }
-.think-seg + .think-seg { border-top: 1px solid var(--border); padding-top: 10px; }
+/* 思考统一为连续文本流：消息间的思考块不再加边框分割，读起来是一整段 */
+.think-flow .agent-tools { margin: 8px 0; }
 
 /* ============================
    工具调用卡片

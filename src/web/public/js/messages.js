@@ -38,6 +38,39 @@
     });
   };
 
+  // 每次提问都恢复"到底自动跟随"：防止上滚/换对话后 autoScroll 残留为关闭，
+  // 导致第二次对话时滚动条停在原地不跟着 LLM 输出走
+  App.resetAutoScroll = function() {
+    autoScroll = true;
+    App.scrollToBottom(true);
+  };
+
+  // ── 思考面板智能滚动 ──
+  // 与 #messages 独立：思考面板内部可滚动（max-height 520px），流式中跟随底部看最新输出；
+  // 用户上滚则停止跟随，拉回底部后恢复。每个 think-body 独立记录 atBottom。
+  const thinkScrollState = new WeakMap();
+  const THINK_NEAR_BOTTOM = 30;
+  function thinkIsNearBottom(body) {
+    return body.scrollHeight - body.scrollTop - body.clientHeight < THINK_NEAR_BOTTOM;
+  }
+  function scrollThinkBody(body) {
+    if (!body || !state.streaming) return; // 仅流式中自动跟随；历史渲染不动滚动位置
+    const st = thinkScrollState.get(body);
+    if (st && !st.atBottom) return; // 用户上滚过：不强制拉回底部
+    body.scrollTop = body.scrollHeight;
+  }
+  document.addEventListener(
+    "scroll",
+    (e) => {
+      const body = e.target;
+      if (!body || !(body instanceof Element) || !body.classList || !body.classList.contains("agent-think-body")) return;
+      const st = thinkScrollState.get(body) || {};
+      st.atBottom = thinkIsNearBottom(body);
+      thinkScrollState.set(body, st);
+    },
+    true
+  );
+
   // ── 用户气泡 ──
   // 精简附件消息：把「【用户附带的文件…】- name → path」转为文件名（历史兼容）
   function simplifyAttachmentText(text) {
@@ -88,6 +121,11 @@
     container.prepend(det);
     container._thinkWrap = det;
     container._thinkLen = 0;
+    const body = det.querySelector(".agent-think-body");
+    // 流式中展开面板：直接跟到底部看最新输出
+    det.addEventListener("toggle", () => {
+      if (det.open && state.streaming) scrollThinkBody(body);
+    });
     return det;
   }
 
@@ -110,17 +148,15 @@
     return t;
   }
 
-  // 工具卡插入到最后一个思考段之后（穿插显示，不堆积在末尾）
-  function insertToolCardInterleaved(container, card) {
-    const think = container._thinkWrap;
-    if (think) {
-      const body = think.querySelector(".agent-think-body");
-      const segs = body.querySelectorAll(".think-seg");
-      if (segs.length) body.insertBefore(card, segs[segs.length - 1].nextSibling);
-      else body.appendChild(card);
-    } else {
-      ensureToolsWrap(container).appendChild(card);
-    }
+  // 当前消息的工具卡统一放入一个 wrap，紧跟当前消息的思考/叙述文本之后（按到达顺序）
+  function ensureMsgToolsWrap(container) {
+    if (container._curToolsWrap) return container._curToolsWrap;
+    const wrap = document.createElement("div");
+    wrap.className = "agent-tools";
+    if (container._thinkFlow) container._thinkFlow.appendChild(wrap);
+    else ensureToolsWrap(container).appendChild(wrap);
+    container._curToolsWrap = wrap;
+    return wrap;
   }
 
   // 工具调用链：优先嵌入思考块内（Claude 风格），无思考时独立显示
@@ -153,11 +189,12 @@
     if (!container) return;
     if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
     const card = App.createToolCard(id, name, args);
-    insertToolCardInterleaved(container, card);
+    if (!card.isConnected) ensureMsgToolsWrap(container).appendChild(card);
     // 有工具时展开思考块（实时可见执行状态）
     if (container._thinkWrap) {
       container._thinkWrap.open = true;
       updateThinkSummary(container._thinkWrap);
+      scrollThinkBody(container._thinkWrap.querySelector(".agent-think-body"));
     }
     App.scrollToBottom();
   };
@@ -169,19 +206,82 @@
   };
 
   // ── 思考内容（内联到助手消息）──
-  App.addThinking = function(text, beforeEl) {
+  // 整个工具执行轮次的思考统一汇入一段连续文本流（think-flow），读起来是一整段，
+  // 不再按消息切成多个带边框的独立块。每个消息的思考块用独立文本节点整体更新
+  // （nodeValue 覆盖不重建 DOM，流式中不闪烁），工具卡按到达顺序穿插在文本之间。
+  function ensureThinkFlow(container, body) {
+    if (container._thinkFlow) return container._thinkFlow;
+    const flow = document.createElement("div");
+    flow.className = "think-seg think-flow";
+    body.appendChild(flow);
+    container._thinkFlow = flow;
+    return flow;
+  }
+
+  // 把一段纯文本追加进思考流（中间叙述「我先读取…」等挪进思考区时使用）。
+  // 若本消息已建工具区，叙述文本插到工具卡之前，保持 思考→叙述→工具 顺序。
+  // 每条消息的叙述用独立文本节点整体覆盖（renderedLen 去重）：
+  // 同一段叙述被 message_update 重复推送时不会再次插入 → 不会出现多份副本。
+  function appendThinkText(container, raw) {
+    if (!raw) return;
+    const det = container._thinkWrap || ensureThinkWrap(container);
+    const body = det.querySelector(".agent-think-body");
+    const flow = ensureThinkFlow(container, body);
+    let entry = container._curNarrationEntry;
+    if (!entry) {
+      const anchor = container._curToolsWrap && container._curToolsWrap.parentNode === flow ? container._curToolsWrap : null;
+      entry = { node: document.createTextNode(""), renderedLen: 0, sep: flow.childNodes.length ? "\n" : "" };
+      container._curNarrationEntry = entry;
+      if (anchor) flow.insertBefore(entry.node, anchor);
+      else flow.appendChild(entry.node);
+    }
+    if (raw.length !== entry.renderedLen) {
+      entry.node.nodeValue = entry.sep + raw;
+      entry.renderedLen = raw.length;
+    }
+  }
+
+  // 当前消息已确认有工具调用 → 它输出的「叙述型」回复文本不属于最终答案。
+  // 把这段文本从回复区挪进思考流，回复区只留最终答案，不再出现一行行的过程语句。
+  App.moveMsgNarrationToThink = function() {
+    const container = state.currentAssistantEl;
+    if (!container) return;
+    // 已确认本消息是中间步骤（有工具）→ 之后重复推送同一段文本时不再渲染到回复区
+    container._curMsgNarrationMoved = true;
+    const texts = container._curMsgTexts || [];
+    container._curMsgTexts = [];
+    for (const div of texts) {
+      if (!div || !div.isConnected) continue;
+      const raw = div._fullText || div.textContent;
+      div.remove();
+      // appendThinkText 内部按 renderedLen 去重：重复推送不会产生副本
+      if (raw) appendThinkText(container, raw);
+    }
+    state.pendingTexts = state.pendingTexts.filter((d) => d.isConnected);
+    if (state.currentTextDiv && !state.currentTextDiv.isConnected) state.currentTextDiv = null;
+  };
+
+  App.addThinking = function(text, segIdx, beforeEl) {
     if (!text) return;
     const container = state.currentAssistantEl;
     if (!container) return;
     const det = ensureThinkWrap(container);
     const body = det.querySelector(".agent-think-body");
-    if (!state.currentThinkSeg) {
-      state.currentThinkSeg = document.createElement("div");
-      state.currentThinkSeg.className = "think-seg";
-      body.appendChild(state.currentThinkSeg);
+    // LLM 输出中默认展开思考面板（agent_end 时收起）；历史渲染保持收起
+    if (state.streaming) det.open = true;
+    if (!container._thinkSegs) container._thinkSegs = [];
+    let entry = container._thinkSegs[segIdx];
+    if (!entry) {
+      entry = { node: document.createTextNode(""), renderedLen: 0 };
+      container._thinkSegs[segIdx] = entry;
+      ensureThinkFlow(container, body).appendChild(entry.node);
     }
-    state.currentThinkSeg.textContent = text;
+    if (text.length !== entry.renderedLen) {
+      entry.node.nodeValue = text; // 同一文本节点整体覆盖：不闪烁
+      entry.renderedLen = text.length;
+    }
     updateThinkSummary(det);
+    scrollThinkBody(body);
     App.scrollToBottom();
   };
 
@@ -200,49 +300,65 @@
   App.renderAssistantContent = function(container, contentParts) {
     const bubbleEl = container.closest(".msg");
     const parts = typeof contentParts === "string" ? [{ type: "text", text: contentParts }] : (contentParts || []);
-    // thinking 与 toolCall 按原始顺序穿插（工具卡跟随对应思考段），text 统一最后渲染
+    // thinking 与 toolCall 按原始顺序穿插（工具卡跟随对应思考文本），text 统一最后渲染
+    const hasTools = parts.some((p) => p.type === "toolCall");
     const textParts = [];
+    let thinkIdx = 0;
+    const isInter = container._curMsgIntermediate === true;
     for (const part of parts) {
       if (part.type === "text" && part.text) textParts.push(part);
-      else if (part.type === "thinking" && part.thinking) App.addThinking(part.thinking, bubbleEl);
+      else if (part.type === "thinking" && part.thinking) App.addThinking(part.thinking, thinkIdx++, bubbleEl);
       else if (part.type === "toolCall") {
+        // 工具卡幂等创建（createToolCard 按 id 复用），不在这里移动叙述文本
         const card = App.createToolCard(part.id, part.name, part.arguments);
+        if (!card.isConnected) ensureMsgToolsWrap(container).appendChild(card);
         const summary = App.summarizeArgs(part.arguments);
         if (summary) card.querySelector(".tool-args").textContent = summary;
-        insertToolCardInterleaved(container, card);
       }
     }
+    // 有工具调用（或历史中间消息、或已判定过叙述移动）→ 文本是思考叙述，直接进思考流，
+    // 不再占回复区。appendThinkText 按 renderedLen 去重：message_update 重复推送同一段
+    // 叙述时只保留一份，不会反复复制。
+    const narrationMode = hasTools || isInter || container._curMsgNarrationMoved === true;
     for (const part of textParts) {
-        if (!state.currentTextDiv) {
-          state.currentTextDiv = document.createElement("div");
-          container.appendChild(state.currentTextDiv);
-          state.pendingTexts.push(state.currentTextDiv);
-          state.currentTextDiv._renderedLen = 0;
-        }
-        const div = state.currentTextDiv;
-        // 保存完整原始 markdown 文本（流结束后用全文做一次完整渲染）
-        div._fullText = part.text;
-        if (!state.streaming) {
-          // 非流式：直接全量渲染
-          App.mountMarkdown(div, part.text, { highlight: true });
-          div._renderedLen = part.text.length;
-        } else if (div._renderedLen === 0) {
-          // 流式首段：markdown 渲染，保证代码块等初始格式正确（不高亮，避免流式中破坏结构）
-          App.mountMarkdown(div, part.text);
-          div._renderedLen = part.text.length;
-          ensureStreamCursor(div);
-        } else if (part.text.length > div._renderedLen) {
-          // 流式增长：只追加增量纯文本（轻量），避免全量重绘
-          ensureStreamCursor(div);
-          div.insertBefore(document.createTextNode(part.text.slice(div._renderedLen)), div._cursor);
-          div._renderedLen = part.text.length;
-        } else if (part.text.length < div._renderedLen) {
-          // 文本变短（模型改写）：重置偏移，下一轮从首段重渲，避免切片错位；
-          // 不在这里直接重渲，防止流式中反复全量 innerHTML 让滚动高度振荡
-          div._renderedLen = 0;
-        }
-        // 流式中文本持平：不动作，等流结束统一渲染（div._fullText 已更新）
+      if (narrationMode) {
+        appendThinkText(container, part.text);
+        continue;
+      }
+      if (!state.currentTextDiv) {
+        state.currentTextDiv = document.createElement("div");
+        container.appendChild(state.currentTextDiv);
+        state.pendingTexts.push(state.currentTextDiv);
+        state.currentTextDiv._renderedLen = 0;
+        if (container._curMsgTexts) container._curMsgTexts.push(state.currentTextDiv);
+      }
+      const div = state.currentTextDiv;
+      // 保存完整原始 markdown 文本（流结束后用全文做一次完整渲染）
+      div._fullText = part.text;
+      if (!state.streaming) {
+        // 非流式：直接全量渲染
+        App.mountMarkdown(div, part.text, { highlight: true });
+        div._renderedLen = part.text.length;
+      } else if (div._renderedLen === 0) {
+        // 流式首段：markdown 渲染，保证代码块等初始格式正确（不高亮，避免流式中破坏结构）
+        App.mountMarkdown(div, part.text);
+        div._renderedLen = part.text.length;
+        ensureStreamCursor(div);
+      } else if (part.text.length > div._renderedLen) {
+        // 流式增长：只追加增量纯文本（轻量），避免全量重绘
+        ensureStreamCursor(div);
+        div.insertBefore(document.createTextNode(part.text.slice(div._renderedLen)), div._cursor);
+        div._renderedLen = part.text.length;
+      } else if (part.text.length < div._renderedLen) {
+        // 文本变短（模型改写）：重置偏移，下一轮从首段重渲，避免切片错位；
+        // 不在这里直接重渲，防止流式中反复全量 innerHTML 让滚动高度振荡
+        div._renderedLen = 0;
+      }
+      // 流式中文本持平：不动作，等流结束统一渲染（div._fullText 已更新）
     }
+    // 兜底：万一先前某轮 update 时还没看到工具调用、叙述误进了回复区，这里统一挪进思考流
+    // （appendThinkText 去重，不会产生副本）
+    if (hasTools) App.moveMsgNarrationToThink();
     updateBubbleVisibility(container);
     App.scrollToBottom();
   };
@@ -293,6 +409,23 @@
     App.scrollToBottom();
   };
 
+  // ── 等待模型响应（提问后、首字输出前的空窗提示） ──
+  // 避免用户提问后页面长时间"没反应"（模型首字慢/网络波动），
+  // AI 开始渲染消息（message_start）时自动移除。
+  App.showWaiting = function(text) {
+    App.hideWaiting();
+    const el = document.createElement("div");
+    el.className = "msg waiting-note";
+    el.innerHTML = '<span class="waiting-spinner"></span><span class="waiting-text"></span>';
+    el.querySelector(".waiting-text").textContent = text || "等待模型响应…";
+    messagesEl.appendChild(el);
+    App.scrollToBottom(true);
+  };
+  App.hideWaiting = function() {
+    const el = messagesEl.querySelector(".waiting-note");
+    if (el) el.remove();
+  };
+
   // ── 生成中断提示 + 继续按钮 ──
   // 当 assistant 消息被 SDK 标 terminated（模型接口超时/中断）时，
   // 会话会遗留一条不完整的半截消息，前端若无入口就会表现为"卡住"。
@@ -335,6 +468,7 @@
     state.toolCards.clear();
     state.processEl = null;
     state.currentThinkSeg = null;
+    autoScroll = true; // 新对话/切换对话后恢复自动跟随，避免滚动条卡在原地
     App.setStreaming(false);
   };
 
@@ -364,6 +498,12 @@
         }
         lastWasAssistant = true;
         const body = App.ensureAssistantBubble();
+        body._thinkSegs = []; // 每条消息的思考段独立（复用气泡时也重置）
+        body._curMsgTexts = [];
+        body._curToolsWrap = null;
+        body._curMsgIntermediate = Array.isArray(msg.content) && msg.content.some((p) => p.type === "toolCall");
+        body._curMsgNarrationMoved = false; // 叙述是否已判定进思考流（每消息重置）
+        body._curNarrationEntry = null;     // 叙述文本节点（每消息重置）
         App.renderAssistantContent(body, msg.content);
       } else if (msg.role === "toolResult") {
         App.finishToolCard(msg.toolCallId, msg.content, msg.isError);

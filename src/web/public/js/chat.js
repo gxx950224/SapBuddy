@@ -20,6 +20,8 @@
     sendBtn.textContent = on ? "停止" : "发送";
     sendBtn.classList.toggle("stop", on);
     inputEl.disabled = false;
+    // 兜底：发送失败/中止/结束时清掉"等待模型响应"提示，防止卡住
+    if (!on) App.hideWaiting();
     App.refreshStateQuick(on);
     // 流式结束：用保存的原始 markdown 全文重渲染（textContent 会丢掉 md 标记）
     if (!on && prev) {
@@ -64,18 +66,26 @@
     App.clearAttachments();
     autoGrow();
     App.setStreaming(true);
+    App.resetAutoScroll(); // 每次提问都恢复到底自动跟随
+    App.showWaiting();
     if (state.rebuilding) {
       App.addSystemNote("正在准备会话，首条回复稍候…");
     }
 
-    const r = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: sendText }),
-    });
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      App.addSystemNote("发送失败：" + (j.error || r.status));
+    try {
+      const r = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: sendText }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        App.addSystemNote("发送失败：" + (j.error || r.status));
+        App.setStreaming(false);
+      }
+    } catch (e) {
+      // 网络波动/服务不可达：清掉等待提示并给出明确反馈，避免一直"等待模型响应"
+      App.addSystemNote("发送失败（网络异常），请检查连接后重试。");
       App.setStreaming(false);
     }
   };

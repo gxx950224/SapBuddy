@@ -175,9 +175,16 @@
 
       case "message_start":
         if (ev.message?.role === "assistant") {
+          App.hideWaiting(); // AI 开始渲染消息 → 移除"等待模型响应"提示
           state.currentTextDiv = null;
           state.currentThinkSeg = null;
           const body = App.ensureAssistantBubble();
+          body._thinkSegs = []; // 新消息独立思考段（同一轮复用气泡时也重置）
+          body._curMsgTexts = [];
+          body._curToolsWrap = null;
+          body._curMsgIntermediate = false;
+          body._curMsgNarrationMoved = false;   // 叙述是否已判定进思考流（每消息重置）
+          body._curNarrationEntry = null;       // 叙述文本节点（每消息重置）
           body.classList.add("typing");
         }
         break;
@@ -190,6 +197,10 @@
         break;
 
       case "message_end":
+        // 中间消息（内容含工具调用）兜底：残留的叙述文本挪进思考流
+        if (ev.message?.content?.some((p) => p.type === "toolCall")) {
+          App.moveMsgNarrationToThink();
+        }
         if (state.currentAssistantEl) {
           state.currentAssistantEl.classList.remove("typing");
           const bubble = state.currentAssistantEl.closest(".msg");
@@ -202,6 +213,7 @@
 
       case "tool_execution_start": {
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
+        App.moveMsgNarrationToThink(); // 有工具 → 叙述文本挪进思考流，回复区只留最终答案
         App.addToolCallToAgent(ev.toolCallId, ev.toolName, ev.args);
         break;
       }
@@ -231,7 +243,28 @@
         break;
 
       case "agent_end":
-        console.log("[SapBuddy] 收到 agent_end, stopReason:", ev.message?.stopReason);
+        console.log("[SapBuddy] 收到 agent_end, stopReason:", ev.message?.stopReason, "willRetry:", ev.willRetry);
+        // 临时性 LLM 错误（网络抖动等）SDK 会自动重试：此时不要拆除流式 UI，
+        // 否则按钮"停止→发送→停止"来回切、"等待模型响应"闪没。保持流式态等重试继续。
+        if (ev.willRetry) {
+          // 移除这次失败消息产生的空气泡，避免残留空气泡
+          if (state.currentAssistantEl) {
+            const empty =
+              state.currentAssistantEl.children.length === 0 &&
+              !state.currentAssistantEl.classList.contains("typing");
+            if (empty) {
+              const bubble = state.currentAssistantEl.closest(".msg");
+              if (bubble) bubble.remove();
+            }
+          }
+          App.showWaiting(); // 重试期间继续显示"等待模型响应"
+          state.currentAssistantEl = null;
+          state.currentTextDiv = null;
+          state.pendingTexts = [];
+          state.processEl = null;
+          state.currentThinkSeg = null;
+          break;
+        }
         if (ev.message?.stopReason === "error" || ev.message?.errorMessage === "terminated") {
           App.onGenerationInterrupted();
         }
