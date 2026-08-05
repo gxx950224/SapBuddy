@@ -65,6 +65,10 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 - **对象**：优先面向对象；函数模块/报表逐步迁移为类与方法；`IF_OO_*` 接口解耦。
 - **注释**：解释「为什么」而非「做什么」；代码自解释，注释不冗余。
 - **单元测试**：ABAP 单元测试（`cl_abap_unit_assert`）覆盖关键逻辑。
+- **模板程序结构（TOP/CLS/IMP 拆分，强制）**：创建拆 INCLUDE 的可执行报表时：
+  - 本地类**定义+实现必须在同一个 INCLUDE**（如 `*_CLS` 同时含 DEFINITION 与 IMPLEMENTATION），不能拆两个 INCLUDE（否则激活报 "CLASS ... DEFINITION does not have a IMPLEMENTATION statement"）。
+  - 主程序**薄壳化**：只留 `REPORT` + INCLUDE 语句；`DATA`/事件块/屏幕 MODULE 全部放实现 INCLUDE（如 `*_IMP`）——避免主程序引用未激活 INCLUDE 类型造成激活死循环（$TMP 新建 INCLUDE 场景）；激活顺序：主程序 → TOP → CLS → IMP。
+  - 本地类方法内 **MESSAGE 不用 WITH 子句**（`MESSAGE TEXT-xxx TYPE 'S'`），否则报 "'.' expected after 'S'"。
 - **Mermaid 图规范（生成时必须遵守）**：
   - 节点文本含中文、空格、括号、特殊符号（`→` `/` `+` 等）时**必须用双引号包裹**：`A["入口 IS_DATA (抬头+行项目)"]`、`D{"判断 TCODE"}`。
   - 边标签含中文用引号：`A -->|"调用接口"| B`。
