@@ -1376,6 +1376,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 }
 .about-row > span { color: var(--text-dim); }
 .about-row > strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.about-row > a { color: var(--accent); text-decoration: none; font-size: 13px; }
+.about-row > a:hover { text-decoration: underline; }
 .settings-status { font-size: 13px; color: var(--text-dim); margin-left: 8px; }
 .settings-status.ok { color: #22c55e; }
 .settings-status.err { color: #f87171; }
