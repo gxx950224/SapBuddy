@@ -767,7 +767,12 @@
         $("#about-current").textContent = j.current || "unknown";
         $("#about-latest").textContent = j.hasUpdate ? `${j.latest}（有新版本）` : (j.latest || "—");
         if ($("#about-update")) $("#about-update").disabled = !j.hasUpdate || _aboutApplying;
-        setAboutStatus(j.hasUpdate ? `发现新版本 v${j.latest}，可一键更新` : "已是最新版本", j.hasUpdate ? "warn" : "ok");
+        // 上次一键更新失败 → 优先提示失败原因
+        if (j.lastUpdateError) {
+          setAboutStatus(j.lastUpdateError, "err");
+        } else {
+          setAboutStatus(j.hasUpdate ? `发现新版本 v${j.latest}，可一键更新` : "已是最新版本", j.hasUpdate ? "warn" : "ok");
+        }
       } else {
         $("#about-latest").textContent = "—";
         if ($("#about-update")) $("#about-update").disabled = true;

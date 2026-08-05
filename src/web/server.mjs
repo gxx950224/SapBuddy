@@ -61,6 +61,9 @@ function compareVersions(a, b) {
 /** 一键更新在跑（防重入） */
 let updating = false
 
+/** 上次一键更新失败的提示（启动时从 update-result.json 读到，检查更新接口带回并清除） */
+let lastUpdateError = null
+
 /** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
 let mcpStatusCache = null
 
@@ -694,7 +697,10 @@ const server = http.createServer(async (req, res) => {
         const r = await fetch("https://registry.npmjs.org/sapbuddy/latest", { signal: controller.signal })
         const j = await r.json()
         const latest = String(j?.version || "").trim()
-        return json(res, 200, { success: true, current: CURRENT_VERSION, latest, hasUpdate: latest ? compareVersions(CURRENT_VERSION, latest) < 0 : false })
+        const out = { success: true, current: CURRENT_VERSION, latest, hasUpdate: latest ? compareVersions(CURRENT_VERSION, latest) < 0 : false }
+        // 上次一键更新失败 → 带提示回界面（只带一次）
+        if (lastUpdateError) { out.lastUpdateError = lastUpdateError; lastUpdateError = null }
+        return json(res, 200, out)
       } catch (e) {
         const msg = e?.name === "AbortError" ? "检查超时，请确认本机网络可访问 npm 仓库" : `无法连接 npm 仓库：${e?.message || e}`
         return json(res, 200, { success: false, error: msg })
@@ -703,47 +709,42 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/update/apply" && req.method === "POST") {
       if (updating) return json(res, 409, { error: "正在更新中，请稍候" })
       updating = true
-      // 立即返回（服务马上要重启，HTTP 响应不能等更新跑完）
+      // 立即返回（旧程序马上要退出，HTTP 响应不能等更新跑完）
       json(res, 200, { success: true, started: true })
+      broadcast({
+        kind: "update",
+        status: "restarting",
+        line: "正在更新：旧程序将自动退出，安装完成后自动重新打开（约半分钟，请稍候）",
+      })
+      // 根因：旧进程正在运行，加载着全局安装目录里的文件，Windows 上这些文件被锁死，
+      // 直接 npm install 覆盖必报 EBUSY（4294963214），且这种持久锁重试治不了。
+      // 解法：旧进程先退出释放锁，由独立「更新代理」进程负责安装新版并重新启动。
       const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm"
-      // Windows 上 npm install 常见瞬时失败：安装文件被占用（杀毒扫描/旧窗口）。自动重试，绕过瞬时锁
-      const emit = (chunk) => {
-        const line = String(chunk).trim()
-        if (line) broadcast({ kind: "update", line })
-      }
-      let attempt = 0
-      const tryInstall = () => {
-        attempt++
-        const child = spawn(npmCmd, ["install", "-g", "sapbuddy@latest"], { shell: process.platform === "win32" })
-        child.stdout?.on("data", emit)
-        child.stderr?.on("data", emit)
-        child.on("error", (e) => {
-          updating = false
-          broadcast({ kind: "update", status: "error", line: `无法启动更新：${e?.message || e}。请重启 SapBuddy 后重试。` })
+      try {
+        fs.mkdirSync(USER_PI, { recursive: true })
+        fs.writeFileSync(path.join(USER_PI, "update-agent.mjs"), UPDATE_AGENT_SRC, "utf8")
+        const agent = spawn(process.execPath, [path.join(USER_PI, "update-agent.mjs")], {
+          detached: true, // 脱离本进程：本进程退出后它继续跑
+          stdio: "ignore",
+          windowsHide: true,
+          cwd: USER_PI, // 代理自身放在用户目录，不在会被替换的安装目录里
+          env: {
+            ...process.env,
+            SB_NPM: npmCmd,
+            SB_SELF: path.join(HERE, "server.mjs"),
+            SB_ARGS: JSON.stringify(process.argv.slice(2)),
+            SB_LOG: path.join(USER_PI, "update.log"),
+            SB_RESULT: path.join(USER_PI, "update-result.json"),
+          },
         })
-        child.on("close", (code) => {
-          if (code === 0) {
-            updating = false
-            broadcast({ kind: "update", status: "done", line: "更新完成，正在重启服务…" })
-            broadcast({ kind: "update", status: "restarting" })
-            restartServer()
-            return
-          }
-          const reason = explainUpdateExitCode(code)
-          if (attempt < UPDATE_MAX_ATTEMPTS) {
-            broadcast({ kind: "update", line: `第 ${attempt} 次安装未成功（${reason}）。${UPDATE_RETRY_DELAY_MS / 1000} 秒后自动重试…` })
-            setTimeout(tryInstall, UPDATE_RETRY_DELAY_MS)
-          } else {
-            updating = false
-            broadcast({
-              kind: "update",
-              status: "error",
-              line: `更新失败：${reason}。已自动重试 ${UPDATE_MAX_ATTEMPTS} 次仍未成功，请关闭正在运行的其他 SapBuddy 窗口（含旧版本）后重试；仍不行请重启电脑再试。`,
-            })
-          }
-        })
+        agent.unref()
+      } catch (e) {
+        updating = false
+        broadcast({ kind: "update", status: "error", line: `无法启动更新程序：${e?.message || e}，请手动更新。` })
+        return
       }
-      tryInstall()
+      // 给界面一点刷新时间，然后退出释放文件锁（更新代理接管后续安装与重启）
+      setTimeout(() => process.exit(0), 2000)
       return
     }
 
@@ -941,32 +942,86 @@ const ids = models.map((m) => m.id)
   }
 })
 
-/** 一键更新：npm install 失败自动重试上限与间隔（Windows 上文件被瞬时占用很常见，重试可绕过） */
-const UPDATE_MAX_ATTEMPTS = 3
-const UPDATE_RETRY_DELAY_MS = 4000
+/**
+ * 更新代理脚本源码（写入 ~/.SapBuddy/update-agent.mjs 后以独立进程运行）。
+ * 职责：旧程序退出 → 装新版（失败自动重试，绕过杀毒瞬时锁）→ 重新启动 SapBuddy；
+ * 安装失败则恢复原版本，并把原因写入 update-result.json 供下次启动提示。
+ * 注意：此脚本只依赖 node 内置模块，且不能使用反引号/模板字符串（自身是模板字符串常量）。
+ */
+const UPDATE_AGENT_SRC = `import fs from "node:fs"
+import { spawn } from "node:child_process"
 
-/** 把 npm install 的进程退出码翻译成大白话（Windows 退出码是无符号 32 位，先转回有符号再比对） */
-function explainUpdateExitCode(code) {
+const NPM = process.env.SB_NPM || "npm"
+const LOG = process.env.SB_LOG || "update.log"
+const SELF = process.env.SB_SELF || ""
+const RESULT = process.env.SB_RESULT || "update-result.json"
+let ARGS = []
+try { ARGS = JSON.parse(process.env.SB_ARGS || "[]") } catch {}
+
+function log(s) {
+  try { fs.appendFileSync(LOG, new Date().toLocaleString() + " " + s + "\\n") } catch {}
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+function runInstall() {
+  return new Promise((resolve) => {
+    const child = spawn(NPM, ["install", "-g", "sapbuddy@latest"], {
+      shell: process.platform === "win32",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    })
+    child.stdout.on("data", (d) => log("  " + String(d).trim()))
+    child.stderr.on("data", (d) => log("  " + String(d).trim()))
+    child.on("error", (e) => { log("无法启动 npm: " + e.message); resolve(-1) })
+    child.on("close", (code) => resolve(Number(code) ?? -1))
+  })
+}
+
+function explain(code) {
   const n = Number(code) || 0
   const signed = n > 0x7fffffff ? n - 0x100000000 : n
-  if (signed === -4082) return "安装文件正被其他程序占用（可能是杀毒软件正在扫描，或还开着旧版 SapBuddy 窗口）"
-  if (signed === -4092) return "没有权限写入安装目录（请右键以管理员身份运行后重试）"
-  if (n === 1) return "npm 安装报错（详情见上方日志）"
-  return `安装进程退出（退出码 ${n}）`
+  if (signed === -4082) return "安装文件正被其他程序占用（可能杀毒软件正在扫描，或仍有旧窗口未关闭）"
+  if (signed === -4092) return "没有权限写入安装目录（请右键以管理员身份运行 SapBuddy 后重试）"
+  if (n === 1) return "npm 安装报错（详细日志见 ~/.SapBuddy/update.log）"
+  return "安装进程退出（退出码 " + n + "）"
 }
 
-/** 一键更新成功后自重启：拉起同端口新进程，旧进程稍后退出 */
-function restartServer() {
-  const selfPath = path.join(HERE, "server.mjs")
-  const child = spawn(process.execPath, [selfPath, ...process.argv.slice(2)], {
-    detached: true,
-    stdio: "ignore",
-    env: { ...process.env, SAPBUDDY_RESTARTING: "1" },
-  })
-  child.unref()
-  // 给 SSE broadcast 一点刷新时间，再退出释放端口（新进程用重试兜底）
-  setTimeout(() => process.exit(0), 1000)
+function writeResult(status, line) {
+  try { fs.writeFileSync(RESULT, JSON.stringify({ status, line, ts: Date.now() }), "utf8") } catch {}
 }
+
+function relaunch() {
+  try {
+    const child = spawn(process.execPath, [SELF, ...ARGS], { detached: true, stdio: "ignore", windowsHide: true })
+    child.unref()
+    log("已重新启动 SapBuddy")
+  } catch (e) {
+    log("重新启动失败: " + e.message)
+  }
+}
+
+const MAX = 3, DELAY = 4000
+log("=== 更新代理启动：等待旧程序退出后安装新版 ===")
+await sleep(3000)
+let ok = false
+let lastReason = ""
+for (let i = 1; i <= MAX; i++) {
+  log("第 " + i + " 次尝试安装…")
+  const code = await runInstall()
+  if (code === 0) { ok = true; break }
+  lastReason = explain(code)
+  log("第 " + i + " 次失败: " + lastReason)
+  if (i < MAX) await sleep(DELAY)
+}
+if (ok) {
+  log("✅ 安装成功，启动新版本")
+  writeResult("ok", "更新完成，正在启动新版本")
+} else {
+  log("❌ 安装失败: " + lastReason)
+  writeResult("error", "更新失败：" + lastReason + "。已恢复运行原版本，请按提示操作后重试。")
+}
+relaunch()
+`
 
 server.on("error", (err) => {
   if (err?.code === "EADDRINUSE") {
@@ -992,6 +1047,18 @@ server.listen(PORT, HOST, () => {
       cleanEmptySessions()
     })
     .catch(() => cleanEmptySessions())
+  // 上次一键更新的结果：失败则记入 lastUpdateError（「检查更新」界面会提示），并打印到控制台
+  try {
+    const rf = path.join(USER_PI, "update-result.json")
+    if (fs.existsSync(rf)) {
+      const r = JSON.parse(fs.readFileSync(rf, "utf8"))
+      fs.unlinkSync(rf)
+      if (r?.status === "error" && r?.line) {
+        lastUpdateError = r.line
+        console.error(`\n  ⚠️ 上次一键更新失败：${r.line}\n`)
+      }
+    }
+  } catch { /* 结果文件损坏则忽略 */ }
   console.log(`\n  🚀 SapBuddy Web 版已启动`)
   console.log(`  📍 http://${HOST}:${PORT}\n`)
 })
