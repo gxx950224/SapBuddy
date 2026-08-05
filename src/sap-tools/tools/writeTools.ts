@@ -45,8 +45,8 @@ export const createObjectTool = {
   title: "Create ABAP Object",
   description:
     "在 SAP 系统中创建新的 ABAP 对象（类、报表、接口、表、包等）。\n" +
-    "强制规则：必须提供正式开发包（packageName，非 $TMP）、对象名、描述；\n" +
-    "创建前必须先向用户收集这些信息（包名/对象名/描述/请求描述），缺少即拦截。\n" +
+    "强制规则：创建前必须先向用户收集这些信息（包名/对象名/描述/请求描述），缺少即拦截。\n" +
+    "包名可为正式开发包，也可为 $TMP（临时测试包，对象不进传输请求、无法发布）；用户确认后再创建。\n" +
     "requestText 提供时自动创建传输请求并挂载对象。创建后对象未激活，用 abap_activate 激活。",
   write: true,
   inputSchema: z.object({
@@ -59,7 +59,7 @@ export const createObjectTool = {
       .describe("对象类型 ID：CLAS/OC(类) INTF/OI(接口) PROG/P(可执行报表/主程序) PROG/I(Include，少用) FUGR/FF(函数模块,需 parentName) TABL/DT(表) DEVC/K(包)"),
     name: z.string().describe("对象名称（大写，如 ZCL_MY_CLASS）"),
     description: z.string().describe("对象描述"),
-    packageName: z.string().describe("所属开发包（正式包，禁止 $TMP；先向用户收集）"),
+    packageName: z.string().describe("所属开发包：正式开发包名，或 $TMP（临时测试包，不进传输）；先向用户确认"),
     requestText: z.string().optional().describe("传输请求描述（可选；提供时自动创建请求并挂载对象，推荐格式 sapbuddy_<摘要>_<YYYYMMDD>）"),
     parentName: z.string().optional().describe("父对象名（函数组/FUGR 需要）"),
     connectionId: connectionIdSchema,
@@ -88,10 +88,13 @@ export const createObjectTool = {
           return "⛔ 强制规则拦截：创建函数模块（FUGR/FF）必须提供 parentName（函数组名）。请先向用户收集函数组名称。"
         }
       }
-      // ── 强制规则：创建必须提供正式包名/描述（写死，不允许自由发挥）──
+      // ── 强制规则：创建必须有包名/描述；包名缺省时向用户确认写哪个包 ──
       const pkg = (args.packageName || "").trim()
-      if (!pkg || pkg.toUpperCase() === "$TMP") {
-        return "⛔ 强制规则拦截：创建对象必须提供正式开发包（packageName，禁止 $TMP）。请先向用户收集开发包名称。"
+      if (!pkg) {
+        return "⛔ 创建对象需要指定开发包（packageName）。请先向用户确认要写入哪个包：\n" +
+          "· 正式开发包名（如 ZPKG，对象可挂传输请求、发布到正式系统）；\n" +
+          "· $TMP（临时测试包，对象不进传输请求、无法发布）。\n" +
+          "请把确认到的包名填入 packageName 后重试。"
       }
       if (!args.description || !args.description.trim()) {
         return "⛔ 强制规则拦截：创建对象必须提供描述（description）。请先向用户收集。"

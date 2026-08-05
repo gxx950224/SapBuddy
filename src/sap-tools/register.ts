@@ -228,6 +228,27 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         reason: `⛔ 当前为只读模式（security.readOnly=true），写操作已禁止：${name}\n请在设置中关闭只读模式后再试。`,
       }
     }
+    // 临时包 $TMP 专用确认：对象不进传输请求、无法发布，需用户明确同意（与常规写操作确认叠加）
+    if (name === "create_object_programmatically") {
+      const pkg = String((event.input as Record<string, unknown>)?.packageName || "").trim().toUpperCase()
+      if (pkg === "$TMP" && !isWriteApproved()) {
+        const warn =
+          "AI 请求把对象创建到临时包 $TMP。$TMP 里的对象不关联传输请求，无法发布到正式系统，仅适合本地测试。确认这样创建吗？"
+        if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+          const ok = await ctx.ui.confirm("SapBuddy 临时包创建确认", warn)
+          if (ok) return
+          return { block: true, reason: "⛔ 用户拒绝了创建到 $TMP。请改为正式开发包，或先向用户确认测试意图。" }
+        }
+        opts?.onBlocked?.({ toolName: name, input: event.input })
+        return {
+          block: true,
+          reason:
+            `⛔ 创建对象到临时包 $TMP 需人工确认（已拦截，未创建）。\n` +
+            `请把要创建的对象（名称/类型/描述）和"写入 $TMP 临时包、不进传输请求"的意图完整展示给用户，并明确请求确认。\n` +
+            `用户在对话中输入"确认/同意/批准/执行"后重试即可放行。`,
+        }
+      }
+    }
     // 批准窗口内放行（Web 确认后 AI 重放）
     if (isWriteApproved()) return
     if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {

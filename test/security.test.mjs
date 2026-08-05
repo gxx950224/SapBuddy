@@ -251,3 +251,29 @@ test("项目根 output/ 不再接受：要求改到 .SapBuddy/output（统一唯
   assert.equal(r?.block, true)
   assert.ok((r?.reason ?? "").includes(".SapBuddy/output/ZPPR085/ZPPR085_CodeReview.html"), `应提示改到 .SapBuddy/output，实际: ${r?.reason?.slice(0, 120)}`)
 })
+
+// ── 临时包 $TMP 写门禁（installWriteGate：create_object_programmatically 传 $TMP 需人工确认）────
+const tmpObj = { objectType: "CLAS/OC", name: "ZTEST001", description: "测试对象", packageName: "$TMP" }
+
+test("临时包写门禁：create_object_programmatically 传 $TMP 且未确认 → 拦截并提示需人工确认", async () => {
+  clearWriteApproval()
+  const r = await triggerWriteGate(tmpObj, "create_object_programmatically")
+  assert.equal(r?.block, true)
+  assert.ok((r?.reason ?? "").includes("$TMP") && (r?.reason ?? "").includes("需人工确认"),
+    `应提示 $TMP 需人工确认，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("临时包写门禁：正式包 ZPKG 不触发 $TMP 确认（走通用写确认）", async () => {
+  clearWriteApproval()
+  const r = await triggerWriteGate({ ...tmpObj, packageName: "ZPKG" }, "create_object_programmatically")
+  assert.equal(r?.block, true)
+  assert.ok(!(r?.reason ?? "").includes("临时包 $TMP"), "正式包不应报 $TMP 专用确认")
+  assert.ok((r?.reason ?? "").includes("写操作需人工确认"), `应走通用写确认，实际: ${r?.reason?.slice(0, 120)}`)
+})
+
+test("临时包写门禁：用户明确确认后 $TMP 放行", async () => {
+  clearWriteApproval()
+  handleUserMessage("确认，创建到 $TMP 测试")
+  const r = await triggerWriteGate(tmpObj, "create_object_programmatically")
+  assert.equal(r, undefined, "已确认后不应再拦截")
+})

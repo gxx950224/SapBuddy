@@ -26,9 +26,15 @@ test("create_object_programmatically：FUGR/FF 缺 parentName 被拦截", async 
   assert.ok(out.includes("parentName"), `应提示提供 parentName，实际: ${out.slice(0, 160)}`)
 })
 
-test("create_object_programmatically：$TMP 包名仍被拦截（既有规则）", async () => {
+test("create_object_programmatically：$TMP 放行（不再被拦截，进入连接阶段）", async () => {
   const out = await createObjectTool.execute({ ...base, objectType: "CLAS/OC", packageName: "$TMP" })
-  assert.ok(out.includes("$TMP"), `应提示禁止 $TMP，实际: ${out.slice(0, 160)}`)
+  assert.ok(!out.includes("禁止 $TMP") && !out.includes("必须提供正式开发包"),
+    `$TMP 不应被包名规则拦截，实际: ${out.slice(0, 200)}`)
+})
+
+test("create_object_programmatically：缺包名被拦截，并提示向用户确认写哪个包", async () => {
+  const out = await createObjectTool.execute({ ...base, objectType: "CLAS/OC", packageName: "  " })
+  assert.ok(out.includes("哪个包"), `应提示确认写哪个包（正式包或 $TMP），实际: ${out.slice(0, 200)}`)
 })
 
 test("create_object_programmatically：缺描述仍被拦截（既有规则）", async () => {

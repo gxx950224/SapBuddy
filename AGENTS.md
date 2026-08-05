@@ -79,7 +79,7 @@ node cli.mjs tools   # 工具列表
 | SapBuddy 自身源码/规则文件禁止 AI 读写（src/、cli.mjs、test/、AGENTS.md、SYSTEM.md 等）| `register.ts` `installWriteGate`（保留 Memory.md、.SapBuddy/skills、output/ 可编辑区）| 硬强制 |
 | 代码规则扫描（硬编码中文/裸类型 d/t）| `register.ts` `scanCodeViolations` | 硬强制 |
 | 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |
-| 创建：包名/描述必填、禁 $TMP、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically | 硬强制 |
+| 创建：包名/描述必填、$TMP 需用户确认、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically + `register.ts` 写门禁 | 硬强制 |
 | 修改：自动沿用/创建请求、请求描述格式 | `tools/writeTools.ts` replace_string_in_abap_object | 硬强制 |
 | 传输请求：状态码中文、底表 E070/E071、只读放行 | `tools/transportText.ts` manage_transport_requests | 硬强制 |
 | 创建/修改流程、避坑记录、请求描述格式（行为层）| `SYSTEM.md` 铁律 6b / 输出约定 | 提示层（AI 执行，工具已兜底）|
