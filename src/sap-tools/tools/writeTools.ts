@@ -1,6 +1,6 @@
 /** 工具组：对象管理/写操作（create_object_programmatically、abap_activate、replace_string_in_abap_object、get_abap_diagnostics、create_test_include） */
 import { z } from "zod"
-import { session_types } from "abap-adt-api"
+import { session_types, type ActivationResult } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
 import { getActiveRequest, setActiveRequest } from "../taskTransport.js"
 import {
@@ -10,6 +10,7 @@ import {
   escapeXmlAttr,
   connectionIdSchema,
   objectTypeSchema,
+  readSourceSmart,
 } from "./shared.js"
 
 /** 编辑类操作需要 stateful 会话（lock/setObjectSource） */
@@ -175,12 +176,108 @@ export const createObjectTool = {
 }
 
 // ─── abap_activate ──────────────────────────────────────────────────────────
+// 强制止损：同一对象连续激活失败达到阈值即拒绝执行，防止 AI 陷入无限重试死循环
+const ACTIVATE_FAIL_LIMIT = 3
+const activateFailCount = new Map<string, number>()
+
+type ClientLike = Awaited<ReturnType<typeof getClient>>
+type ActivateRef = {
+  "adtcore:uri": string
+  "adtcore:type": string
+  "adtcore:name": string
+  "adtcore:parentUri": string
+}
+
+/** 从主程序源码枚举 INCLUDE 语句名。行尾可带注释（"INCLUDE XXX.   "说明"），句点后即结束匹配 */
+export function parseIncludeNames(source: string): string[] {
+  const names: string[] = []
+  for (const line of String(source ?? "").split("\n")) {
+    const m = /^\s*INCLUDE\s+([A-Za-z][A-Za-z0-9_]*)\s*\./i.exec(line)
+    if (m) names.push(m[1].toUpperCase())
+  }
+  return names
+}
+
+/**
+ * 拆 INCLUDE 的可执行程序（PROG/P + 其 PROG/I）无法逐个编译：
+ * 单独激活某个 INCLUDE 会对着兄弟 INCLUDE 的旧激活版本编译 → "Field/Type unknown" 死局。
+ * 读主程序源码枚举 INCLUDE，分两步激活：① 批量激活全部 INCLUDE（一致编译）；② 字符串形式单独激活主程序。
+ * 注意：绝不能把主程序放进批量数组并设 parentUri=自身——ADT 会把主程序当作父容器静默跳过
+ * （返回 success=true 但主程序根本没激活，正是"激活成功却仍 inactive"的根因）。
+ * 非 PROG/P/PROG/I 直接单对象激活。
+ */
+async function activateWithIncludes(
+  client: ClientLike,
+  obj: { "adtcore:uri": string; "adtcore:name": string; "adtcore:type"?: string }
+): Promise<ActivationResult> {
+  const type = obj["adtcore:type"] ?? ""
+  if (type !== "PROG/P" && type !== "PROG/I") {
+    return client.activate(obj["adtcore:name"], obj["adtcore:uri"], undefined, true)
+  }
+  // 找到主程序：直接激活主程序，或由 INCLUDE 反查主程序
+  let mainUri = obj["adtcore:uri"]
+  let mainName = obj["adtcore:name"]
+  if (type === "PROG/I") {
+    try {
+      const mains = await client.mainPrograms(obj["adtcore:uri"])
+      if (mains?.length) {
+        mainUri = mains[0]["adtcore:uri"]
+        mainName = mains[0]["adtcore:name"]
+      }
+    } catch { /* 反查主程序失败则按当前对象激活 */ }
+  }
+  // 枚举主程序源码中的 INCLUDE 语句
+  const includes: ActivateRef[] = []
+  try {
+    const source = await readSourceSmart(client, "PROG/P", mainUri)
+    for (const incName of parseIncludeNames(source)) {
+      if (incName === mainName) continue
+      includes.push({
+        "adtcore:uri": `/sap/bc/adt/programs/includes/${incName.toLowerCase()}`,
+        "adtcore:type": "PROG/I",
+        "adtcore:name": incName,
+        "adtcore:parentUri": mainUri,
+      })
+    }
+  } catch { /* 读主程序源码失败：退化为仅激活主程序 */ }
+
+  const results: ActivationResult[] = []
+  // ① 先批量激活全部 INCLUDE，让 INCLUDE 之间在同一激活周期一致编译
+  if (includes.length > 0) {
+    try {
+      results.push(await client.activate(includes, true))
+    } catch (err) {
+      results.push({
+        success: false,
+        messages: [{ objDescr: "", type: "E", line: 0, href: "", forceSupported: false, shortText: toToolError(err) }],
+        inactive: [],
+      })
+    }
+  }
+  // ② 再以字符串形式单独激活主程序（无 parentUri，主程序才会真正被激活）
+  try {
+    results.push(await client.activate(mainName, mainUri, undefined, true))
+  } catch (err) {
+    results.push({
+      success: false,
+      messages: [{ objDescr: "", type: "E", line: 0, href: "", forceSupported: false, shortText: toToolError(err) }],
+      inactive: [],
+    })
+  }
+  return {
+    success: results.every(r => r.success),
+    messages: results.flatMap(r => r.messages ?? []),
+    inactive: results.flatMap(r => r.inactive ?? []),
+  }
+}
+
 export const activateTool = {
   name: "abap_activate",
   title: "Activate ABAP Object",
   description:
     "激活 ABAP 对象（等价于 SE80 的激活按钮）。激活后返回语法/激活消息列表。写入类代码后必须先激活才能生效。\n" +
-    "⚠️ 函数组(FUGR)激活不会自动连带激活其内部的函数模块——函数模块需单独激活：objectName=函数模块名，objectType=FUGR/FF。",
+    "⚠️ 函数组(FUGR)激活不会自动连带激活其内部的函数模块——函数模块需单独激活：objectName=函数模块名，objectType=FUGR/FF。\n" +
+    "⚠️ 拆 INCLUDE 的可执行程序（主程序 PROG/P + 其 INCLUDE PROG/I）无法逐个编译——单独激活某个 INCLUDE 会对着兄弟 INCLUDE 的旧版本编译，必报 \"Field/Type unknown\"。激活时工具会自动先批量激活其全部 INCLUDE、再单独激活主程序（两步）；同一对象连续激活失败 3 次会被强制拦截，需停下向用户说明。",
   write: true,
   inputSchema: z.object({
     objectName: z.string().describe("对象名称"),
@@ -192,12 +289,26 @@ export const activateTool = {
       const connId = await resolveConnectionId(args.connectionId)
       const obj = await requireObject(connId, args.objectName, args.objectType, { includeDirectRead: false })
       const client = await getClient(connId)
-      const result = await client.activate(
-        obj["adtcore:name"],
-        obj["adtcore:uri"],
-        undefined,
-        true
-      )
+      // ① 拆 INCLUDE 的可执行程序（PROG/P/PROG/I）无法逐个编译：单激活某个 INCLUDE 会对着兄弟
+      //    INCLUDE 的旧版本编译，必报 "Field/Type unknown"。activateWithIncludes 分两步激活：
+      //    先批量激活全部 INCLUDE，再单独激活主程序（批量数组带 parentUri=自身会被 ADT 静默跳过）。
+      const result = await activateWithIncludes(client, obj)
+      // ③ 强制止损：同一对象连续激活失败达阈值 → 拒绝执行，逼 AI 停下向用户求助
+      // ③ 强制止损：同一对象连续激活失败达阈值 → 拒绝执行，逼 AI 停下向用户求助
+      const failKey = `${obj["adtcore:type"]}|${obj["adtcore:name"]}`
+      if (result.success) {
+        activateFailCount.delete(failKey)
+      } else {
+        const n = (activateFailCount.get(failKey) ?? 0) + 1
+        activateFailCount.set(failKey, n)
+        if (n >= ACTIVATE_FAIL_LIMIT) {
+          return (
+            `❌ 对象 ${obj["adtcore:name"]} 连续激活失败已达 ${n} 次，已强制停止重试。\n` +
+            `请先向用户说明现状（最近错误信息、对象当前激活状态），并请求下一步决策，禁止继续尝试激活同一对象。`
+          )
+        }
+      }
+      // ② 强制披露真实状态：未激活对象清单（未激活 = 未完成），防"全部验证通过"式虚假完成
       const lines: string[] = []
       if (result.success) {
         lines.push(`✅ ${obj["adtcore:type"]} ${obj["adtcore:name"]} 激活成功`)
@@ -208,6 +319,13 @@ export const activateTool = {
         lines.push(`  [${m.type}] 行 ${m.line}: ${m.shortText}`)
       }
       if ((result.messages ?? []).length > 50) lines.push(`  ... 其余 ${result.messages.length - 50} 条省略`)
+      if ((result.inactive ?? []).length > 0) {
+        lines.push(`⚠️ 以下对象仍未激活（未激活 = 未完成）：`)
+        for (const rec of result.inactive) {
+          const o = rec?.object
+          if (o) lines.push(`  - ${o["adtcore:type"]} ${o["adtcore:name"]}`)
+        }
+      }
       return lines.join("\n")
     } catch (err) {
       return toToolError(err)

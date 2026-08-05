@@ -41,6 +41,15 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
    - **`manage_text_elements` 只用于读取/核对** 现有文本元素（action=`read`），不用于写入。
    - 写前先读现有文本元素，避免重复符号/漏合并；文本池随程序对象传输（无需 SE63）。
 
+## 防死循环与止损（软约束，靠自觉；能代码强制的已由工具层兜底）
+
+> 以下为行为规范，工具层已尽量强制（如 abap_activate 自动带 INCLUDE 主程序上下文、披露未激活清单、连续失败 3 次拦截），此节提醒 AI 自觉遵守：
+
+1. **用户纠错后先整体复盘**：用户指出"有问题/错了/没完成"时，先重新读取对象现状（激活状态、当前源码、诊断结果），列出全部异常清单、确认排查顺序后再动手；禁止直接埋头修最新一条报错。
+2. **覆盖型写操作前先备份**：整体覆盖类工具（manage_text_elements 写、translate_text_pool、replace_string）动手前先读当前完整内容备份；操作可能影响多个条目时先说明覆盖范围；一旦发现"修一处坏一处"（补 A 丢 B）立即停手，先还原/说明，禁止继续覆盖式修补。
+3. **工具不可用即换路**：工具返回 not found / 对象不存在时，说明该路径不通，换可行工具或如实告知用户，禁止继续深挖不存在的能力（如表、工具）。
+4. **报完成前核对激活状态**：宣称"完成/验证通过"前，用 get_abap_object_info 核对对象激活状态（active/inactive）；INCLUDE 未激活 = 未完成（工具返回的未激活清单即信号）。
+
 ## 编码规范（默认：SAP 官方 Clean ABAP）
 
 **默认开发规范采用 SAP 官方 Clean ABAP 风格指南**（Clean Code for ABAP，源自 Robert C. Martin《Clean Code》），技能见 `~/.SapBuddy/skills/clean-abap/`（含 4300+ 行中文指南 `references/CleanABAP_zh.md`）。
@@ -67,7 +76,7 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 - **单元测试**：ABAP 单元测试（`cl_abap_unit_assert`）覆盖关键逻辑。
 - **模板程序结构（TOP/CLS/IMP 拆分，强制）**：创建拆 INCLUDE 的可执行报表时：
   - 本地类**定义+实现必须在同一个 INCLUDE**（如 `*_CLS` 同时含 DEFINITION 与 IMPLEMENTATION），不能拆两个 INCLUDE（否则激活报 "CLASS ... DEFINITION does not have a IMPLEMENTATION statement"）。
-  - 主程序**薄壳化**：只留 `REPORT` + INCLUDE 语句；`DATA`/事件块/屏幕 MODULE 全部放实现 INCLUDE（如 `*_IMP`）——避免主程序引用未激活 INCLUDE 类型造成激活死循环（$TMP 新建 INCLUDE 场景）；激活顺序：主程序 → TOP → CLS → IMP。
+  - 主程序**薄壳化**：只留 `REPORT` + INCLUDE 语句；`DATA`/事件块/屏幕 MODULE 全部放实现 INCLUDE（如 `*_IMP`）——避免主程序引用未激活 INCLUDE 类型造成激活死循环（$TMP 新建 INCLUDE 场景）；激活方式：**只激活主程序（PROG/P）**，`abap_activate` 会自动读主程序源码枚举其全部 INCLUDE，先批量激活全部 INCLUDE、再单独激活主程序（两步），使整套一致编译。**禁止单独激活 INCLUDE**（PROG/I 无法独立编译，单独激活会对着兄弟 INCLUDE 的旧版本编译，必报 "类型/字段 unknown"——属工具已兜底的正常现象，直接激活主程序即可）。
   - 本地类方法内 **MESSAGE 不用 WITH 子句**（`MESSAGE TEXT-xxx TYPE 'S'`），否则报 "'.' expected after 'S'"。
 - **Mermaid 图规范（生成时必须遵守）**：
   - 节点文本含中文、空格、括号、特殊符号（`→` `/` `+` 等）时**必须用双引号包裹**：`A["入口 IS_DATA (抬头+行项目)"]`、`D{"判断 TCODE"}`。

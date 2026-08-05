@@ -7,7 +7,7 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { createObjectTool } = require("../dist/sap-tools/tools/writeTools.js")
+const { createObjectTool, parseIncludeNames } = require("../dist/sap-tools/tools/writeTools.js")
 
 const base = { name: "ZTEST001", description: "测试对象", packageName: "ZPKG", connectionId: "none" }
 
@@ -40,4 +40,36 @@ test("create_object_programmatically：缺包名被拦截，并提示向用户�
 test("create_object_programmatically：缺描述仍被拦截（既有规则）", async () => {
   const out = await createObjectTool.execute({ ...base, objectType: "CLAS/OC", packageName: "ZPKG", description: "  " })
   assert.ok(out.includes("描述"), `应提示缺少描述，实际: ${out.slice(0, 160)}`)
+})
+
+// ── parseIncludeNames：批量激活枚举 INCLUDE（回归：行尾注释不能漏匹配）──────────
+const MAIN_SRC = [
+  `*&---------------------------------------------------------------------*`,
+  `REPORT ZREPORT.`,
+  ``,
+  `INCLUDE ZREPORT_TOP.   "全局数据与选择屏幕`,
+  `INCLUDE ZREPORT_CLS.   "本地类定义`,
+  `INCLUDE ZREPORT_IMP.`,
+  `* 注释里提到 INCLUDE ZREPORT_FAKE. 不应被当成语句`,
+  `DATA(lv_ok) = abap_true.`,
+].join("\r\n")
+
+test("parseIncludeNames：识别带行尾注释的 INCLUDE 语句", () => {
+  const names = parseIncludeNames(MAIN_SRC)
+  assert.deepEqual(names, ["ZREPORT_TOP", "ZREPORT_CLS", "ZREPORT_IMP"])
+})
+
+test("parseIncludeNames：注释行与普通语句不误报", () => {
+  const src = [
+    `* INCLUDE ZFAKE1.`,
+    `DATA gv_x TYPE i.`,
+    `WRITE 'INCLUDE ZFAKE2.'.`,
+    ``,
+  ].join("\n")
+  assert.deepEqual(parseIncludeNames(src), [])
+})
+
+test("parseIncludeNames：空源码返回空", () => {
+  assert.deepEqual(parseIncludeNames(""), [])
+  assert.deepEqual(parseIncludeNames("  \n  \n"), [])
 })
