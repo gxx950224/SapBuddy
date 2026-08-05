@@ -14,6 +14,68 @@ interface ManagedClient {
 
 const pool = new Map<string, ManagedClient>()
 
+/**
+ * 每连接互斥锁：ADTClient 是共享状态（cookie jar / stateful 会话），
+ * 并行工具调用会互相踩踏（解锁命中错误会话 → 残留编辑锁）。用 promise 链把
+ * 同一连接上的所有操作串行化。并发场景下后到的调用排队等待先到的完成。
+ */
+const mutexQueues = new Map<string, Promise<unknown>>()
+
+/** 串行执行：同一连接 id 上的操作按顺序执行，互不并发。 */
+export function withConnMutex<T>(connId: string, fn: () => Promise<T>): Promise<T> {
+  const id = connId.toLowerCase()
+  const prev = mutexQueues.get(id) ?? Promise.resolve()
+  const next = prev.catch(() => undefined).then(fn)
+  // 存 settled 后的 promise，保证队列不因某次失败而卡死；错误仍向调用方抛出
+  mutexQueues.set(id, next.catch(() => undefined))
+  return next
+}
+
+/**
+ * 标记连接为不健康：从池中移除缓存（客户端 + 类别），下次调用自动重新 login。
+ * 会话自愈的核心——连接级故障（401/5xx/网络错误）不保留坏会话，宁可重连。
+ */
+export function markConnectionUnhealthy(connId: string): void {
+  const id = connId.toLowerCase()
+  pool.delete(id)
+  clientCategoryCache.delete(id)
+}
+
+/** 判断是否连接级故障（会话失效/网络断了），而非业务错误 */
+export function isConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false
+  const status = (err as { status?: unknown }).status
+  if (typeof status === "number") return status === 401 || status === 403 || status >= 500
+  return /ECONNRESET|ETIMEDOUT|ENOTFOUND|ECONNREFUSED|EPIPE|socket hang up|fetch failed|Failed to fetch|network error|read ECONNRESET|write EPIPE|CERT_|self-signed/.test(
+    err.message
+  )
+}
+
+/** 包装客户端：方法抛连接级错误时自动标记不健康，实现自愈 */
+function wrapSelfHeal(client: ADTClient, connId: string): ADTClient {
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver)
+      if (typeof value !== "function") return value
+      return (...args: unknown[]) => {
+        try {
+          const result = value.apply(target, args)
+          if (result && typeof (result as Promise<unknown>).then === "function") {
+            return (result as Promise<unknown>).catch((err: unknown) => {
+              if (isConnectionError(err)) markConnectionUnhealthy(connId)
+              throw err
+            })
+          }
+          return result
+        } catch (err) {
+          if (isConnectionError(err)) markConnectionUnhealthy(connId)
+          throw err
+        }
+      }
+    },
+  })
+}
+
 /** 客户端类别缓存：connId → T000.CCCATEGORY（P=生产 T=测试 C=定制 D=演示 E=培训/教育 S=SAP参考） */
 const clientCategoryCache = new Map<string, Promise<string>>()
 
@@ -95,7 +157,15 @@ function buildClientOptions(conf: ConnectionConfig): ClientOptions {
   return options
 }
 
+let clientFactoryOverride: ((conf: ConnectionConfig) => ADTClient) | null = null
+
+/** 测试专用：注入假客户端工厂（仅单测验证错误路径用，生产勿调） */
+export function __setClientFactoryForTest(fn: ((conf: ConnectionConfig) => ADTClient) | null): void {
+  clientFactoryOverride = fn
+}
+
 function createAdtClient(conf: ConnectionConfig): ADTClient {
+  if (clientFactoryOverride) return clientFactoryOverride(conf)
   const options = buildClientOptions(conf)
 
   if (conf.authMethod === "oauth" && conf.oauth) {
@@ -151,7 +221,8 @@ export function getClient(connId: string): Promise<ADTClient> {
     managed = { client, ready }
     pool.set(conf.id, managed)
   }
-  return managed.ready.then(() => managed!.client)
+  // 包自愈代理：连接级故障自动标记不健康 → 下次调用重新 login
+  return managed.ready.then(() => wrapSelfHeal(managed!.client, conf.id))
 }
 
 /** 释放指定连接（用于测试/连接重置） */

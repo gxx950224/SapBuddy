@@ -1,7 +1,7 @@
 /** 工具公共辅助：搜索结果格式化、错误处理 */
 import { z } from "zod"
 import { SearchResult } from "abap-adt-api"
-import { getClient } from "../adtManager.js"
+import { getClient, isConnectionError, markConnectionUnhealthy } from "../adtManager.js"
 
 /** 默认搜索类型（与 abap_fs 保持一致） */
 export const DEFAULT_SEARCH_TYPES = [
@@ -73,16 +73,24 @@ export async function findObject(
 
   async function batch(ts: string[]): Promise<SearchResult | undefined> {
     const settled = await Promise.allSettled(
-      ts.map(async (type) => {
-        try {
-          return { type, results: await client.searchObject(pattern, type as never, 10) }
-        } catch {
-          return { type, results: [] as never[] }
-        }
-      }),
+      ts.map(async (type) => ({ type, results: await client.searchObject(pattern, type as never, 10) })),
     )
+    // 报错说真话：全部搜索都失败 → 是连接/会话异常，不是"对象不存在"
+    // （此前这里把所有错误吞掉返回空 → 会话被搞坏时连标准表 SCARR 都报"未找到"，误导定位）
+    if (settled.length > 0 && settled.every((r) => r.status === "rejected")) {
+      const reasons = settled.map((r) => (r.status === "rejected" && r.reason instanceof Error ? r.reason : undefined))
+      const hasConnErr = reasons.some((e) => e !== undefined && isConnectionError(e))
+      if (hasConnErr) markConnectionUnhealthy(connId)
+      const sample = reasons[0]?.message ?? "未知错误"
+      throw new Error(
+        `ADT 搜索服务异常（连接 ${connId}）：全部 ${settled.length} 项对象搜索均失败，` +
+          `对象可能存在但搜索通道不可用（不是"对象不存在"）。已重置连接，请重试。` +
+          `详情: ${sample.slice(0, 200)}`
+      )
+    }
     for (const r of settled) {
-      const results = r.status === "fulfilled" ? (r.value.results as never[]) : []
+      if (r.status !== "fulfilled") continue
+      const results = (r.value.results as never[]) ?? []
       const exact = results.find((x) => (x as SearchResult)["adtcore:name"].toUpperCase() === pattern)
       if (exact) return exact as SearchResult
       if (results.length > 0 && !objectType) return results[0] as SearchResult

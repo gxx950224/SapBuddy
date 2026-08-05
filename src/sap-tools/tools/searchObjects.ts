@@ -1,6 +1,6 @@
 /** 工具：按名称模式搜索 ABAP 对象（对应 abap_fs 的 search_abap_objects） */
 import { z } from "zod"
-import { getClient } from "../adtManager.js"
+import { getClient, isConnectionError, markConnectionUnhealthy } from "../adtManager.js"
 import {
   DEFAULT_SEARCH_TYPES,
   connectionIdSchema,
@@ -65,14 +65,23 @@ export const searchObjectsTool = {
         const batchSeen = new Set<string>()
         const batchResults = await Promise.allSettled(
           batch.map(async (type) => {
-            try {
-              const hits = await client.searchObject(pattern, type, max)
-              return { type, hits }
-            } catch {
-              return { type, hits: [] as never[] }
-            }
+            // 报错说真话：搜索失败不能吞成"没结果"（会话被搞坏时全部搜索失败 → 误导为"未找到对象"）
+            const hits = await client.searchObject(pattern, type, max)
+            return { type, hits }
           }),
         )
+        // 全部搜索都失败 → 连接/会话异常，不是"没有匹配对象"
+        if (batchResults.length > 0 && batchResults.every((r) => r.status === "rejected")) {
+          const reasons = batchResults.map((r) => (r.status === "rejected" && r.reason instanceof Error ? r.reason : undefined))
+          const hasConnErr = reasons.some((e) => e !== undefined && isConnectionError(e))
+          if (hasConnErr) markConnectionUnhealthy(connId)
+          const sample = reasons[0]?.message ?? "未知错误"
+          throw new Error(
+            `ADT 搜索服务异常（连接 ${connId}）：全部 ${batchResults.length} 项对象搜索均失败，` +
+              `可能是连接/会话异常（不是"没有匹配对象"）。已重置连接，请重试。` +
+              `详情: ${sample.slice(0, 200)}`
+          )
+        }
         for (const r of batchResults) {
           const hits = r.status === "fulfilled" ? (r.value.hits as never[]) : []
           for (const hit of hits) {

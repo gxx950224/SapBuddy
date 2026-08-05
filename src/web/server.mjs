@@ -505,12 +505,15 @@ const server = http.createServer(async (req, res) => {
       const done = Promise.race([
         (async () => {
           try {
-            const { getClient, getClientCategory } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+            const { getClient, getClientCategory, withConnMutex } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
             const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
             const conn = getConfig().connections[0]
             if (!conn) return sendOnce(() => json(res, 200, { success: false, error: "未配置 SAP 连接" }))
-            const client = await getClient(conn.id)
-            await client.runQuery("SELECT MANDT FROM T000", 1, true)
+            // 与工具调用共用同一连接：加互斥锁，避免状态检测与正在执行的工具踩踏共享客户端
+            await withConnMutex(conn.id, async () => {
+              const client = await getClient(conn.id)
+              await client.runQuery("SELECT MANDT FROM T000", 1, true)
+            })
             // 客户端类别（T000.CCCATEGORY：P=生产 T=测试 C=定制(开发) D=演示 E=培训/教育 S=SAP参考）
             let category = "", categoryLabel = ""
             try {
