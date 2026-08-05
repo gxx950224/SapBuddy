@@ -14,8 +14,9 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
-import { assertDevClient } from "./adtManager.js"
+import { assertDevClient, withConnMutex } from "./adtManager.js"
 import { resolveConnectionId } from "./tools/shared.js"
+import { resetActiveRequests } from "./taskTransport.js"
 
 // ── 写操作人工确认（human-in-the-loop）──
 // 所有写工具执行前必须获得用户确认：TUI 弹窗（CLI）或 Web 确认浮层（block 后重放）。
@@ -29,12 +30,16 @@ export function isWriteTool(name: string): boolean {
 }
 export function setWriteApprovalWindow(ms = 60_000): void {
   writeApprovalUntil = Date.now() + ms
+  // 新需求开始 → 共享传输请求重置，让本需求的对象用新请求（同需求内复用）
+  resetActiveRequests()
 }
 export function isWriteApproved(): boolean {
   return Date.now() < writeApprovalUntil
 }
 export function clearWriteApproval(): void {
   writeApprovalUntil = 0
+  // 需求取消/拒绝 → 共享请求一并清掉，避免残留影响下次
+  resetActiveRequests()
 }
 
 // ── 用户消息处理（确认词/拒绝词 → 授权窗口；CLI 与 Web 共用同一套规则）──
@@ -416,12 +421,7 @@ connectionId 缺省用 get_connected_systems 第一个。`,
       async execute(_toolCallId, params) {
         try {
           const p = (params ?? {}) as Record<string, unknown>
-          // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
-          if (t.write) {
-            const connId = await resolveConnectionId(p.connectionId as string | undefined)
-            await assertDevClient(connId)
-          }
-          // 内容级强制规则：写入代码前硬校验（硬编码中文 / 裸内置类型）
+          // 内容级强制规则：写入代码前硬校验（硬编码中文 / 裸内置类型）——纯本地检查，不触连接
           if (t.name === "replace_string_in_abap_object" && typeof p.newString === "string") {
             const violations = scanCodeViolations(p.newString)
             if (violations.length > 0) {
@@ -435,7 +435,16 @@ connectionId 缺省用 get_connected_systems 第一个。`,
               }
             }
           }
-          const text = await t.execute((params ?? {}) as Record<string, unknown>)
+          // 每连接互斥锁：同一连接上的工具调用串行执行，防止并行调用踩踏共享 ADTClient
+          // （cookie jar / stateful 会话竞争 → 解锁命中错误会话 → 残留编辑锁）
+          const connId = await resolveConnectionId(p.connectionId as string | undefined)
+          const text = await withConnMutex(connId, async () => {
+            // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
+            if (t.write) {
+              await assertDevClient(connId)
+            }
+            return t.execute((params ?? {}) as Record<string, unknown>)
+          })
           return { content: [{ type: "text" as const, text }], details: {} }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)

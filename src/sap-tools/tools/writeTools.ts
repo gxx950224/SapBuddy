@@ -2,6 +2,7 @@
 import { z } from "zod"
 import { session_types } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
+import { getActiveRequest, setActiveRequest } from "../taskTransport.js"
 import {
   requireObject,
   resolveConnectionId,
@@ -61,7 +62,8 @@ export const createObjectTool = {
     name: z.string().describe("对象名称（大写，如 ZCL_MY_CLASS）"),
     description: z.string().describe("对象描述"),
     packageName: z.string().describe("所属开发包：正式开发包名，或 $TMP（临时测试包，不进传输）；先向用户确认"),
-    requestText: z.string().optional().describe("传输请求描述（可选；提供时自动创建请求并挂载对象，推荐格式 sapbuddy_<摘要>_<YYYYMMDD>）"),
+    requestText: z.string().optional().describe("传输请求描述（可选；未指定 requestNumber 且本需求还没有共享请求时，按此描述自动创建请求并挂载对象，推荐格式 sapbuddy_<摘要>_<YYYYMMDD>）"),
+    requestNumber: z.string().optional().describe("指定传输请求号（可选；用户已给出请求号时用用户指定的，同一需求内后续对象复用该请求）"),
     parentName: z.string().optional().describe("父对象名（函数组/FUGR 需要）"),
     connectionId: connectionIdSchema,
   }),
@@ -71,6 +73,7 @@ export const createObjectTool = {
     description: string
     packageName: string
     requestText?: string
+    requestNumber?: string
     parentName?: string
     connectionId?: string
   }): Promise<string> {
@@ -119,15 +122,26 @@ export const createObjectTool = {
         args.name.toUpperCase(),
         parentName
       )
-      // 请求：requestText 提供则自动创建传输请求并挂载；否则创建后由激活/后续写入自动建
+      // 请求：$TMP 不建请求；正式包用本需求共享请求（用户指定 requestNumber 或自动新建，同一需求复用）
       let transport: string | undefined
-      if (args.requestText && String(args.requestText).trim()) {
-        try {
-          const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "")
-          const desc = String(args.requestText).trim() || `sapbuddy_创建${args.name.toUpperCase()}_${ymd}`
-          transport = await client.createTransport(parentPath, desc, devClass)
-        } catch (e) {
-          return `⚠️ 自动创建传输请求失败：${e instanceof Error ? e.message.slice(0, 120) : e}。请确认对象放到哪个请求。`
+      const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "")
+      if (devClass.toUpperCase() !== "$TMP") {
+        if (args.requestNumber && String(args.requestNumber).trim()) {
+          transport = String(args.requestNumber).trim()
+          setActiveRequest(connId, devClass, transport)
+        } else {
+          transport = getActiveRequest(connId, devClass)
+        }
+        if (!transport) {
+          try {
+            const desc =
+              (args.requestText && String(args.requestText).trim()) ||
+              `sapbuddy_创建${args.name.toUpperCase()}_${ymd}`
+            transport = await client.createTransport(parentPath, desc, devClass)
+            setActiveRequest(connId, devClass, transport)
+          } catch (e) {
+            return `⚠️ 自动创建传输请求失败：${e instanceof Error ? e.message.slice(0, 120) : e}。请确认对象放到哪个请求。`
+          }
         }
       }
       await client.createObject({
@@ -145,7 +159,9 @@ export const createObjectTool = {
       return (
         `✅ 对象创建成功: ${args.objectType} ${args.name.toUpperCase()}\n` +
         `包: ${devClass}\n` +
-        (transport ? `传输请求: ${transport}（自动新建）\n` : `传输请求: 未指定（后续写入/激活时自动建）\n`) +
+        (transport
+          ? `传输请求: ${transport}${args.requestNumber ? "（用户指定）" : "（自动新建/本需求共享）"}\n`
+          : `传输请求: (无，$TMP 对象)\n`) +
         `状态: 未激活（请用 abap_activate 激活）\n` +
         `注意: 大型对象（类、函数组）创建后可能需补充 includes 内容。`
       )
@@ -218,10 +234,11 @@ export const replaceStringTool = {
       .describe("对象的 adt:// 工作区 URI（先用 get_abap_object_workspace_uri 获取）或 ADT 对象 URI"),
     oldString: z.string().describe("要替换的原文（必须恰好匹配一处，含缩进）"),
     newString: z.string().describe("替换后的文本"),
-    requestText: z.string().optional().describe("对象无未释放传输请求时自动新建请求的描述（可选；推荐格式：sapbuddy_<修改内容摘要>_<YYYYMMDD>，如 sapbuddy_修改ZAIR004文本_20260802）"),
+    requestText: z.string().optional().describe("对象无未释放请求且本需求无共享请求时，按此描述自动新建请求（可选；推荐格式：sapbuddy_<修改内容摘要>_<YYYYMMDD>，如 sapbuddy_修改ZAIR004文本_20260802）"),
+    requestNumber: z.string().optional().describe("指定传输请求号（可选；用户已给出请求号时用用户指定的，本需求内复用）。不传时优先沿用对象自身未释放请求（lock.CORRNR），没有则复用本需求共享请求，都没有才自动新建"),
     connectionId: connectionIdSchema,
   }),
-  async execute(args: { fileUri: string; oldString: string; newString: string; requestText?: string; connectionId?: string }): Promise<string> {
+  async execute(args: { fileUri: string; oldString: string; newString: string; requestText?: string; requestNumber?: string; connectionId?: string }): Promise<string> {
     try {
       // 解析 URI -> 连接与对象 URI
       let connId = args.connectionId
@@ -246,36 +263,72 @@ export const replaceStringTool = {
           const content = await client.getObjectSource(sourceUri)
           const { findAndReplace } = await import("./replaceLogic.js")
           const updated = findAndReplace(content, args.oldString, args.newString)
-          // 传输请求：优先沿用 lock 返回的 CORRNR；无未释放请求时自动创建新请求（ADT 不会自动创建）
+          // 传输请求规则：
+          // ① 对象自身未释放请求（lock.CORRNR）优先复用；$TMP（IS_LOCAL=X）不建请求；
+          // ② 用户指定 requestNumber → 用用户指定的，并作为本需求共享请求；
+          // ③ 否则复用本需求共享请求（同需求多对象放同一请求）；
+          // ④ 都没有才自动新建一个，并记为共享请求。
           const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
-          let transport = lockInfo.IS_LOCAL === "X" ? undefined : (lockInfo.CORRNR || undefined)
+          const isLocal = lockInfo.IS_LOCAL === "X"
+          let transport = isLocal ? undefined : (lockInfo.CORRNR || undefined)
           let autoCreated = false
-          if (!transport) {
+          if (!transport && !isLocal) {
             try {
               const { getClient: gc } = await import("../adtManager.js")
               const info = await gc(finalConnId).then((c) => c.transportInfo(sourceUri))
               const devclass = String(info?.DEVCLASS || info?.PDEVCLASS || "$TMP").trim()
-              const desc = (args.requestText && String(args.requestText).trim()) || `sapbuddy_修改${String(args.fileUri || "").split("/").pop()}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`
-              const newReq = await client.createTransport(sourceUri, desc, devclass)
-              if (newReq && newReq !== "") {
-                transport = newReq
-                autoCreated = true
+              if (devclass.toUpperCase() === "$TMP") {
+                transport = undefined // $TMP 对象不建请求
+              } else if (args.requestNumber && String(args.requestNumber).trim()) {
+                transport = String(args.requestNumber).trim()
+                setActiveRequest(finalConnId, devclass, transport)
+              } else {
+                transport = getActiveRequest(finalConnId, devclass)
+                if (!transport) {
+                  const desc = (args.requestText && String(args.requestText).trim()) || `sapbuddy_修改${String(args.fileUri || "").split("/").pop()}_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`
+                  const newReq = await client.createTransport(sourceUri, desc, devclass)
+                  if (newReq && newReq !== "") {
+                    transport = newReq
+                    autoCreated = true
+                    setActiveRequest(finalConnId, devclass, newReq)
+                  }
+                }
               }
             } catch (e) {
               return `⚠️ 对象无未释放传输请求且自动创建失败（${e instanceof Error ? e.message.slice(0, 120) : e}）。请先创建传输请求或将对象加入现有请求。`
             }
           }
           await client.setObjectSource(sourceUri, updated, lock.LOCK_HANDLE, transport)
+          // 写入自检：保存后读回并核对新文本已写入（不能只报"成功"）
+          const verifySource = await client.getObjectSource(sourceUri)
+          const normVerify = String(verifySource).replace(/\r\n/g, "\n")
+          const normNew = args.newString.replace(/\r\n/g, "\n")
+          if (!normVerify.includes(normNew)) {
+            throw new Error(
+              `写入自检失败：保存后读回的对象源码中未找到新文本，对象可能未成功保存。` +
+                `请用 get_abap_object_lines 核对当前状态后再试。`
+            )
+          }
           await client.unLock(sourceUri, lock.LOCK_HANDLE)
           return (
-            `✅ 替换成功并已保存到 SAP\n` +
+            `✅ 替换成功并已保存到 SAP（自检确认新内容已写入）\n` +
             `URI: ${sourceUri}\n` +
-            (transport ? `传输请求: ${transport}${autoCreated ? "（自动新建）" : "（沿用）"}\n` : `传输请求: (无，$TMP 对象)\n`) +
+            (transport
+              ? `传输请求: ${transport}${autoCreated ? "（自动新建）" : args.requestNumber ? "（用户指定）" : "（沿用）"}\n`
+              : `传输请求: (无，$TMP 对象)\n`) +
             `建议下一步: 调用 get_abap_diagnostics 检查语法，然后 abap_activate 激活。`
           )
         } catch (err) {
-          await client.unLock(sourceUri, lock.LOCK_HANDLE).catch(() => undefined)
-          throw err
+          // 解锁失败必须报警：对象可能残留编辑锁（原来吞掉失败 → 残留锁让后续编辑全报"使用者当前编辑"）
+          let unlockWarn = ""
+          try {
+            await client.unLock(sourceUri, lock.LOCK_HANDLE)
+          } catch (unlockErr) {
+            unlockWarn =
+              `\n\n⚠️ 解锁失败：对象可能残留编辑锁（后续编辑会报"使用者当前编辑"）。` +
+              `请稍后重试或手动释放锁。解锁错误: ${unlockErr instanceof Error ? unlockErr.message.slice(0, 200) : String(unlockErr)}`
+          }
+          throw new Error(`${err instanceof Error ? err.message : String(err)}${unlockWarn}`)
         }
       } finally {
         client.stateful = oldState
