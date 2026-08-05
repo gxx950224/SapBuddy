@@ -128,7 +128,6 @@ export const translateTextPoolTool = {
         parentPath: objectPath("CLAS/OC", className, "$TMP"),
       })
 
-      const oldState = client.stateful
       client.stateful = session_types.stateful
       try {
         const lock = await client.lock(sourceUri)
@@ -138,14 +137,16 @@ export const translateTextPoolTool = {
           await client.unLock(sourceUri, lock.LOCK_HANDLE).catch(() => undefined)
         }
       } finally {
-        client.stateful = oldState
+        // 必须切回 stateless：若客户端还留在旧的 stateful 会话，该会话 RTTI 过时，
+        // 激活/运行 classrun 会误报 "does not implement if_oo_adt_classrun~main"
+        client.stateful = session_types.stateless
       }
 
       const act = await client.activate(className, uri)
       if (!act.success) {
         return `激活失败: ${act.messages?.map((m) => m.shortText).join("; ").slice(0, 200)}`
       }
-      const result = await client.runClass(className)
+      const result = String(await client.runClass(className)).trim()
 
       try {
         const oldState2 = client.stateful
@@ -158,6 +159,9 @@ export const translateTextPoolTool = {
         client.stateful = oldState2
       } catch { /* 清理失败不影响结果 */ }
 
+      if (/^Error:/i.test(result)) {
+        return `❌ 程序 ${prog} 文本元素写入失败（目标语言 ${tgt}）：${result}`
+      }
       return (
         `✅ 程序 ${prog} 文本元素已写入（目标语言 ${tgt}${args.mode === "copy" ? `，源语言 ${src}` : ""}）:\n` +
         result

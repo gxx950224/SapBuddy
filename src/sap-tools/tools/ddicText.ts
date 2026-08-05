@@ -184,7 +184,6 @@ export const fixDdicTextTool = {
 
       // 写入源码（lock → setObjectSource → unlock，用 source/main URI）
       const { session_types } = await import("abap-adt-api")
-      const oldState = client.stateful
       client.stateful = session_types.stateful
       try {
         const lock = await client.lock(sourceUri)
@@ -194,7 +193,9 @@ export const fixDdicTextTool = {
           await client.unLock(sourceUri, lock.LOCK_HANDLE).catch(() => undefined)
         }
       } finally {
-        client.stateful = oldState
+        // 必须切回 stateless：若客户端还留在旧的 stateful 会话，该会话 RTTI 过时，
+        // 激活/运行 classrun 会误报 "does not implement if_oo_adt_classrun~main"
+        client.stateful = session_types.stateless
       }
 
       // 激活 + 运行
@@ -202,7 +203,7 @@ export const fixDdicTextTool = {
       if (!act.success) {
         return `激活失败: ${act.messages?.map((m) => m.shortText).join("; ").slice(0, 200)}`
       }
-      const result = await client.runClass(className)
+      const result = String(await client.runClass(className)).trim()
 
       // 清理临时类
       try {
@@ -216,6 +217,9 @@ export const fixDdicTextTool = {
         client.stateful = oldState2
       } catch { /* 清理失败不影响结果 */ }
 
+      if (/^Error:/i.test(result)) {
+        return `❌ DDIC 文本写入失败（目标语言 ${tgt}）：${result}`
+      }
       return (
         `✅ DDIC 文本已写入（目标语言 ${tgt}${args.mode === "copy" ? `，源语言 ${src}，前缀 ${args.prefix}` : ""}）:\n` +
         result
