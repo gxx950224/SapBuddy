@@ -13,7 +13,16 @@ const require = createRequire(import.meta.url)
 const { withConnMutex, isConnectionError, markConnectionUnhealthy, __setClientFactoryForTest } = require(
   "../dist/sap-tools/adtManager.js"
 )
+const { __setConfigForTest } = require("../dist/sap-tools/config.js")
 const { findObject } = require("../dist/sap-tools/tools/shared.js")
+
+// CI 上没有真实 connections.json：findObject 依赖连接配置，注入最小假配置（不实际连接，客户端已被 mock）
+function setFakeDevConfig() {
+  __setConfigForTest({
+    connections: [{ id: "dev", url: "http://fake:8000", username: "u", password: "p", client: "001", language: "EN", authMethod: "basic" }],
+    security: {},
+  })
+}
 
 test("withConnMutex：同一连接上的并发操作被串行化（互不重叠）", async () => {
   const active = { count: 0, max: 0 }
@@ -60,6 +69,7 @@ test("isConnectionError：识别连接级故障", () => {
 })
 
 test("findObject：全部搜索失败时如实报'ADT 搜索服务异常'（不是'未找到'）", async () => {
+  setFakeDevConfig()
   markConnectionUnhealthy("dev")
   __setClientFactoryForTest(() => ({
     login: async () => undefined,
@@ -71,11 +81,13 @@ test("findObject：全部搜索失败时如实报'ADT 搜索服务异常'（不�
     await assert.rejects(() => findObject("dev", "SCARR", "TABL"), /ADT 搜索服务异常/)
   } finally {
     __setClientFactoryForTest(null)
+    __setConfigForTest(null)
     markConnectionUnhealthy("dev")
   }
 })
 
 test("findObject：部分类型搜索失败时仍返回成功结果（不全盘误报）", async () => {
+  setFakeDevConfig()
   markConnectionUnhealthy("dev")
   __setClientFactoryForTest(() => ({
     login: async () => undefined,
@@ -89,6 +101,7 @@ test("findObject：部分类型搜索失败时仍返回成功结果（不全盘�
     assert.equal(found?.["adtcore:name"], "SCARR", "有成功的类型就返回结果")
   } finally {
     __setClientFactoryForTest(null)
+    __setConfigForTest(null)
     markConnectionUnhealthy("dev")
   }
 })

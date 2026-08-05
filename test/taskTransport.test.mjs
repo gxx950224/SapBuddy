@@ -13,7 +13,14 @@ const require = createRequire(import.meta.url)
 const { getActiveRequest, setActiveRequest, resetActiveRequests } = require("../dist/sap-tools/taskTransport.js")
 const { createObjectTool, replaceStringTool } = require("../dist/sap-tools/tools/writeTools.js")
 const { __setClientFactoryForTest, markConnectionUnhealthy } = require("../dist/sap-tools/adtManager.js")
+const { __setConfigForTest } = require("../dist/sap-tools/config.js")
 const { setWriteApprovalWindow, clearWriteApproval } = require("../dist/sap-tools/register.js")
+
+/** CI 无真实 connections.json：注入最小假配置（客户端已被 mock，不实际连接） */
+const FAKE_DEV_CONFIG = {
+  connections: [{ id: "dev", url: "http://fake:8000", username: "u", password: "p", client: "001", language: "EN", authMethod: "basic" }],
+  security: {},
+}
 
 /** 假客户端：记录 createTransport 次数/传参，模拟源码读写与对象创建 */
 function makeFakeClient({ devclass = "ZPKG" } = {}) {
@@ -40,6 +47,7 @@ function makeFakeClient({ devclass = "ZPKG" } = {}) {
 
 function cleanup() {
   __setClientFactoryForTest(null)
+  __setConfigForTest(null)
   markConnectionUnhealthy("dev")
   resetActiveRequests()
 }
@@ -56,7 +64,7 @@ test("taskTransport：get/set/reset 按 连接+包 隔离", () => {
 })
 
 test("createObjectTool：同需求创建多对象复用同一请求（只自动建一次）", async () => {
-  resetActiveRequests(); markConnectionUnhealthy("dev")
+  __setConfigForTest(FAKE_DEV_CONFIG); resetActiveRequests(); markConnectionUnhealthy("dev")
   const { client, state } = makeFakeClient()
   __setClientFactoryForTest(() => client)
   try {
@@ -72,7 +80,7 @@ test("createObjectTool：同需求创建多对象复用同一请求（只自动�
 })
 
 test("createObjectTool：$TMP 不建请求", async () => {
-  resetActiveRequests(); markConnectionUnhealthy("dev")
+  __setConfigForTest(FAKE_DEV_CONFIG); resetActiveRequests(); markConnectionUnhealthy("dev")
   const { client, state } = makeFakeClient()
   __setClientFactoryForTest(() => client)
   try {
@@ -84,7 +92,7 @@ test("createObjectTool：$TMP 不建请求", async () => {
 })
 
 test("createObjectTool：用户指定请求号则用它且后续对象复用", async () => {
-  resetActiveRequests(); markConnectionUnhealthy("dev")
+  __setConfigForTest(FAKE_DEV_CONFIG); resetActiveRequests(); markConnectionUnhealthy("dev")
   const { client, state } = makeFakeClient()
   __setClientFactoryForTest(() => client)
   try {
@@ -98,7 +106,7 @@ test("createObjectTool：用户指定请求号则用它且后续对象复用", a
 })
 
 test("replaceStringTool：同需求修改多对象复用共享请求（只自动建一次）", async () => {
-  resetActiveRequests(); markConnectionUnhealthy("dev")
+  __setConfigForTest(FAKE_DEV_CONFIG); resetActiveRequests(); markConnectionUnhealthy("dev")
   const content = "CLASS lcl_test DEFINITION.\n  DATA: lv_a TYPE i.\nENDCLASS.\n"
   const { client, state } = makeFakeClient()
   state.current = content
@@ -113,7 +121,7 @@ test("replaceStringTool：同需求修改多对象复用共享请求（只自动
 })
 
 test("replaceStringTool：$TMP 对象不建请求", async () => {
-  resetActiveRequests(); markConnectionUnhealthy("dev")
+  __setConfigForTest(FAKE_DEV_CONFIG); resetActiveRequests(); markConnectionUnhealthy("dev")
   const { client, state } = makeFakeClient({ devclass: "$TMP" })
   state.current = "REPORT ztest1.\nDATA: lv_a TYPE i.\n"
   __setClientFactoryForTest(() => client)

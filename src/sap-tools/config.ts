@@ -133,7 +133,16 @@ export function loadConfig(): ServerConfig {
 
 /** 供 tools 获取当前配置（避免每次重新读文件） */
 let cached: ServerConfig | undefined
+let configOverride: ServerConfig | null = null
+
+/** 测试钩子：注入连接配置，避免测试依赖真实 connections.json（CI 无配置文件） */
+export function __setConfigForTest(cfg: ServerConfig | null): void {
+  configOverride = cfg
+  cached = cfg ?? undefined
+}
+
 export function getConfig(): ServerConfig {
+  if (configOverride) return configOverride
   if (!cached) cached = loadConfig()
   return cached
 }

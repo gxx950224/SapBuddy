@@ -33,7 +33,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.83.0",
