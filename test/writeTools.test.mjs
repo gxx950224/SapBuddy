@@ -8,6 +8,7 @@ import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
 const { createObjectTool, parseIncludeNames } = require("../dist/sap-tools/tools/writeTools.js")
+const { normalizeFunctionGroupIncludeUri } = require("../dist/sap-tools/tools/shared.js")
 
 const base = { name: "ZTEST001", description: "测试对象", packageName: "ZPKG", connectionId: "none" }
 
@@ -40,6 +41,37 @@ test("create_object_programmatically：缺包名被拦截，并提示向用户�
 test("create_object_programmatically：缺描述仍被拦截（既有规则）", async () => {
   const out = await createObjectTool.execute({ ...base, objectType: "CLAS/OC", packageName: "ZPKG", description: "  " })
   assert.ok(out.includes("描述"), `应提示缺少描述，实际: ${out.slice(0, 160)}`)
+})
+
+// ── DTEL 缺域硬拦截（回归：曾创建出无法激活的空壳 DTEL）─────────────────────────
+test("create_object_programmatically：DTEL/DE 缺 domainName 被拦截", async () => {
+  const out = await createObjectTool.execute({ ...base, objectType: "DTEL/DE" })
+  assert.ok(out.includes("domainName"), `应提示必须提供 domainName，实际: ${out.slice(0, 200)}`)
+})
+
+test("create_object_programmatically：DTEL/DE 带 domainName 通过域校验（进入连接阶段）", async () => {
+  const out = await createObjectTool.execute({ ...base, objectType: "DTEL/DE", domainName: "CHAR100" })
+  assert.ok(!out.includes("必须提供 domainName"), `带域不应被域规则拦截，实际: ${out.slice(0, 200)}`)
+})
+
+// ── normalizeFunctionGroupIncludeUri：写路径函数组 include URI 归一化 ────────
+test("normalizeFunctionGroupIncludeUri：普通 INCLUDE 不改写（读直通）", async () => {
+  assert.equal(await normalizeFunctionGroupIncludeUri("none", "/sap/bc/adt/programs/includes/zabc_inc"), undefined)
+  assert.equal(await normalizeFunctionGroupIncludeUri("none", "/sap/bc/adt/programs/includes/zabc_inc/source/main"), undefined)
+})
+
+test("normalizeFunctionGroupIncludeUri：已是函数组通道 URI 不改写", async () => {
+  assert.equal(
+    await normalizeFunctionGroupIncludeUri("none", "/sap/bc/adt/functions/groups/zbcg014/includes/lzbcg014f01"),
+    undefined
+  )
+})
+
+test("normalizeFunctionGroupIncludeUri：函数组形态需连接验证（无连接时报错而非静默猜错）", async () => {
+  await assert.rejects(
+    () => normalizeFunctionGroupIncludeUri("none", "/sap/bc/adt/programs/includes/lzbcg014f01"),
+    /未找到|连接|none|ABAP/i
+  )
 })
 
 // ── parseIncludeNames：批量激活枚举 INCLUDE（回归：行尾注释不能漏匹配）──────────

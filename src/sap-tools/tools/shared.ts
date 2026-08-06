@@ -196,6 +196,28 @@ export async function findFunctionGroupProgram(connId: string, objectName: strin
   return undefined
 }
 
+/**
+ * 函数组 include（L<FG><后缀>）写路径（lock+PUT）不认 /programs/includes/ 通用通道——只有读路径可用，
+ * 写必须用 /functions/groups/<fg>/includes/<name>。把 /programs/includes/<name> 形式的 URI 改写为函数组通道。
+ * 一律走 findFunctionGroupProgram（经 FUGR 搜索验证函数组真实存在），不用未验证的同步后缀猜测——
+ * 否则 LCORU_SFD1（函数组 CORU）会被猜成 coru_sf，写错地址。非函数组 include（普通 INCLUDE 程序）返回 undefined。
+ */
+export async function normalizeFunctionGroupIncludeUri(
+  connId: string,
+  adtUri: string
+): Promise<string | undefined> {
+  const m = /^\/sap\/bc\/adt\/programs\/includes\/([^/]+)(?:\/source\/main)?$/i.exec(adtUri)
+  if (!m) return undefined
+  const name = m[1].toUpperCase()
+  // 仅处理函数组内部程序形态（SAPL<FG> / L<FG><后缀>），其余普通 INCLUDE 原样
+  if (!name.startsWith("SAPL") && !name.startsWith("L")) return undefined
+  const found = await findFunctionGroupProgram(connId, name)
+  if (found && found["adtcore:type"] === "FUGR/I" && found["adtcore:uri"]) {
+    return found["adtcore:uri"]
+  }
+  return undefined
+}
+
 /** 按名称+类型搜索对象（找不到抛错，附带搜索建议） */
 export async function requireObject(
   connId: string,

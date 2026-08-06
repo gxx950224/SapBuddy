@@ -3,6 +3,7 @@ import { z } from "zod"
 import { getClient } from "../adtManager.js"
 import {
   findObject,
+  normalizeFunctionGroupIncludeUri,
   readSourceSmart,
   requireObject,
   resolveConnectionId,
@@ -156,9 +157,18 @@ export const getWorkspaceUriTool = {
       const connId = await resolveConnectionId(args.connectionId)
       const obj = await requireObject(connId, args.objectName, args.objectType)
       const client = await getClient(connId)
-      const steps = await client.findObjectPath(obj["adtcore:uri"])
-      const path = steps.map((s) => s["adtcore:name"]).join("/")
-      return `工作区 URI: adt://${connId}/${path}\nADT 对象 URI: ${obj["adtcore:uri"]}\n类型: ${obj["adtcore:type"]}`
+      // 函数组内部程序（FUGR/F、FUGR/I）的 findObjectPath 走不到对象、只到连接根（返回 adt://dev/），
+      // 且经通用通道解析时 URI 是只读的 /programs/includes/…… 直接改为可写的 /functions/groups/<fg>/includes/<inc>
+      let path: string
+      if (obj["adtcore:type"] === "FUGR/F" || obj["adtcore:type"] === "FUGR/I") {
+        path = (await normalizeFunctionGroupIncludeUri(connId, obj["adtcore:uri"])) ?? obj["adtcore:uri"]
+      } else {
+        const steps = await client.findObjectPath(obj["adtcore:uri"])
+        path = steps.map((s) => s["adtcore:name"]).join("/")
+      }
+      // 对象 URI 自带前导 /，直接拼接避免出现 adt://dev//sap 双斜杠
+      const ws = path.startsWith("/") ? `adt://${connId}${path}` : `adt://${connId}/${path}`
+      return `工作区 URI: ${ws}\nADT 对象 URI: ${obj["adtcore:uri"]}\n类型: ${obj["adtcore:type"]}`
     } catch (err) {
       return toToolError(err)
     }

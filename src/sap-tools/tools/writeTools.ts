@@ -11,6 +11,7 @@ import {
   connectionIdSchema,
   objectTypeSchema,
   readSourceSmart,
+  normalizeFunctionGroupIncludeUri,
 } from "./shared.js"
 
 /** 编辑类操作需要 stateful 会话（lock/setObjectSource） */
@@ -41,6 +42,67 @@ async function resolveSourceUri(
   }
 }
 
+// ── DTEL 补域：创建出的数据元素壳缺域无法激活，把域（typeName）写进对象 ──
+// 域信息（datatype/length/decimals）从绑定域的 getDomainProperties 读取，字段标签用域描述截断填充。
+function cutLabel(s: string | undefined | null, n: number): string {
+  return String(s ?? "").trim().slice(0, n)
+}
+
+/** 给刚创建的数据元素绑定域（ADT 走 setDataElementProperties，需 stateful 会话 lock）
+ *  数据类型（datatype/length/decimals）从绑定域读取；元数据以已创建对象为准（getDataElementProperties），避免覆盖 createObject 已写入的描述/语言/包 */
+async function fillDataElementDomain(
+  client: Awaited<ReturnType<typeof getClient>>,
+  name: string,
+  domainName: string,
+  packageName: string,
+  description: string,
+  transport?: string
+): Promise<void> {
+  const dtelUrl = `/sap/bc/adt/ddic/dataelements/${name.toLowerCase()}`
+  const domUrl = `/sap/bc/adt/ddic/domains/${domainName.toLowerCase()}`
+  const [dom, cur] = await Promise.all([
+    client.getDomainProperties(domUrl),
+    client.getDataElementProperties(dtelUrl).catch(() => undefined),
+  ])
+  const type = dom.properties.typeInformation
+  const desc = cur?.metaData.description || description || name
+  const props = {
+    typeName: domainName,
+    dataType: type.datatype,
+    dataTypeLength: type.length,
+    dataTypeDecimals: type.decimals,
+    fieldLabels: {
+      shortFieldLabel: cutLabel(desc, 10),
+      mediumFieldLabel: cutLabel(desc, 20),
+      longFieldLabel: cutLabel(desc, 40),
+      headingFieldLabel: cutLabel(desc, 55),
+    },
+  }
+  const meta = {
+    name: cur?.metaData.name ?? name,
+    description: desc,
+    language: cur?.metaData.language ?? client.language ?? "ZH",
+    masterLanguage: cur?.metaData.masterLanguage ?? client.language ?? "ZH",
+    masterSystem: cur?.metaData.masterSystem ?? "",
+    responsible: cur?.metaData.responsible ?? "",
+    packageName: cur?.metaData.packageName ?? packageName,
+  }
+  const oldState = client.stateful
+  client.stateful = session_types.stateful
+  try {
+    const lock = await client.lock(dtelUrl)
+    try {
+      const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
+      const t = lockInfo.IS_LOCAL === "X" ? undefined : (lockInfo.CORRNR || transport)
+      await client.setDataElementProperties(dtelUrl, props, meta, lock.LOCK_HANDLE, t)
+    } finally {
+      await client.unLock(dtelUrl, lock.LOCK_HANDLE).catch(() => undefined)
+    }
+  } finally {
+    client.stateful = oldState
+  }
+}
+
 // ─── create_object_programmatically ─────────────────────────────────────────
 export const createObjectTool = {
   name: "create_object_programmatically",
@@ -66,6 +128,10 @@ export const createObjectTool = {
     requestText: z.string().optional().describe("传输请求描述（可选；未指定 requestNumber 且本需求还没有共享请求时，按此描述自动创建请求并挂载对象，推荐格式 sapbuddy_<摘要>_<YYYYMMDD>）"),
     requestNumber: z.string().optional().describe("指定传输请求号（可选；用户已给出请求号时用用户指定的，同一需求内后续对象复用该请求）"),
     parentName: z.string().optional().describe("父对象名（函数组/FUGR 需要）"),
+    domainName: z
+      .string()
+      .optional()
+      .describe("数据元素(DTEL)绑定的域：仅 DTEL/DE 需要。缺省会被拦截——请先向用户确认域（标准域如 CHAR100/NUMC10，或先创建的 DOMA 自定义域）。数据元素缺域无法激活"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: {
@@ -76,6 +142,7 @@ export const createObjectTool = {
     requestText?: string
     requestNumber?: string
     parentName?: string
+    domainName?: string
     connectionId?: string
   }): Promise<string> {
     try {
@@ -89,6 +156,16 @@ export const createObjectTool = {
         if (!args.parentName || !String(args.parentName).trim()) {
           return "⛔ 强制规则拦截：创建函数模块（FUGR/FF）必须提供 parentName（函数组名）。请先向用户收集函数组名称。"
         }
+      }
+      // ── 强制规则：DTEL 必须带域，否则激活必报"未定义域或数据类型"（不能创建无法激活的壳）──
+      const domainName = args.domainName ? String(args.domainName).trim().toUpperCase() : ""
+      if (objType === "DTEL/DE" && !domainName) {
+        return (
+          "⛔ 强制规则拦截：创建数据元素(DTEL/DE)必须提供 domainName（绑定的域）。\n" +
+          "数据元素缺域无法激活（激活报\"未定义域或数据类型\"）。请先向用户确认域：\n" +
+          "· 标准域：如 CHAR100、NUMC10、STRING；\n" +
+          "· 自定义域：先创建 DOMA（create_object_programmatically DOMA/DD）。"
+        )
       }
       // ── 强制规则：创建必须有包名/描述；包名缺省时向用户确认写哪个包 ──
       const pkg = (args.packageName || "").trim()
@@ -157,8 +234,24 @@ export const createObjectTool = {
         language: client.language || undefined,
         masterLanguage: client.language || undefined,
       })
+      // DTEL 补域：创建出的壳缺域无法激活，写入域（typeName）使对象可直接激活
+      let dtelNote = ""
+      if (objType === "DTEL/DE" && domainName) {
+        try {
+          await fillDataElementDomain(client, args.name.toUpperCase(), domainName, devClass, args.description, transport)
+          dtelNote = `域: ${domainName}（已写入 typeName，可直接激活）\n`
+        } catch (e) {
+          return (
+            `⚠️ 数据元素 ${args.name.toUpperCase()} 已创建，但绑定域 ${domainName} 失败（对象未激活）。\n` +
+            `错误: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}\n` +
+            `请确认域 ${domainName} 存在（get_sap_system_info 或 search_abap_objects 查 DOMA），` +
+            `或用 replace_string_in_abap_object 手工补 <dtel:typeName>。`
+          )
+        }
+      }
       return (
         `✅ 对象创建成功: ${args.objectType} ${args.name.toUpperCase()}\n` +
+        dtelNote +
         `包: ${devClass}\n` +
         (transport
           ? `传输请求: ${transport}${args.requestNumber ? "（用户指定）" : "（自动新建/本需求共享）"}\n`
@@ -357,6 +450,7 @@ export const replaceStringTool = {
     connectionId: connectionIdSchema,
   }),
   async execute(args: { fileUri: string; oldString: string; newString: string; requestText?: string; requestNumber?: string; connectionId?: string }): Promise<string> {
+    let fgIncludeHint = ""
     try {
       // 解析 URI -> 连接与对象 URI
       let connId = args.connectionId
@@ -368,6 +462,17 @@ export const replaceStringTool = {
       }
       const finalConnId = await resolveConnectionId(connId)
       const client = await getClient(finalConnId)
+
+      // 函数组 include 写路径不认 /programs/includes/ 通用通道，改写为 /functions/groups/<fg>/includes/<inc>
+      const fgUri = await normalizeFunctionGroupIncludeUri(finalConnId, adtUri)
+      if (fgUri) {
+        adtUri = fgUri
+      } else if (
+        adtUri.includes("/sap/bc/adt/programs/includes/") &&
+        /^[LS]/.test((adtUri.split("/").pop() ?? "").toUpperCase())
+      ) {
+        fgIncludeHint = `\n- 函数组 include 写路径需用 /sap/bc/adt/functions/groups/<函数组>/includes/<include> 格式（自动转换失败，请核对函数组名）`
+      }
 
       // 解析真实源码 URI（对象主 URI 返回元数据 XML，源码在 /source/main）
       const sourceUri = await resolveSourceUri(client, adtUri)
@@ -452,7 +557,10 @@ export const replaceStringTool = {
         client.stateful = oldState
       }
     } catch (err) {
-      return `编辑失败: ${err instanceof Error ? err.message : err}\n\n可能的原因：\n- oldString 未唯一匹配（用 get_abap_object_lines 读当前内容核对）\n- 对象被其他用户锁定\n- SAP 账号无编辑权限`
+      return (
+        `编辑失败: ${err instanceof Error ? err.message : err}\n\n可能的原因：\n- oldString 未唯一匹配（用 get_abap_object_lines 读当前内容核对）\n- 对象被其他用户锁定\n- SAP 账号无编辑权限` +
+        fgIncludeHint
+      )
     }
   },
 }
@@ -480,6 +588,10 @@ export const diagnosticsTool = {
       }
       const finalConnId = await resolveConnectionId(connId)
       const client = await getClient(finalConnId)
+
+      // 函数组 include 写路径不认 /programs/includes/ 通用通道，改写为 /functions/groups/<fg>/includes/<inc>
+      const fgUri = await normalizeFunctionGroupIncludeUri(finalConnId, adtUri)
+      if (fgUri) adtUri = fgUri
 
       const sourceUri = await resolveSourceUri(client, adtUri)
       const content = await client.getObjectSource(sourceUri)

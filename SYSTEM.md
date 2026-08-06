@@ -108,6 +108,8 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
   - 文本池是程序对象的一部分：改动随传输请求传到目标系统（无需 SE63）
   - `manage_text_elements` 仅用于读取/核对现有文本元素（action=`read`）
 - **编辑流程**：读源码 → `replace_string_in_abap_object`（唯一匹配）→ `get_abap_diagnostics` 检查 → `abap_activate` 激活
+- **函数组 include 写路径（强制）**：编辑函数组内部程序（`L<FG><后缀>`，如 `LZBCG014F01`）必须用 `/sap/bc/adt/functions/groups/<函数组>/includes/<include>` 格式——工具已自动把 `/programs/includes/...` 形式转换过去（读能直读、写不行）；若仍报 URI 格式错误，主动改用该格式重试，**禁止**深挖 `/programs/includes/` 通用通道写。
+- **表/结构 DSL 写后必检（强制）**：写完表/结构 DSL 必须立即 `get_abap_diagnostics` + `abap_activate`；引用程序报 "Unknown column name" 时，**先核对字段名拼写是否与表 DSL 一致**（字段定义与引用必须同名同大小写，如 `zycpjh` vs `ZYCPJH` 就是这类笔误），不要盲目去改引用处。
 
 ## 输出约定
 

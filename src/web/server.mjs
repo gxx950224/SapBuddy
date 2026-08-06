@@ -453,12 +453,26 @@ const server = http.createServer(async (req, res) => {
         for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
           const full = path.join(dir, f)
           try {
-            // 性能：只读文件头 128KB 提取首条 user 消息做标题，消息数按行数（不 JSON.parse 全部）
+            // 性能：只读首尾各 128KB——头部取首条 user 消息做标题，尾部找自定义名。
+            // session_info 由重命名 append 到文件末尾，大文件时超出头部窗口，只读头部会漏掉新名字（重命名"失效"）。
             const fd = fs.openSync(full, "r")
-            const buf = Buffer.alloc(128 * 1024)
-            const read = fs.readSync(fd, buf, 0, buf.length, 0)
+            const stat = fs.fstatSync(fd)
+            const WINDOW = 128 * 1024
+            let head = "", tail = ""
+            if (stat.size <= WINDOW) {
+              const buf = Buffer.alloc(stat.size || 1)
+              const read = fs.readSync(fd, buf, 0, stat.size, 0)
+              head = buf.toString("utf8", 0, read)
+              tail = head
+            } else {
+              const hb = Buffer.alloc(WINDOW)
+              fs.readSync(fd, hb, 0, WINDOW, 0)
+              head = hb.toString("utf8")
+              const tb = Buffer.alloc(WINDOW)
+              const tread = fs.readSync(fd, tb, 0, WINDOW, stat.size - WINDOW)
+              tail = tb.toString("utf8", 0, tread)
+            }
             fs.closeSync(fd)
-            const head = buf.toString("utf8", 0, read)
             const lineCount = head.split("\n").filter(Boolean).length
             const firstUserLine = head.split("\n").find((l) => l.includes('"role":"user"'))
             let title = ""
@@ -468,11 +482,12 @@ const server = http.createServer(async (req, res) => {
                 title = (m?.content ?? []).map((c) => c.text || "").join("").slice(0, 40)
               } catch { /* 忽略坏行 */ }
             }
-            // 自定义名称（session_info 事件，pi /name、Ctrl+R 同机制）
+            // 自定义名称（session_info 事件，pi /name、Ctrl+R 同机制）；新名字 append 在文件末尾，尾部优先
             let customName = ""
             try {
-              const infoLine = head.split("\n").filter((l) => l.includes('"type":"session_info"')).pop()
-              if (infoLine) { const i = JSON.parse(infoLine); customName = (i.name || "").trim() }
+              const pick = (chunk) => chunk.split("\n").filter((l) => l.includes('"type":"session_info"')).pop()
+              const line = pick(tail) || pick(head)
+              if (line) { const i = JSON.parse(line); customName = (i.name || "").trim() }
             } catch { /* 忽略 */ }
             list.push({ path: full, name: customName || title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: lineCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
           } catch { /* 忽略 */ }
