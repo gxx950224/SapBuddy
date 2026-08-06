@@ -47,16 +47,17 @@
       App.addSystemNote("生成中，请先停止再压缩");
       return;
     }
-    if (state.messageCount < 2) {
-      App.addSystemNote("当前对话消息太少，无需压缩");
-      return;
-    }
+    // 不在此拦截"消息太少"：messageCount 是消息条数，会话加载/压缩后可能很小，
+    // 但对话 tokens（上下文用量）可能仍很大——以服务器 /api/compress 的真实判断为准
     App.setCompressUI(true);
     try {
       const r = await fetch("/api/compress", { method: "POST" });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || !j.success) {
+      if (!r.ok) {
         App.addSystemNote("压缩失败：" + (j.error || r.status));
+        App.setCompressUI(false);
+      } else if (!j.success) {
+        App.addSystemNote(j.error || "当前对话没有可压缩的内容");
         App.setCompressUI(false);
       } else {
         App.addSystemNote("压缩任务已开始，完成后将通知…");
