@@ -738,6 +738,8 @@ const server = http.createServer(async (req, res) => {
       try {
         fs.mkdirSync(USER_PI, { recursive: true })
         fs.writeFileSync(path.join(USER_PI, "update-agent.mjs"), UPDATE_AGENT_SRC, "utf8")
+        // 提权安装辅助脚本：普通权限装失败（EACCES，全局目录仅管理员可写）时，由代理经 UAC 以管理员运行它
+        fs.writeFileSync(path.join(USER_PI, "elevate-install.mjs"), ELEVATE_INSTALL_SRC, "utf8")
         const agent = spawn(process.execPath, [path.join(USER_PI, "update-agent.mjs")], {
           detached: true, // 脱离本进程：本进程退出后它继续跑
           stdio: "ignore",
@@ -750,6 +752,7 @@ const server = http.createServer(async (req, res) => {
             SB_ARGS: JSON.stringify(process.argv.slice(2)),
             SB_LOG: path.join(USER_PI, "update.log"),
             SB_RESULT: path.join(USER_PI, "update-result.json"),
+            SB_ELEVATE_HELPER: path.join(USER_PI, "elevate-install.mjs"),
           },
         })
         agent.unref()
@@ -958,8 +961,47 @@ const ids = models.map((m) => m.id)
 })
 
 /**
+ * 提权安装辅助脚本源码（写入 ~/.SapBuddy/elevate-install.mjs，经 UAC 以管理员权限运行）。
+ * 职责：仅运行 npm install -g sapbuddy@latest 并写 update-result.json，装完即退出。
+ * 应用本体仍由非提权的更新代理负责重启（保持普通权限运行，避免长期管理员权限）。
+ * 注意：此脚本只依赖 node 内置模块，且不能使用反引号/模板字符串（自身是模板字符串常量）。
+ */
+const ELEVATE_INSTALL_SRC = `import fs from "node:fs"
+import { spawn } from "node:child_process"
+
+const NPM = process.env.SB_NPM || "npm"
+const LOG = process.env.SB_LOG || "update.log"
+const RESULT = process.env.SB_RESULT || "update-result.json"
+
+function log(s) {
+  try { fs.appendFileSync(LOG, new Date().toLocaleString() + " " + s + "\\n") } catch {}
+}
+function runInstall() {
+  return new Promise((resolve) => {
+    const child = spawn(NPM, ["install", "-g", "sapbuddy@latest"], { shell: process.platform === "win32", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] })
+    child.stdout.on("data", (d) => log("  " + String(d).trim()))
+    child.stderr.on("data", (d) => log("  " + String(d).trim()))
+    child.on("error", (e) => { log("无法启动 npm: " + e.message); resolve(-1) })
+    child.on("close", (code) => resolve(Number(code) ?? -1))
+  })
+}
+log("=== 以管理员权限安装新版 ===")
+const code = await runInstall()
+const ok = code === 0
+log(ok ? "✅ 管理员安装成功" : "❌ 管理员安装失败（退出码 " + code + "）")
+try {
+  fs.writeFileSync(RESULT, JSON.stringify({
+    status: ok ? "ok" : "error",
+    line: ok ? "更新完成，正在启动新版本" : "以管理员安装仍失败（退出码 " + code + "，日志见 " + LOG + "）",
+    ts: Date.now(),
+  }), "utf8")
+} catch {}
+process.exit(ok ? 0 : 1)
+`
+
+/**
  * 更新代理脚本源码（写入 ~/.SapBuddy/update-agent.mjs 后以独立进程运行）。
- * 职责：旧程序退出 → 装新版（失败自动重试，绕过杀毒瞬时锁）→ 重新启动 SapBuddy；
+ * 职责：旧程序退出 → 装新版（失败自动重试，绕过杀毒瞬时锁；权限不足自动提权）→ 重新启动 SapBuddy；
  * 安装失败则恢复原版本，并把原因写入 update-result.json 供下次启动提示。
  * 注意：此脚本只依赖 node 内置模块，且不能使用反引号/模板字符串（自身是模板字符串常量）。
  */
@@ -1032,6 +1074,44 @@ function explain(code) {
   return "安装进程退出（退出码 " + n + "）"
 }
 
+// 判断是否为权限不足（EACCES）。npm 常以退出码 1 结束、EACCES 记在日志里，两者都查
+function isEaccs(code) {
+  const n = Number(code) || 0
+  const signed = n > 0x7fffffff ? n - 0x100000000 : n
+  if (signed === -4092) return true
+  try {
+    const tail = fs.readFileSync(LOG, "utf8").split("\\n").slice(-40).join("\\n")
+    return /EACCES|EPERM/i.test(tail)
+  } catch { return false }
+}
+
+// 权限不足（全局安装目录仅管理员可写）→ 经 UAC 以管理员重跑安装。
+// 仅这一步提权：应用本体仍由本代理（普通权限）负责重启，避免长期管理员运行。
+// 用户取消/拒绝授权 → 提权进程没写结果文件 → 按失败处理。
+function runInstallElevated() {
+  return new Promise((resolve) => {
+    const helper = process.env.SB_ELEVATE_HELPER || ""
+    const eres = process.env.SB_RESULT || "update-result.json"
+    if (!helper) { log("未找到提权安装脚本"); resolve(-1); return }
+    try { fs.writeFileSync(eres, JSON.stringify({ status: "pending" }), "utf8") } catch {}
+    const ps = "$p = Start-Process -FilePath '" + process.execPath + "' -ArgumentList '" + helper + "' -Verb RunAs -Wait -PassThru; exit $p.ExitCode"
+    log("弹出系统授权确认框（请点击「是」允许以管理员身份安装）…")
+    const child = spawn(PS, ["-NoProfile", "-NonInteractive", "-Command", ps], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] })
+    child.stdout.on("data", (d) => log("  " + String(d).trim()))
+    child.stderr.on("data", (d) => log("  " + String(d).trim()))
+    child.on("error", (e) => { log("无法启动提权进程: " + e.message); resolve(-1) })
+    child.on("close", () => {
+      try {
+        const j = JSON.parse(fs.readFileSync(eres, "utf8"))
+        if (j.status === "ok") { resolve(0); return }
+        if (j.status === "error") { log("管理员安装失败: " + (j.line || "")); resolve(1); return }
+        log("未取得管理员授权（用户取消）或安装未完成")
+        resolve(-1)
+      } catch { resolve(-1) }
+    })
+  })
+}
+
 function writeResult(status, line) {
   try { fs.writeFileSync(RESULT, JSON.stringify({ status, line, ts: Date.now() }), "utf8") } catch {}
 }
@@ -1051,13 +1131,26 @@ log("=== 更新代理启动：等待旧程序退出后安装新版 ===")
 await sleep(3000)
 let ok = false
 let lastReason = ""
+let elevatedTried = false
 for (let i = 1; i <= MAX; i++) {
   await killCompanions()
   await sleep(1500)
   log("第 " + i + " 次尝试安装…")
-  const code = await runInstall()
+  let code = await runInstall()
   if (code === 0) { ok = true; break }
-  lastReason = explain(code)
+  let reason = explain(code)
+  // 全局安装目录仅管理员可写（用户当初以管理员装的 Node）→ 自动提权重装一次
+  if (!elevatedTried && isEaccs(code)) {
+    elevatedTried = true
+    log("检测到权限不足：以管理员身份重试安装（将弹出系统授权确认框）")
+    code = await runInstallElevated()
+    if (code === 0) { ok = true; break }
+    reason = "以管理员身份安装也未成功（可能取消了授权，或杀毒软件仍锁文件）"
+    lastReason = reason
+    log("第 " + i + " 次失败: " + lastReason)
+    break // 权限问题是持续性的，再重试普通安装没有意义
+  }
+  lastReason = reason
   log("第 " + i + " 次失败: " + lastReason)
   if (i < MAX) await sleep(DELAY)
 }
@@ -1066,7 +1159,10 @@ if (ok) {
   writeResult("ok", "更新完成，正在启动新版本")
 } else {
   log("❌ 安装失败: " + lastReason)
-  writeResult("error", "更新失败：" + lastReason + "。已恢复运行原版本。请完全关闭 SapBuddy（含任务管理器里的 node.exe 进程）后，以管理员身份运行命令 npm install -g sapbuddy@latest 手动更新一次；若手动装仍失败，多半是杀毒软件锁文件，请把 SapBuddy 加入白名单后再试。")
+  const manual = elevatedTried
+    ? "已自动尝试以管理员身份安装，但仍未成功。请完全关闭 SapBuddy（含任务管理器里的 node.exe 进程）后，手动运行 npm install -g sapbuddy@latest；若手动装仍失败，多半是杀毒软件锁文件，请把 SapBuddy 加入白名单后再试。"
+    : "请完全关闭 SapBuddy（含任务管理器里的 node.exe 进程）后，以管理员身份运行命令 npm install -g sapbuddy@latest 手动更新一次；若手动装仍失败，多半是杀毒软件锁文件，请把 SapBuddy 加入白名单后再试。"
+  writeResult("error", "更新失败：" + lastReason + "。已恢复运行原版本。" + manual)
 }
 relaunch()
 `
