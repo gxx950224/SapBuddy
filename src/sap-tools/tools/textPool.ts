@@ -19,12 +19,18 @@ const abapStr = (s: string) => `'${s.replace(/'/g, "''")}'`
  *  文本符号（ID=I）与标题无此要求。先去除文字已有前导空格再补足 8 格，保证重复写入幂等。 */
 const padSelectionText = (text: string) => " ".repeat(8) + text.trimStart()
 
+/** 文本符号键：1~3 位字母/数字（如 001、E01、TXT）都是文本符号（ID='I'）；
+ *  其余（含下划线的选择参数名、更长标识等）视为选择文本（ID='S'）。
+ *  ⚠️ 曾只认 3 位纯数字（/^\d{3}$/），导致 E01/S01/I01 这类带字母的符号被误写成选择文本（ID='S'）。 */
+export const isTextSymbolKey = (key: string) => /^[A-Z0-9]{1,3}$/.test(key.toUpperCase())
+
 /** 生成可执行类源码 */
-function generateClassSource(className: string, mode: "copy" | "set", opts: {
+export function generateClassSource(className: string, mode: "copy" | "set" | "delete", opts: {
   prog: string
   srcLang?: string
   tgtLang: string
   texts?: Array<{ key: string; text: string }>
+  deleteKeys?: string[]
 }): string {
   const progUpper = opts.prog.toUpperCase()
   const L: string[] = []
@@ -41,7 +47,7 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
     L.push("    out->write( lv_msg ).")
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
     L.push("    IF lines( lt_chk ) <> lines( lt_tp ). lv_err = lv_err + 1. out->write( 'SELFCHECK-FAIL:copy-count' ). ENDIF.")
-  } else {
+  } else if (mode === "set") {
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
     for (const t of opts.texts ?? []) {
       const key = t.key.toUpperCase()
@@ -53,10 +59,10 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
         L.push(`    DELETE lt_tp WHERE key = ${abapStr(key)} OR key = ''.`)
         L.push(`    CLEAR ls_tp. ls_tp-id = ${abapStr("R")}. ls_tp-key = ''. ls_tp-entry = ${abapStr(t.text)}. APPEND ls_tp TO lt_tp.`)
       } else {
-        // 符号(3位编号) id='I'；选择文本(参数名) id='S'，且自动补 8 前导空格（SAP 要求从第 9 列读）。
+        // 符号(1~3位字母/数字) id='I'；选择文本(参数名) id='S'，且自动补 8 前导空格（SAP 要求从第 9 列读）。
         // ⛔ 必须显式设 id：曾漏设导致新写符号 id 为空，SAP 界面/ADT 只认 id='I' 的才是文本符号，
         //    结果写入成功但界面看不到。先删同键旧行（含垃圾 id 行）再追加，保证 ID 正确且不重复。
-        const isSelection = !/^\d{3}$/.test(key)
+        const isSelection = !isTextSymbolKey(key)
         const entryText = isSelection ? padSelectionText(t.text) : t.text
         const id = isSelection ? "S" : "I"
         L.push(`    READ TABLE lt_tp TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(key)}.`)
@@ -78,13 +84,31 @@ function generateClassSource(className: string, mode: "copy" | "set", opts: {
         L.push(`    IF sy-subrc <> 0 OR ls_chk-id <> ${abapStr("R")} OR ls_chk-entry <> ${abapStr(t.text)}. lv_err = lv_err + 1.`)
         L.push("      out->write( 'SELFCHECK-FAIL:T' ). ENDIF.")
       } else {
-        const isSelection = !/^\d{3}$/.test(key)
+        const isSelection = !isTextSymbolKey(key)
         const entryText = isSelection ? padSelectionText(t.text) : t.text
         const id = isSelection ? "S" : "I"
         L.push(`    READ TABLE lt_chk INTO ls_chk WITH KEY key = ${abapStr(key)}.`)
         L.push(`    IF sy-subrc <> 0 OR ls_chk-id <> ${abapStr(id)} OR ls_chk-entry <> ${abapStr(entryText)}. lv_err = lv_err + 1.`)
         L.push(`      out->write( 'SELFCHECK-FAIL:${key}' ). ENDIF.`)
       }
+    }
+  } else {
+    // delete 模式：读目标语言池 → 按 deleteKeys 逐键删除（删同键所有 ID 行）→ 写回 → 自检键已消失
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push("    DATA(lv_del) = 0.")
+    for (const k of opts.deleteKeys ?? []) {
+      L.push(`    READ TABLE lt_tp TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(k)}.`)
+      L.push("    IF sy-subrc = 0.")
+      L.push(`      DELETE lt_tp WHERE key = ${abapStr(k)}.`)
+      L.push("      lv_del = lv_del + 1.")
+      L.push("    ENDIF.")
+    }
+    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push("    out->write( |deleted { lv_del }| ).")
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    for (const k of opts.deleteKeys ?? []) {
+      L.push(`    READ TABLE lt_chk TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(k)}.`)
+      L.push(`    IF sy-subrc = 0. lv_err = lv_err + 1. out->write( 'SELFCHECK-FAIL:${k}' ). ENDIF.`)
     }
   }
   // 自检通过才提交落库；失败回滚（INSERT TEXTPOOL 在 DB LUW 中，ROLLBACK 可撤销）
@@ -120,19 +144,20 @@ export const translateTextPoolTool = {
     "程序文本池多语言翻译工具：用户要求翻译/多语言/文本池/加英文/复制语言/中文文本时用本工具。" +
     "中文文本元素（如符号/选择文本的简体中文）一律用本工具写入（targetLanguage='1'），不要用 manage_text_elements 直接写中文。" +
     "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
-    "两种模式：copy（把源语言 text pool 整体复制为目标语言）或 set（按 [{key,text}] 覆盖/新增指定条目）。" +
-    "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=3位编号（如 '001' 对应源码 TEXT-001）；选择文本=参数名（如 'S_CARRID'、'P_COMP'）。不要把类型字母 I/S 当 key 传。" +
+    "三种模式：copy（把源语言 text pool 整体复制为目标语言）、set（按 [{key,text}] 覆盖/新增指定条目）或 delete（按 deleteKeys 删除指定条目）。" +
+    "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=1~3位字母/数字（如 '001'、'E01' 对应源码 TEXT-001/TEXT-E01）；选择文本=参数名（如 'S_CARRID'、'P_COMP'，通常含下划线或较长）。不要把类型字母 I/S 当 key 传。" +
     "选择文本会自动补足前导空格（SAP 要求文字从第 9 列开始），且符号/标题/选择文本都会写入正确的类型 ID（I/R/S）——漏写 ID 会导致界面/ADT 读不到写入的内容。" +
     "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活；文本池随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
-    mode: z.enum(["copy", "set"]).describe("copy=复制源语言 text pool; set=按 key 覆盖/新增"),
+    mode: z.enum(["copy", "set", "delete"]).describe("copy=复制源语言 text pool; set=按 key 覆盖/新增; delete=按 deleteKeys 删除条目"),
     targetLanguage: z.string().describe("目标语言键（如 'E'、'1'、'M'）"),
     sourceLanguage: z.string().optional().describe("copy 模式：源语言键，默认 '1'（主语言）"),
     texts: z
-      .array(z.object({ key: z.string().describe("text pool key: T=描述/标题, I=符号(001), S=选择文本(P_COMP)"), text: z.string().describe("文本内容") }))
+      .array(z.object({ key: z.string().describe("text pool key: T=描述/标题, I=符号(001/E01), S=选择文本(P_COMP)"), text: z.string().describe("文本内容") }))
       .optional()
       .describe("set 模式：要写入的条目"),
+    deleteKeys: z.array(z.string()).optional().describe("delete 模式：要删除的文本池键（如 'E01'、'IE01'；按原样匹配，删同键所有条目）"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: {
@@ -141,6 +166,7 @@ export const translateTextPoolTool = {
     targetLanguage: string
     sourceLanguage?: string
     texts?: Array<{ key: string; text: string }>
+    deleteKeys?: string[]
     connectionId?: string
   }): Promise<string> {
     try {
@@ -153,25 +179,42 @@ export const translateTextPoolTool = {
       if (args.mode === "set" && (!args.texts || args.texts.length === 0)) {
         return "set 模式需要 texts 参数（[{key, text}]，key: T/符号编号/选择参数名）。"
       }
+      if (args.mode === "delete" && (!args.deleteKeys || args.deleteKeys.length === 0)) {
+        return "delete 模式需要 deleteKeys 参数（要删除的文本池键列表，如 ['E01']）。"
+      }
+      // delete 键按原样大写（不做 Ixxx 归一化——'IE01' 是池里的真实键，删的就是它本身，不是 E01）
+      if (args.mode === "delete" && args.deleteKeys) {
+        args.deleteKeys = args.deleteKeys.map((k) => k.trim().toUpperCase()).filter(Boolean)
+        const badDel = args.deleteKeys.filter((k) => {
+          if (k === "T" || k === "I" || k === "S") return true
+          if (isTextSymbolKey(k)) return false
+          if (/^[A-Z][A-Z0-9_]{0,19}$/.test(k)) return false
+          return true
+        })
+        if (badDel.length > 0) {
+          return `⛔ 无效的删除键: ${badDel.join(", ")}。未删除任何内容。` +
+            `正确格式：文本符号键（如 'E01'、'001'）或选择文本参数名（如 'S_CARRID'）。`
+        }
+      }
       // ⛔ key 校验+归一化：防止把类型字母(I/S)或内部存储键(I001)当文本池键传入写出垃圾条目（曾导致中文写错键位）
       if (args.mode === "set" && args.texts) {
         args.texts = args.texts.map((t) => {
           const upper = t.key.trim().toUpperCase()
-          const m = upper.match(/^I(\d{3})$/)
+          const m = upper.match(/^I([A-Z0-9]{3})$/)
           return m ? { ...t, key: m[1] } : { ...t, key: upper }
         })
         const bad = args.texts.filter((t) => {
           const k = t.key
           if (k === "T") return false
           if (k === "I" || k === "S") return true
-          if (/^\d{3}$/.test(k)) return false
+          if (isTextSymbolKey(k)) return false
           if (/^[A-Z][A-Z0-9_]{0,19}$/.test(k)) return false
           return true
         })
         if (bad.length > 0) {
           return (
             `⛔ 无效的文本键: ${bad.map((b) => b.key).join(", ")}。未写入任何内容。\n` +
-            `正确格式：'T'=标题；文本符号=3位编号（如 '001' 对应 TEXT-001）；选择文本=参数名（如 'S_CARRID'）。不要把类型字母 I/S 当 key 传。`
+            `正确格式：'T'=标题；文本符号=1~3位字母/数字（如 '001'、'E01' 对应 TEXT-001/TEXT-E01）；选择文本=参数名（如 'S_CARRID'）。不要把类型字母 I/S 当 key 传。`
           )
         }
       }
@@ -181,11 +224,12 @@ export const translateTextPoolTool = {
       const uri = `/sap/bc/adt/oo/classes/${className.toLowerCase()}`
       const sourceUri = `${uri}/source/main`
 
-      const source = generateClassSource(className, args.mode as "copy" | "set", {
+      const source = generateClassSource(className, args.mode as "copy" | "set" | "delete", {
         prog,
         srcLang: src,
         tgtLang: tgt,
         texts: args.texts,
+        deleteKeys: args.deleteKeys,
       })
 
       await client.createObject({
