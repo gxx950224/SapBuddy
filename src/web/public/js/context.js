@@ -50,6 +50,8 @@
     // 不在此拦截"消息太少"：messageCount 是消息条数，会话加载/压缩后可能很小，
     // 但对话 tokens（上下文用量）可能仍很大——以服务器 /api/compress 的真实判断为准
     App.setCompressUI(true);
+    // 压缩是同步耗时操作，先提示"已开始"，避免压缩期间没有任何反馈
+    App.addSystemNote("压缩任务已开始，完成后将通知…");
     try {
       const r = await fetch("/api/compress", { method: "POST" });
       const j = await r.json().catch(() => ({}));
@@ -60,7 +62,9 @@
         App.addSystemNote(j.error || "当前对话没有可压缩的内容");
         App.setCompressUI(false);
       } else {
-        App.addSystemNote("压缩任务已开始，完成后将通知…");
+        // success：完成通知"上下文压缩完成，节省约 X tokens"由服务器 compress_result 事件推送，
+        // 不再在此重复提示；若该事件因 SSE 异常未送达，兜底释放按钮，避免一直转圈
+        setTimeout(() => App.setCompressUI(false), 10000);
       }
     } catch (e) {
       App.addSystemNote("压缩请求失败：" + e.message);
