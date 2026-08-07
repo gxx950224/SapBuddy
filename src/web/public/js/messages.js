@@ -73,15 +73,18 @@
   );
 
   // 思考面板内部是独立滚动区（max-height 520px + overflow-y auto），长思考内容可达上万像素。
-  // 当用户把主滚动条拉到顶（autoScroll=false）后，鼠标落在面板上滚轮会全部被面板内部滚动吸收，
-  // 主滚动条纹丝不动 → 表现为"滚动条卡住动不了了"。此时把面板上的滚轮转给主滚动条，
-  // 面板内部滚动只在用户跟随底部（autoScroll）时保留。
+  // 鼠标在面板上滚动时，面板内部优先自己滚；滚到面板边界后，继续的滚轮转给主滚动条（滚动链），
+  // 既不吞掉主滚动条（外面卡住），也保证面板内部内容能正常滚到（旧实现 autoScroll=false 时
+  // 把面板上所有滚轮都转给主滚动条，导致面板内部永远滚不动）。
   document.addEventListener(
     "wheel",
     (e) => {
-      if (autoScroll) return;
       const t = e.target;
       if (!t || !(t instanceof Element) || !t.closest(".agent-think-body")) return;
+      const body = t.closest(".agent-think-body");
+      const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight <= 2;
+      const atTop = body.scrollTop <= 0;
+      if ((e.deltaY > 0 && !atBottom) || (e.deltaY < 0 && !atTop)) return; // 面板内部还能滚 → 交给面板
       e.preventDefault();
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? messagesEl.clientHeight : 1;
       messagesEl.scrollTop += e.deltaY * unit;
