@@ -159,8 +159,12 @@ export const getWorkspaceUriTool = {
       const client = await getClient(connId)
       // 函数组内部程序（FUGR/F、FUGR/I）的 findObjectPath 走不到对象、只到连接根（返回 adt://dev/），
       // 且经通用通道解析时 URI 是只读的 /programs/includes/…… 直接改为可写的 /functions/groups/<fg>/includes/<inc>
+      // 函数模块（FUGR/FF）的 findObjectPath 会截断 URI 成 /.../source/mai（尾部被吃掉），
+      // 直接用它自身的 /functions/groups/<fg>/fmodules/<fm> 通道（/source/main 是合成视图，接口参数只能从这里写）
       let path: string
-      if (obj["adtcore:type"] === "FUGR/F" || obj["adtcore:type"] === "FUGR/I") {
+      if (obj["adtcore:type"] === "FUGR/FF") {
+        path = obj["adtcore:uri"]
+      } else if (obj["adtcore:type"] === "FUGR/F" || obj["adtcore:type"] === "FUGR/I") {
         path = (await normalizeFunctionGroupIncludeUri(connId, obj["adtcore:uri"])) ?? obj["adtcore:uri"]
       } else {
         const steps = await client.findObjectPath(obj["adtcore:uri"])

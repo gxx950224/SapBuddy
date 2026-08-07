@@ -106,7 +106,21 @@
     for (const code of container.querySelectorAll("pre code")) {
       if (code.classList.contains("hljs") || code.dataset.highlighted) continue;
       if (code.closest(".mermaid")) continue;
-      try { hljs.highlightElement(code); } catch { /* 单块失败不影响整体 */ }
+      try {
+        // 未注册语言（如 abap）会让 hljs 走"全语言自动检测"：大代码块（整段程序/长文本）会同步阻塞主线程，
+        // 冻结整页滚动与交互（表现为"输出时滚动条卡住、只能刷新"）。未知语言的大块改为按纯文本高亮
+        // （毫秒级完成），小片段保留自动检测（快、且能识别多数语言）。
+        const langCls = (code.className.match(/language-([a-zA-Z0-9_+-]+)/) || [])[1];
+        const big = (code.textContent || "").length > 3000;
+        const known = langCls ? hljs.getLanguage(langCls) : null;
+        if (big && langCls && !known) {
+          code.innerHTML = hljs.highlight(code.textContent, { language: "plaintext" }).value;
+          code.classList.remove("language-" + langCls);
+          code.dataset.highlighted = "1";
+          continue;
+        }
+        hljs.highlightElement(code);
+      } catch { /* 单块失败不影响整体 */ }
     }
   };
 

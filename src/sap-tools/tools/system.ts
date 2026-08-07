@@ -165,7 +165,7 @@ export const documentationTool = {
         "4. get_abap_diagnostics(fileUri) - 语法检查\n" +
         "5. abap_activate(objectName, objectType) - 激活\n\n" +
         "⚠️ 写操作需要服务器配置 security.readOnly=false，且 SAP 账号有编辑权限。\n" +
-        "⚠️ 函数模块编辑：参数必须写在 FUNCTION 语句内（非注释），函数模块内不能定义 FORM，激活函数组不连带激活函数模块（需单独激活 FUGR/FF）。\n" +
+        "⚠️ 函数模块编辑（FUGR/FF）：创建用 create_object_programmatically(objectType=FUGR/FF, parentName=<函数组名>)。写参数与逻辑：① get_abap_object_workspace_uri(objectName, \"FUGR/FF\") 拿到函数模块自身的 /fmodules/<函数模块> 工作区 URI；② 直接 replace_string_in_abap_object 传 fullSource=完整源码一步写入（FUNCTION 行不带句点 + 参数段 + 独立 . + 函数体 + ENDFUNCTION.），不要先读模板、不要构造 oldString 去匹配模板空行；保存时服务器自动把参数提取进接口（SE37）。参数（IMPORTING/EXPORTING/CHANGING/TABLES/EXCEPTIONS）写在 FUNCTION 行后、结束句点 . 之前，函数体（SELECT 等）写在 . 之后。保存时服务器自动把参数提取进接口（SE37）。⚠️ Open SQL 里引用接口参数必须带 @ 前缀（WHERE WERKS = @IV_WERKS、INTO TABLE @ET_MARC），不带 @ 报 \"must be escaped using @\"（replace_string 会自动补 @ 但请规范书写）。⚠️ 返回一张表最稳的写法是 TABLES 段：TABLES ET_MARC LIKE MARC（函数体用 INTO TABLE @ET_MARC），真机验证可正常激活；不能写 TYPE STANDARD TABLE OF <表>（SAP 报 Parameter OF declares no type）。⚠️ TYPE 后的类型名必须是系统中真实存在的名称（replace_string 会校验存在性）：数据元素（工厂 WERKS_D、物料 MATNR）、表类型，或表/结构（TYPE MARC、TYPE ZAIG_TEST02_S 引用结构/表本身，合法，不拦截）。要传整个结构或表可直接 TYPE <名字>；要传单个字段值才用数据元素名（不是字段名 WERKS）。拿不准先 search_abap_objects 确认或改用 LIKE <表>。replace_string 会自动检查：EXPORTING 不能带 DEFAULT、DEFAULT 与 OPTIONAL 不能并存（自动修正）；参数段漏写结束句点 . 会自动补；内联表类型/用 *\" 注释写参数会中止并提示正确写法。⚠️ 函数模块内不能定义 FORM；激活函数组不连带激活函数模块，写入后需单独 abap_activate(objectName, \"FUGR/FF\")。⚠️ 写代码守则：不要反复试错烧 token——每次写入前想清楚结构，同一编辑连续失败 2 次必须停下向用户说明现状与下一步并等待决定。\n" +
         "⚠️ 对象描述修改用 update_object_description 工具（SE38 标题）。\n" +
         "⚠️ 文本元素（TEXT-xxx/选择文本/标题）用 manage_text_elements 工具（symbols id 为 3 字符，自动补 maxLength）。"
       )

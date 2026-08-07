@@ -35,14 +35,18 @@
       state.configStatus = d.configStatus || "ok";
       state.messageCount = d.messageCount || 0;
       $("#st-model").textContent = d.model || "-";
-      $("#st-streaming").textContent = d.isStreaming ? "生成中…" : "空闲";
+      // 客户端流式态以事件为准：只有显式终态事件（agent_end / agent_abort / error / 用户点停止）才结束流式。
+      // /api/state 的 isStreaming 是服务端 busy 的近似值，在 SDK 自动重试（willRetry）等中间窗口会被提前复位为
+      // false；15s 心跳轮询若用它把"正在输出"翻转成"发送"，按钮会在输出中变回发送。这里只允许用它从
+      // 非流式→流式（页面加载/重连后恢复"停止"），不允许用它把正在进行的流式中断。
+      if (d.isStreaming && !state.streaming) App.setStreaming(true);
+      $("#st-streaming").textContent = state.streaming ? "生成中…" : "空闲";
       const sidEl = $("#chat-session-id");
       if (sidEl) {
         sidEl.textContent = d.sessionLabel || d.sessionId || "-";
         sidEl.dataset.kernelId = d.sessionId || "";
         sidEl.title = d.sessionId ? `会话: ${d.sessionLabel || "新对话"}\n内核: ${d.sessionId}\n点击复制内核ID` : "";
       }
-      if (d.isStreaming !== state.streaming) App.setStreaming(d.isStreaming);
       if (d.configStatus === "invalid") {
         App.setAgentStatus(false, "API Key 无效" + (d.configError ? "：" + d.configError : ""));
         return;

@@ -271,6 +271,7 @@
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
         // 输出全部返回后自动收起思考面板（工具执行时自动展开过）
         App.collapseThinkPanels();
+        App.resetAutoScroll(); // 输出结束：恢复"到底自动跟随"，防止中途上滚残留把视图留在半路
         App.consolidateAssistantReplies();
         if (usage) {
           const elapsedStr = elapsed

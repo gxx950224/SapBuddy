@@ -107,6 +107,8 @@ export async function findObject(
   // 保持原函数组解析行为，避免影响写/激活/改描述。
   if (!found && useDirectRead) found = await findIncludeByDirectRead(connId, objectName)
   if (!found) found = await findFunctionGroupProgram(connId, objectName)
+  // 函数模块（FUGR/FF）不是顶层 ADT 对象，按名搜索/函数组规则都找不到，走 TFDIR 反查
+  if (!found && objectType?.toUpperCase() === "FUGR/FF") found = await findFunctionModule(connId, objectName)
   return found
 }
 
@@ -155,20 +157,21 @@ export async function findFunctionGroupProgram(connId: string, objectName: strin
   if (upper.startsWith("SAPL") && upper.length > 4) {
     candidates.push({ fgName: upper.slice(4), isMain: true })
   } else if (upper.startsWith("L") && upper.length > 4) {
+    // std 启发式（后缀固定 3 字符）可能误判（如 LZAVERIFYFG01 后缀 "01"，fg 被吞成 ZAVERIFYF），
+    // 因此 std 候选只作第一候选，失败后仍落入逐步缩短兜底（如 ZAVERIFYFG01 → … → ZAVERIFYFG 命中）。
     const std = matchFunctionGroupProgram(upper)
-    if (std) {
-      candidates.push(std)
-    } else {
-      const rest = upper.slice(1)
-      // 优先：第一个下划线前的部分作函数组名（如 LCORU_SFD1 → CORU）
-      const under = rest.indexOf("_")
-      if (under > 0) candidates.push({ fgName: rest.slice(0, under), isMain: false })
-      // 逐步缩短后缀试探（fg 从短到长），由 FUGR 搜索验证存在
-      for (let cut = rest.length - 2; cut >= 1; cut--) {
-        const fg = rest.slice(0, -cut)
-        if (fg.length >= 3 && !candidates.some((c) => c.fgName === fg)) {
-          candidates.push({ fgName: fg, isMain: false })
-        }
+    if (std) candidates.push(std)
+    const rest = upper.slice(1)
+    // 优先：第一个下划线前的部分作函数组名（如 LCORU_SFD1 → CORU）
+    const under = rest.indexOf("_")
+    if (under > 0 && !candidates.some((c) => c.fgName === rest.slice(0, under))) {
+      candidates.push({ fgName: rest.slice(0, under), isMain: false })
+    }
+    // 逐步缩短后缀试探（fg 从短到长），由 FUGR 搜索验证存在
+    for (let cut = rest.length - 2; cut >= 1; cut--) {
+      const fg = rest.slice(0, -cut)
+      if (fg.length >= 3 && !candidates.some((c) => c.fgName === fg)) {
+        candidates.push({ fgName: fg, isMain: false })
       }
     }
   } else {
@@ -182,7 +185,7 @@ export async function findFunctionGroupProgram(connId: string, objectName: strin
       const fg = hits.find((h) => (h["adtcore:name"] ?? "").toUpperCase() === c.fgName)
       if (!fg) continue
       if (c.isMain) return { ...fg, "adtcore:name": upper, "adtcore:type": "FUGR/F" }
-      const base = fg["adtcore:uri"] ?? `/sap/bc/adt/functions/groups/${c.fgName.toLowerCase()}`
+      const base = (fg["adtcore:uri"] ?? `/sap/bc/adt/functions/groups/${c.fgName.toLowerCase()}`).replace(/\/source\/main$/i, "")
       return {
         ...fg,
         "adtcore:name": upper,
@@ -194,6 +197,48 @@ export async function findFunctionGroupProgram(connId: string, objectName: strin
     }
   }
   return undefined
+}
+
+/** 函数模块（FUGR/FF）不是顶层 ADT 对象，按名搜索/函数组规则都找不到。
+ * 用 TFDIR 反查：FUNCNAME → PNAME（函数组主程序）+ INCLUDE（函数模块所在 include 程序 L<FG>UXX），
+ * 解析到函数模块自身通道（/fmodules/<name>）的 ADT URI。
+ * 必须走 fmodule 通道而非函数组 include：fmodule 的 /source/main 是合成视图，
+ * 服务器从这里提取接口参数（IMPORTING 等）；include 是普通 ABAP 程序，写 IMPORTING 会语法报错。 */
+async function findFunctionModule(connId: string, funcName: string): Promise<SearchResult | undefined> {
+  const upper = (funcName || "").toUpperCase()
+  if (!/^[A-Z][A-Z0-9_]{2,}$/.test(upper)) return undefined
+  const client = await getClient(connId)
+  let fg = ""
+  try {
+    const res = await client.runQuery(
+      `SELECT PNAME FROM TFDIR WHERE FUNCNAME = '${upper}'`,
+      1,
+      true
+    )
+    const row = (res?.values?.[0] ?? {}) as Record<string, string>
+    fg = String(row.PNAME ?? "").trim()
+  } catch {
+    return undefined
+  }
+  if (!fg) return undefined
+  // TFDIR.PNAME 返回主程序名 SAPL<FG>（如 SAPLZAIGTEST01），还原成函数组名去搜函数组基址；
+  // 基址再做防御性去 /source/main（主程序源码 URI 形态），确保拼出的是 /fmodules/<fm> 通道
+  fg = fg.replace(/^SAPL/i, "")
+  // 验证函数组真实存在后拼 fmodule 通道 URI
+  try {
+    const hits = await client.searchObject(fg, "FUGR", 5)
+    const fgHit = hits.find((h) => (h["adtcore:name"] ?? "").toUpperCase() === fg)
+    if (!fgHit) return undefined
+    const base = (fgHit["adtcore:uri"] ?? `/sap/bc/adt/functions/groups/${fg.toLowerCase()}`).replace(/\/source\/main$/i, "")
+    return {
+      ...fgHit,
+      "adtcore:name": upper,
+      "adtcore:type": "FUGR/FF",
+      "adtcore:uri": `${base}/fmodules/${upper.toLowerCase()}`,
+    } as unknown as SearchResult
+  } catch {
+    return undefined
+  }
 }
 
 /**

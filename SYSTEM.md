@@ -87,6 +87,65 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 写作/重构/审查代码时遇到规则歧义，先查 `clean-abap` 技能的 `CleanABAP_zh.md`；
 英文原版：https://github.com/SAP/styleguides/blob/main/clean-abap/CleanABAP.md
 
+## 函数模块写入规范（FUGR/FF，强制）
+
+> 创建/修改函数模块按此规范，直接复制下面的完整模板，**不要让大模型临场设计模板结构**。
+
+- **对象**：函数组（FUGR）与函数模块（FF）是两个对象。先 `create_object_programmatically`（objectType=FUGR）建函数组，再建函数模块（objectType=FF + parentName=<函数组名>）。
+- **写源码用 fullSource 一步写入**：`replace_string_in_abap_object` 传 **fullSource=完整源码**（FUNCTION 行 + 参数段 + 独立 . + 函数体 + ENDFUNCTION.）。**不要**先读模板、不要构造 oldString、不要数模板空行——服务器自动提取参数进接口（SE37），工具自动做多项修正。
+- **FUNCTION 行不带句点**：`FUNCTION ZFM_X` 后直接换行写参数段；写成 `FUNCTION ZFM_X.` 会残留模板头、参数区提前结束（工具自动移除句点，但请勿再写）。
+- **参数用真实声明，禁止用 `*"` 注释**：`*"  IMPORTING VALUE(...)` 不会被提取进接口（工具拦截）。按模板写真实声明。
+- **返回表用 TABLES 段 + LIKE**：`TABLES ET_MARC LIKE MARC`（函数体 `INTO TABLE @ET_MARC`）；**禁止** `TYPE STANDARD TABLE OF <表>`（SAP 报 Parameter OF declares no type）。
+- **⚠️ Open SQL 里接口参数必须带 `@`**：`WHERE WERKS = @IV_WERKS`、`INTO TABLE @ET_MARD`——不带 @ 报 "must be escaped using @"（工具自动补 @，但请规范书写）。
+- **TYPE 后可以是数据元素/表类型，也可以是表/结构**：`TYPE MARC`、`TYPE ZAIG_TEST02_S` 引用该结构/表本身（合法）。只有本意是传**单个字段值**时才必须用数据元素：工厂字段用 `WERKS_D`（不是 `WERKS`，WERKS 是 INTTAB 结构）、物料 `MATNR`。结构/表参数 `TYPE` 与 `LIKE` 都合法。拿不准先 `search_abap_objects` 确认。
+- **激活**：函数组激活**不连带**函数模块——`abap_activate(objectName=<函数模块名>, objectType=FUGR/FF)` 单独激活函数模块；工具会自动先激活函数组的 FORM include（把未激活的 FORM 固化）→ 再激活主程序（SAPL<fg>，让新增 INCLUDE 生效）→ 最后激活函数模块，AI 无需手动排。
+- **函数模块内不要定义 FORM**（报 DATA is unexpected）。
+
+完整模板（真机验证可激活）：
+
+```
+FUNCTION ZFM_MARD
+  IMPORTING
+    VALUE(IV_WERKS) TYPE WERKS_D
+    VALUE(IV_MATNR) TYPE MATNR
+  TABLES
+    ET_MARD LIKE MARD.
+
+  SELECT *
+    FROM MARD
+    WHERE WERKS = @IV_WERKS
+      AND MATNR = @IV_MATNR
+    INTO TABLE @ET_MARD.
+  IF SY-SUBRC <> 0.
+    CLEAR ET_MARD.
+  ENDIF.
+
+ENDFUNCTION.
+```
+
+## 结构（TABL/DS）写入规范（强制）
+
+> 创建/修改 ABAP 结构（DDIC 结构）按此规范。结构用 `create_object_programmatically`（objectType=TABL/DS）+ `replace_string_in_abap_object` 写 DSL 源码（`define structure ZXXX { ... }`）。以下规则真机验证，写错服务器直接拒绝保存。
+
+- **增强注解必须用点号形式**：`@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE`。**禁止**写 `enhancementCategory : [#NOT_EXTENSIBLE]`（那是 CDS 视图写法，结构不接受，保存报 "Can't save due to errors in source"）。
+- **数量字段（QUAN）必须加单位注解**：QUAN 字段（如 `menge_d`）上方独占一行写 `@Semantics.quantity.unitOfMeasure : 'mara.meins'`。
+- **字段类型引用数据元素**：`vbeln : vbeln_va;`、`stock : menge_d;`（数据元素名，字段名与类型名一致时也要写全）。
+- **保存自检以读回为准**：服务器读回会规范化格式（字段名小写、注解形式统一、空行调整），提交文本与读回不同属正常，只要关键字段都落库即写入成功。
+- **函数模块结构参数 TYPE 与 LIKE 都合法**：`EXPORTING VALUE(ES_STOCK) TYPE ZAIG_TEST02_S`（或 `LIKE ZAIG_TEST02_S`）。SAP 支持 `TYPE` 引用结构本身，工具不会拦截；仅当类型名是表字段名（如把 `WERKS` 当工厂字段）时才提醒改用数据元素 `WERKS_D`。
+
+## 函数组 include（FUGR/I）写入规范（强制）
+
+> 函数组里放 FORM 的子程序块（如 L<FG>F01）。真机验证，工具已支持创建/写入/激活，AI 可直接做，不要绕道建普通 INCLUDE。
+
+- **创建**：`create_object_programmatically`（objectType=**FUGR/I**，name=**L<函数组><后缀>**，parentName=函数组名，没填会被拦截）。创建后服务器自动在主程序加 `INCLUDE <名>.`。
+- **命名后缀**：必须是标准 3 字符（TOP/UXX/F01/U04/...）。**后缀不能是纯数字**（如 L<FG>01）——SAP 会静默拒绝（返回成功但对象不存在），先搜后建会漏。
+- **写入 FORM**：`replace_string_in_abap_object` 用函数组通道 fileUri=`/sap/bc/adt/functions/groups/<函数组>/includes/<include>` + fullSource 直接写 `FORM ... ENDFORM.`。函数组 include 是普通 ABAP 程序，**不要写 IMPORTING/TABLES 参数段**（那是函数模块通道）。
+- **⚠️ FORM 参数不能内联声明表类型（关键坑）**：FORM 参数段（TABLES/USING/CHANGING）写 `CT_MARD TYPE STANDARD TABLE OF MARD` 会被 SAP 解析成 6 个形式参数（内联表类型按结构字段展开），PERFORM 侧报 "Different number of parameters in FORM and PERFORM (formal: 6, actual: 4)"。正确写法：**先在 include 顶部定义表类型 `TYPES: tt_mard TYPE STANDARD TABLE OF MARD.`，FORM 参数引用 `TYPE tt_mard`**（如 `CHANGING CT_MARD TYPE tt_mard`）。`replace_string_in_abap_object` 写函数组 include 会自动改写内联表类型为 tt_<表> 引用并补类型定义，但请规范书写避免往返。
+- **函数模块调用 FORM**：直接写 `PERFORM <form> ...` 即可，**不要写 IN PROGRAM**（同一函数组内 FORM 与函数模块编译进同一主程序，真机验证 ZAIG_TEST02 就是纯 PERFORM 且正确）。
+- **⚠️ 函数模块 TABLES 参数是带表头行的表（关键坑）**：`TABLES ET_MARD LIKE MARD` 的 `ET_MARD` 是表头行。函数模块内 `PERFORM` 把整表传给 FORM 表参数必须写 `ET_MARD[]`（整表）；写 `ET_MARD` 传的是表头行，报 "ET_MARD is the header line of table ET_MARD[]"。OPEN SQL 写整表用 `INTO TABLE @et_mard`。
+- **FORM 必须先激活（关键）**：函数模块写源码与激活都按函数组的"激活态"编译——FORM include 的改动没激活，函数模块就找不到 FORM，报 "FORM ... does not exist" 或 "Parameter PERFORM declares no type"（写时）。**只激活主程序也不会把 include 的改动固化**，必须激活 include 对象本体。`replace_string_in_abap_object` 写函数组 include 后会自动激活该 include（UXX/U01/主程序除外）；`abap_activate` 激活函数模块（FUGR/FF）时也会先自动激活 FORM include 再激活主程序再激活函数模块。AI 无需手动排顺序。改名/改签名 FORM 时若旧函数模块还引用旧名会激活失败，需同步更新函数模块。
+- **激活**：`abap_activate`（objectType=FUGR/I）直接激活；FORM 由函数模块 `PERFORM <form>` 调用。函数模块激活报 "FORM ... does not exist" 就是 include 未激活（工具已自动处理，若仍出现说明 include 激活失败或 FORM 名不一致）。
+
 ## 工具使用要点
 
 - **知识图谱工具手册见 `docs/TOOL-GUIDE.md`**（场景 → 工具 → 传参示例，含 JSON 参数示例；不确定怎么传参时**先 read 该文件对应场景**）
