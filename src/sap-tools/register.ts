@@ -5,7 +5,7 @@
  * 代码级强制规则（不依赖 LLM 遵守，写工具内容写入前硬校验）：
  * 1. 开发客户端守卫：非开发类客户端拒绝一切写操作（assertDevClient）
  * 2. 硬编码中文扫描：写入代码含用户可见中文字面量 → 拒绝（必须走消息类/文本元素）
- * 3. 裸内置类型扫描：TYPE string/i/char1/c/n/p 等 → 拒绝（必须用 DDIC 数据元素）
+ * 3. 裸内置类型扫描：自建结构/表（TYPES 定义、DDIC DSL 字段）用 string/i/char1 等 → 拒绝（程序内局部变量允许裸类型）
  */
 import { z } from "zod"
 import { Type } from "typebox"
@@ -62,7 +62,7 @@ export function handleUserMessage(text: string): void {
   if (REJECT_RE.test(t)) {
     clearWriteApproval()
   } else if (CONFIRM_RE.test(t)) {
-    // 授权窗口时长可配置（settings.approvalWindowMinutes，默认 120 分钟）
+    // 授权窗口时长可配置（settings.approvalWindowMinutes，默认 15 分钟）
     setWriteApprovalWindow(approvalWindowMs())
   }
   // 中性/继续类消息不清除窗口，避免同一需求反复授权
@@ -74,7 +74,7 @@ function isReadOnly(): boolean {
   try {
     const cfg = JSON.parse(readFileSync(join(homedir(), ".SapBuddy", "connections.json"), "utf8").toString())
     return cfg.security?.readOnly !== false
-  } catch { return false }
+  } catch { return true } // 读取/解析失败时保守只读（fail-closed，与 config.ts 的 readOnly ?? true 一致）
 }
 
 /** 函数组内部程序是否属于客户命名空间：SAPL<FG>/L<FG><后缀>，所属函数组（FG）为 Z/Y 开头即为客户对象（SE38 可直接编辑） */
@@ -84,11 +84,11 @@ function isCustomerFunctionGroupProgram(name: string): boolean {
 
 /** 命名空间强制：写操作对象名必须以 Z 或 Y 开头（SAP 标准对象只读不写）。
  * 函数组内部程序（SAPL<FG>/L<FG>*）按所属函数组判断：函数组为 Z/Y 开头时放行。
- * 只检查明确的"对象名"字段（name/objectName/className），传输请求号等不参与。
+ * 只检查明确的"对象名"字段（name/objectName/className/parentName），传输请求号等不参与。
  * 返回违规说明；空串 = 通过。 */
 export function namespaceViolation(input: unknown): string {
   const o = (input ?? {}) as Record<string, unknown>
-  for (const key of ["name", "objectName", "className"] as const) {
+  for (const key of ["name", "objectName", "className", "parentName"] as const) {
     const v = o[key]
     if (typeof v !== "string" || !v.trim()) continue
     const n = v.trim()
@@ -122,10 +122,39 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     const input = (event.input ?? {}) as Record<string, unknown>
     const p = String(input.path ?? input.file ?? input.filePath ?? input.pattern ?? "").replace(/\\/g, "/")
     const lower = p.toLowerCase()
-    // ── 敏感配置文件禁止由 AI 读写：防 AI 读出 API Key/凭据，或自行放开只读绕过总闸 ──
+    // ── 敏感配置保护：.SapBuddy 配置目录（连接凭据/API 密钥/模型/MCP 等）禁止由 AI 读写 ──
     const PROTECTED_CONFIG = ["connections.json", "auth.json", "settings.json", "models.json", "models-store.json", "mcp.json"]
+    const READ_TOOLS = ["read", "glob", "grep", "find", "ls"]
+    // bash 命令行工具不在 read/glob/grep 名单，输入字段是 command 而非 path —— 单独拦截涉及敏感路径/文件名的命令
+    if (name === "bash") {
+      const cmd = String((input as Record<string, unknown>).command ?? "").toLowerCase()
+      if (cmd.includes(".sapbuddy") || PROTECTED_CONFIG.some((f) => cmd.includes(f))) {
+        return {
+          block: true,
+          reason:
+            `⛔ 命令行操作被安全拦截（涉及敏感配置）：${String(input.command ?? "").slice(0, 120)}\n` +
+            `安全配置（连接凭据 / API 密钥 / 模型 / MCP）仅限你本人手动查看 .SapBuddy/ 目录。`,
+        }
+      }
+    }
+    // 目录级拦截（P0-3）：path 落在 ~/.SapBuddy（output/skills/sessions/prompts 子树除外）即 block，
+    // 不再依赖"文件名含 connections.json"这类字符串匹配——grep(path=".SapBuddy") 可绕过文件名匹配整目录扫描。
+    // prompts/ 放行：SYSTEM.md 避坑记录要求 AI 读 ~/.SapBuddy/prompts/Memory.md 追加经验（非密钥）。
+    if (READ_TOOLS.includes(name) && /\.sapbuddy(\/|$)/.test(lower)) {
+      const rest = (lower.split(".sapbuddy").pop() ?? "").replace(/^[\\/]+/, "")
+      const allowed = /^(output|skills|sessions|prompts)(\/|$)/.test(rest)
+      if (!allowed) {
+        return {
+          block: true,
+          reason:
+            `⛔ .SapBuddy 配置目录禁止由 AI 读取（已拦截）：${p}\n` +
+            `安全配置（连接凭据 / API 密钥 / 模型 / MCP）仅限你本人手动查看 .SapBuddy/ 目录。`,
+        }
+      }
+    }
+    // 文件名级拦截（覆盖项目根等非 .SapBuddy 位置的配置副本）
     if (PROTECTED_CONFIG.some((f) => lower.includes(f))) {
-      if (["read", "glob", "grep"].includes(name)) {
+      if (READ_TOOLS.includes(name)) {
         return {
           block: true,
           reason:
@@ -276,13 +305,26 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
 }
 
 /**
- * 扫描 ABAP 代码：硬编码中文文案 + 裸内置类型
+ * 扫描 ABAP 代码：硬编码中文文案 + 结构/表定义中的裸内置类型
+ * 裸内置类型仅限制「自建表/结构」：ABAP TYPES 定义（含 BEGIN OF 块）与 DDIC DSL define structure/table 的字段；
+ * 程序内局部变量/临时量（DATA、方法参数、函数接口等）允许裸类型（Clean ABAP 对技术临时量本就允许）
  * @returns 违规列表（空 = 通过）
  */
 export function scanCodeViolations(code: string): string[] {
   const violations: string[] = []
   if (!code) return violations
   const lines = code.split(/\r?\n/)
+
+  const banned = new Set([
+    "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
+    "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
+    "char10", "char12", "char20", "char30", "char40", "char50", "char60",
+    "char80", "char100", "char120", "char132", "char133", "char200", "char255",
+    "numc2", "numc3", "numc4", "numc5", "numc6", "numc8", "numc10",
+    "dats", "tims", "tstmp", "raw", "rawstring", "unit", "curr", "quan",
+  ])
+  let typeDefDepth = 0 // TYPES: BEGIN OF ... END OF 嵌套深度
+  let inDefineBlock = false // define structure/table { ... } DDIC DSL 块内
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]
@@ -294,35 +336,46 @@ export function scanCodeViolations(code: string): string[] {
     if (isAnnotationLine) continue
 
     // 1) 硬编码中文：单引号字符串字面量含中文（MESSAGE WITH '中文'、VALUE #( message = '中文' ) 等）
-    const cnMatches = noComment.match(/'([^']*[\u4e00-\u9fa5][^']*)'/g)
-    if (cnMatches) {
-      for (const m of cnMatches) {
+    //    + ABAP 反引号文本字面量（`中文`，不限长字符串）也属于用户可见文案，一并扫描
+    const cnMatches = noComment.match(/'([^']*[一-龥][^']*)'/g) || []
+    const btMatches = noComment.match(/`([^`]*[一-龥][^`]*)`/g) || []
+    const allCn = [...cnMatches, ...btMatches]
+    if (allCn.length) {
+      for (const m of allCn) {
         const text = m.slice(1, -1)
         // 允许中文变量名/字段名等非常规场景极少，一律视为文案违规（规范要求走消息类/文本元素）
         violations.push(`第 ${i + 1} 行：硬编码中文文案 ${text.length > 20 ? text.slice(0, 20) + "…" : text}（必须改为消息类 MESSAGE e001(zxxx) 或文本元素 TEXT-xxx）`)
       }
     }
 
-    // 2) 裸内置类型：TYPE string / TYPE i / TYPE char1 / TYPE c / TYPE n / TYPE p / TYPE int4 等
-    //    排除：TYPE REF TO、TYPE TABLE OF、TYPE LINE OF、TYPE abap_*（ABAP 内建元素）、TYPE sy-*
-    const compositeRe = /TYPE\s+(REF|TABLE|LINE|STANDARD|SORTED|HASHED)\s+/i
-    const banned = new Set([
-      "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
-      "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
-      "char10", "char12", "char20", "char30", "char40", "char50", "char60",
-      "char80", "char100", "char120", "char132", "char133", "char200", "char255",
-      "numc2", "numc3", "numc4", "numc5", "numc6", "numc8", "numc10",
-      "dats", "tims", "tstmp", "raw", "rawstring", "unit", "curr", "quan",
-    ])
-    // 一行内可能有多个 TYPE（如 DATA: a TYPE i, b TYPE string.）→ 全部检查
-    const typeTokens = noComment.matchAll(/TYPE\s+([a-z]\w*)/gi)
-    for (const m of typeTokens) {
-      const t = m[1].toLowerCase()
-      if (banned.has(t)) {
-        violations.push(`第 ${i + 1} 行：裸内置类型 TYPE ${t.toUpperCase()}（必须使用 DDIC 数据元素/结构，找不到标准元素时创建 Z 数据元素 + 域）`)
+    // 2) 结构/表类型定义中的裸内置类型：TYPES 声明（含 BEGIN OF 块）属"自建表/结构" → 必须用 DDIC 类型；
+    //    程序内 DATA/方法参数/函数接口等 → 放行裸类型
+    const hasTypesKw = /\bTYPES\b/i.test(noComment)
+    if (/\bBEGIN\s+OF\b/i.test(noComment) && hasTypesKw) typeDefDepth++
+    if (/\bEND\s+OF\b/i.test(noComment)) typeDefDepth = Math.max(0, typeDefDepth - 1)
+    if (hasTypesKw || typeDefDepth > 0) {
+      // 一行内可能有多个 TYPE（如 a TYPE i, b TYPE string.）→ 全部检查
+      const typeTokens = noComment.matchAll(/TYPE\s+([a-z]\w*)/gi)
+      for (const m of typeTokens) {
+        const t = m[1].toLowerCase()
+        if (banned.has(t)) {
+          violations.push(`第 ${i + 1} 行：自建结构/表类型字段用裸内置类型 TYPE ${t.toUpperCase()}（结构字段必须用 DDIC 数据元素/结构，找不到标准元素时创建 Z 数据元素 + 域；程序内局部变量不受限）`)
+        }
       }
     }
-    // 复合类型声明行单独跳过（避免误报 TYPE 后跟 REF/TABLE 等）——matchAll 已按 token 判断，此处无需额外处理
+
+    // 3) DDIC DSL 结构字段：define structure/table 内直接 `字段 : abap.<内置类型>;` 属裸类型
+    //    （abap.clnt / abap.cust 是客户端键特殊标记，放行；数据元素按名字引用、reference to 均不在此列）
+    const defineKw = /\bdefine\s+(?:append\s+)?(structure|table)\b/i.test(noComment)
+    if (defineKw) inDefineBlock = true
+    const dslField = noComment.match(/^\s*(?:key\s+)?[A-Za-z_][\w]*\s*:\s*abap\.([A-Za-z0-9_]+)/)
+    if (dslField && (inDefineBlock || defineKw)) {
+      const at = dslField[1].toLowerCase()
+      if (at !== "clnt" && at !== "cust") {
+        violations.push(`第 ${i + 1} 行：DDIC 结构字段用裸内置类型 abap.${at.toUpperCase()}（结构字段必须用 DDIC 数据元素，如 matnr/bukrs/dmbtr；找不到标准元素时创建 Z 数据元素 + 域）`)
+      }
+    }
+    if (noComment.includes("}")) inDefineBlock = false
   }
   return violations
 }
@@ -428,7 +481,7 @@ connectionId 缺省用 get_connected_systems 第一个。`,
               return {
                 content: [{
                   type: "text" as const,
-                  text: `⛔ 代码级规则拦截（不依赖 AI 自觉，写前硬校验）：\n${violations.join("\n")}\n\n请修正后重试：硬编码中文 → 消息类/文本元素；裸内置类型 → DDIC 数据元素（找不到则创建 Z 元素 + 域）。`,
+                  text: `⛔ 代码级规则拦截（不依赖 AI 自觉，写前硬校验）：\n${violations.join("\n")}\n\n请修正后重试：硬编码中文 → 消息类/文本元素；自建结构/表字段裸内置类型 → DDIC 数据元素（找不到则创建 Z 元素 + 域）。`,
                 }],
                 details: {},
                 isError: true,

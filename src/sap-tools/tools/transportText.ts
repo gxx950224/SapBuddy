@@ -109,7 +109,7 @@ export const transportTool = {
             const trkorrs = [...new Set((q1?.values ?? []).map((r) => String(r.TRKORR ?? "").trim()).filter(Boolean))]
             if (trkorrs.length) {
               if (lines.length > 2) lines.push("")
-              const q2 = `SELECT TRKORR, STRKORR, TARSYSTEM, TRSTATUS, AS4USER FROM E070 WHERE TRKORR IN ('${trkorrs.join("','")}')`
+              const q2 = `SELECT TRKORR, STRKORR, TARSYSTEM, TRSTATUS, AS4USER FROM E070 WHERE TRKORR IN (${trkorrs.map((t) => `'${t.replace(/'/g, "''")}'`).join(",")})`
               const st = await client.runQuery(q2, 100, true)
               for (const r of st?.values ?? []) {
                 const code = String(r.TRSTATUS ?? "")

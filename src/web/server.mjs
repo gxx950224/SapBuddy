@@ -1167,6 +1167,25 @@ if (ok) {
 relaunch()
 `
 
+// 全局异常兜底：未捕获异常/拒绝给出明确提示，而不是无提示崩溃
+process.on("uncaughtException", (err) => {
+  console.error("⚠️ 未捕获异常: " + (err?.message ?? err))
+  process.exit(1)
+})
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠️ 未处理的 Promise 拒绝: " + (reason?.message ?? reason))
+})
+
+// 优雅关闭：Ctrl+C / SIGTERM 时先关 HTTP 服务，给在途请求一个收尾时间再退出
+// （SAP 连接由连接池自愈接管；直接杀进程可能残留编辑锁）
+function gracefulShutdown(signal) {
+  console.log(`\n  收到 ${signal}，正在关闭 Web 服务…`)
+  try { server.close() } catch {}
+  setTimeout(() => process.exit(0), 800)
+}
+process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
+
 server.on("error", (err) => {
   if (err?.code === "EADDRINUSE") {
     // 自重启的新进程：旧进程可能还没释放端口 → 稍后重试而非直接退出

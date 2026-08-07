@@ -23,6 +23,15 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const args = process.argv.slice(2)
 const WEB_PORT = 7400
 
+// 全局异常兜底：未捕获异常/拒绝给出明确提示，而不是无提示崩溃（Node 默认是直接崩溃）
+process.on("uncaughtException", (err) => {
+  console.error("⚠️ 未捕获异常: " + (err?.message ?? err))
+  process.exit(1)
+})
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠️ 未处理的 Promise 拒绝: " + (reason?.message ?? reason))
+})
+
 // ===== ANSI 与渲染辅助 =====
 const ANSI = { reset: "\x1b[0m", bold: "\x1b[1m", dim: "\x1b[2m", green: "\x1b[32m", cyan: "\x1b[36m", yellow: "\x1b[33m", magenta: "\x1b[35m", red: "\x1b[31m", blue: "\x1b[34m" }
 function esc(s) { return String(s ?? "").replace(/\x1b/g, "") }
@@ -307,6 +316,6 @@ async function main() {
 }
 
 main().catch((e) => {
-  console.error(e)
+  console.error("启动失败: " + (e instanceof Error ? e.message : e))
   process.exit(1)
 })

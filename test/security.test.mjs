@@ -29,11 +29,49 @@ test("scanCodeViolations：注释中的中文不误报", () => {
   assert.deepEqual(v, [])
 })
 
-test("scanCodeViolations：裸内置类型被拦截", () => {
+test("scanCodeViolations：程序内局部变量裸类型放行（DATA 变量）", () => {
   const code = `DATA: lv_text TYPE string, lv_i TYPE i.`
+  const v = scanCodeViolations(code)
+  assert.deepEqual(v, [], `程序内 DATA 裸类型应放行，实际: ${v.join("|")}`)
+})
+
+test("scanCodeViolations：方法/函数参数裸类型放行", () => {
+  const code = `METHODS m IMPORTING iv_text TYPE string RETURNING VALUE(rv_n) TYPE i.`
+  const v = scanCodeViolations(code)
+  assert.deepEqual(v, [], `方法参数裸类型应放行，实际: ${v.join("|")}`)
+})
+
+test("scanCodeViolations：自建结构 TYPES 块字段裸类型被拦截", () => {
+  const code = [
+    `TYPES: BEGIN OF ts_line,`,
+    `  field1 TYPE string,`,
+    `  field2 TYPE i,`,
+    `END OF ts_line.`,
+  ].join("\n")
   const v = scanCodeViolations(code)
   assert.ok(v.some((x) => x.includes("TYPE STRING")), `应报 TYPE STRING，实际: ${v.join("|")}`)
   assert.ok(v.some((x) => x.includes("TYPE I")), `应报 TYPE I，实际: ${v.join("|")}`)
+})
+
+test("scanCodeViolations：TYPES 引用 DDIC 表/元素不误报", () => {
+  const code = `TYPES: tt_mard TYPE STANDARD TABLE OF MARD.`
+  const v = scanCodeViolations(code)
+  assert.deepEqual(v, [], `引用 DDIC 表不应误报，实际: ${v.join("|")}`)
+})
+
+test("scanCodeViolations：DDIC DSL 结构字段 abap.* 裸类型被拦截（clnt 放行）", () => {
+  const code = [
+    `define structure zss_demo {`,
+    `  key client : abap.clnt not null;`,
+    `  chars : abap.char(3);`,
+    `  num   : abap.int4;`,
+    `  id    : zdemo_abap_dtel;`,
+    `}`,
+  ].join("\n")
+  const v = scanCodeViolations(code)
+  assert.ok(v.some((x) => x.includes("abap.CHAR")), `应报 abap.CHAR，实际: ${v.join("|")}`)
+  assert.ok(v.some((x) => x.includes("abap.INT4")), `应报 abap.INT4，实际: ${v.join("|")}`)
+  assert.ok(!v.some((x) => x.includes("CLNT")), `abap.clnt 客户端键不应误报，实际: ${v.join("|")}`)
 })
 
 test("scanCodeViolations：DDIC 元素/复合类型不误报", () => {

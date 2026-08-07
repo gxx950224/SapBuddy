@@ -33,13 +33,13 @@ cli.mjs ──► src/agent-core.mjs ──► pi SDK (AgentSession)
    │    │     ├─ isWriteApproved()?         → 放行（授权窗口内）
    │    │     ├─ TUI/CLI：ctx.ui.confirm    → 原生弹窗
    │    │     └─ Web：block + 提示 AI 展示计划 → 用户手动输入「确认」
-   │    └─ replace_string 额外：scanCodeViolations（硬编码中文/裸内置类型）
+   │    └─ replace_string 额外：scanCodeViolations（硬编码中文/自建表结构字段裸内置类型）
    │
    ├─ ② execute 层（每个写工具）
    │    └─ assertDevClient（T000.CCCATEGORY）→ 非开发客户端拒绝一切写
    │
    └─ ③ handleUserMessage（before_agent_start 每轮）
-        ├─ 确认词（确认/同意/可以…）→ 2h 授权窗口（同一需求不重复授权）
+        ├─ 确认词（确认/同意/可以…）→ 授权窗口（默认 15 分钟，可配置）（同一需求不重复授权）
         ├─ 拒绝词（拒绝/不要/取消…）→ 清空授权
         └─ 中性/继续消息 → 窗口保持
 ```
@@ -75,9 +75,9 @@ node cli.mjs tools   # 工具列表
 |---|---|---|
 | 写工具名单 / 授权窗口 / 只读模式 | `src/sap-tools/register.ts`（isWriteTool/handleUserMessage/isReadOnly）| 硬强制 |
 | 写操作拦截（确认/路径/HTML 确认/查询放行）| `register.ts` `installWriteGate`（挂 pi.on("tool_call")）| 硬强制 |
-| 敏感配置禁止 AI 读写（connections/auth/settings/models/mcp）| `register.ts` `installWriteGate`（read/glob/grep 拦读取、write/edit 拦写入，防泄露密钥/放开只读绕过总闸）| 硬强制 |
+| 敏感配置禁止 AI 读写（connections/auth/settings/models/mcp；bash 命令含敏感路径/文件名也拦）| `register.ts` `installWriteGate`（read/glob/grep/find/ls 拦读取 + `.SapBuddy` 目录级拦截（output/skills/sessions/prompts 除外）；write/edit 拦写入；bash 拦含 `.SapBuddy`/敏感文件名的命令）| 硬强制 |
 | SapBuddy 自身源码/规则文件禁止 AI 读写（src/、cli.mjs、test/、AGENTS.md、SYSTEM.md 等）| `register.ts` `installWriteGate`（保留 Memory.md、.SapBuddy/skills、output/ 可编辑区）| 硬强制 |
-| 代码规则扫描（硬编码中文/裸类型 d/t）| `register.ts` `scanCodeViolations` | 硬强制 |
+| 代码规则扫描（硬编码中文（含反引号字面量）/自建表结构字段裸内置类型；程序内局部变量放行）| `register.ts` `scanCodeViolations` | 硬强制 |
 | 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |
 | 创建：包名/描述必填、$TMP 需用户确认、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically + `register.ts` 写门禁 | 硬强制 |
 | 修改：自动沿用/创建请求、请求描述格式 | `tools/writeTools.ts` replace_string_in_abap_object | 硬强制 |

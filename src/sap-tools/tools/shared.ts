@@ -39,9 +39,16 @@ export function escapeXmlAttr(s: string): string {
     .replace(/>/g, "&gt;")
 }
 
+/** 截断并清洗 SAP/ADT 错误信息：剥离 <stack> 标签并限长，避免把服务器内部堆栈泄露给 AI/用户 */
+export function sanitizeErrMsg(err: unknown, max = 300): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "")
+  const clean = raw.replace(/<stack>[\s\S]*?<\/stack>/gi, " <堆栈已省略>").trim()
+  return clean.length > max ? clean.slice(0, max) + "…" : clean
+}
+
 /** 格式化工具错误为 LLM 可读、可自愈的文本 */
 export function toToolError(err: unknown): string {
-  const message = err instanceof Error ? err.message : String(err)
+  const message = sanitizeErrMsg(err)
   return `工具执行失败: ${message}\n\n可能的原因：\n- 连接 ID 错误（先用 get_connected_systems 查看可用连接）\n- SAP 账号无权限或密码过期\n- 对象不存在或名称拼写错误（可先用 search_abap_objects 确认）`
 }
 

@@ -24,7 +24,7 @@ export const connectedSystemsTool = {
         const label = CLIENT_CATEGORY_LABELS[cat] ?? `未知(${cat || "未维护"})`
         const allow = (c.security?.developmentCategories ?? ["C"]).map((x) => x.toUpperCase())
         guard = allow.includes(cat) ? `写操作: 允许（${label}）` : `写操作: 拦截（${label}）`
-      } catch { /* 类别查询失败，默认拦截 */ }
+      } catch (e) { console.error(`[sapbuddy] 客户端类别查询失败（${c.id}）: ${e instanceof Error ? e.message.slice(0, 120) : e}`) /* 类别查询失败，默认拦截 */ }
       lines.push(`- ${c.id.padEnd(12)} ${c.url}  Client: ${c.client}  Auth: ${auth}  ${guard}${c.description ? `  (${c.description})` : ""}`)
     }
     return (

@@ -8,6 +8,7 @@ import {
   requireObject,
   resolveConnectionId,
   toToolError,
+  sanitizeErrMsg,
   escapeXmlAttr,
   connectionIdSchema,
   objectTypeSchema,
@@ -305,7 +306,7 @@ export const createObjectTool = {
       )
     } catch (err) {
       return (
-        `创建对象失败: ${err instanceof Error ? err.message : err}\n\n` +
+        `创建对象失败: ${sanitizeErrMsg(err)}\n\n` +
         `可能的原因：\n- 对象已存在（先 search_abap_objects 确认）\n- 包不存在或无写入权限\n- 名称不符合命名规范`
       )
     }
@@ -909,7 +910,7 @@ export const replaceStringTool = {
       }
     } catch (err) {
       return (
-        `编辑失败: ${err instanceof Error ? err.message : err}\n\n可能的原因：\n- oldString 未唯一匹配（局部替换时，用 get_abap_object_lines 读当前内容核对）\n- fullSource 内容与对象类型不匹配（整段覆盖时）\n- 对象被其他用户锁定\n- SAP 账号无编辑权限` +
+        `编辑失败: ${sanitizeErrMsg(err)}\n\n可能的原因：\n- oldString 未唯一匹配（局部替换时，用 get_abap_object_lines 读当前内容核对）\n- fullSource 内容与对象类型不匹配（整段覆盖时）\n- 对象被其他用户锁定\n- SAP 账号无编辑权限` +
         fgIncludeHint
       )
     }
@@ -1001,7 +1002,7 @@ export const createTestIncludeTool = {
       }
       return `✅ 已为 ${args.className} 创建测试 include。可用 get_abap_object_lines 读取并编辑测试代码。`
     } catch (err) {
-      return `创建测试 include 失败: ${err instanceof Error ? err.message : err}`
+      return `创建测试 include 失败: ${sanitizeErrMsg(err)}`
     }
   },
 }
