@@ -15,7 +15,9 @@
 ├─ 创建程序/类    → §2（4 步流程）
 ├─ 修改代码       → §3（请求处理 + 替换）
 ├─ 激活           → §2.4 abap_activate
-├─ 翻译/多语言    → §4 translate_text_pool
+├─ 翻译文本池     → §4 translate_text_pool（TEXT-xxx/标题/选择文本）
+├─ 翻译消息类     → §4.3 translate_message_class（SE91/T100）
+├─ 翻译屏幕文字   → §4.4 translate_screen_text（D020T/D021T）
 ├─ 写文本元素     → §5 manage_text_elements
 ├─ 数据查询       → §6 execute_data_query
 ├─ 代码审查       → §7（技能流程）
@@ -105,6 +107,27 @@
   "texts": [ { "key": "001", "text": "物料不存在" }, { "key": "T", "text": "程序标题" } ] }
 ```
 > key：`T`=程序标题、`I`/数字=文本符号（`001` 对应 TEXT-001）、`S`=选择文本（P_COMP）。
+
+### 4.3 消息类翻译（SE91 / T100）
+```json
+// 先 list 看现有条目与消息号
+{ "objectName": "ZBC_ITS001", "mode": "list", "targetLanguage": "V" }
+// 按消息号 set 写入
+{ "objectName": "ZBC_ITS001", "mode": "set", "targetLanguage": "V",
+  "messages": [ { "msgNumber": "001", "text": "物料不存在" } ] }
+```
+> 只用于**消息类**（SE91 对象）；文本符号/屏幕文字别用错工具。`targetLanguage` 传语言键（VI 越南语由 T002 反查自动解析，传 `VI` 或「越南」）。set 前会自动校验消息号在 T100 存在，不存在报 NOMSG 并回滚。**写入自动挂传输请求**。
+
+### 4.4 屏幕文字翻译（D020T / D021T）
+```json
+// ① 先 list 拿 dynr（屏幕号）与 fldn（字段名）
+{ "objectName": "ZITS004A", "mode": "list", "targetLanguage": "V" }
+// ② 再 set 写字段文本与屏幕标题
+{ "objectName": "ZITS004A", "mode": "set", "targetLanguage": "V",
+  "fields": [ { "dynr": "0100", "fldn": "P_COMP", "text": "公司代码" } ],
+  "titles": [ { "dynr": "0100", "text": "查询" } ] }
+```
+> 只用于**屏幕文字**（函数组 `SAPL` 前缀自动补，传 `ZITS004A` 或 `SAPLZITS004A` 均可）。list 返回值含 `PROG` 行与每屏标题/字段行；set 前校验屏幕/字段存在，不存在报 NOSCREEN/NOFIELD 并回滚。**直接写表，不自动挂传输请求**——屏幕（DYNP）对象需手工把请求号插进传输（同 SAPLZBCG014 经验）。language 传 `VI` 越南语。
 
 ---
 

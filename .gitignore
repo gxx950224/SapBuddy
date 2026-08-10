@@ -14,6 +14,9 @@ Thumbs.db
 # 本机 Claude Code 配置（不入库）
 .claude/
 
+# 其他 AI 助手本地目录（不入库）
+.workbuddy/
+
 # 用户运行时配置（含敏感信息，不提交）
 # 默认技能/models.json 已随仓库放在 defaults/，运行时由 ensureRuntimeFiles 拷贝到 .SapBuddy/
 .SapBuddy/auth.json

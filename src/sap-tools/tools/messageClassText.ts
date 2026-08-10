@@ -41,7 +41,7 @@ export function generateClassSource(className: string, mode: "copy" | "set", opt
   const tgt = opts.tgtLang
   const L: string[] = []
   L.push("  METHOD if_oo_adt_classrun~main.")
-  L.push("    DATA: ls_t100 TYPE t100, lv_arbgb TYPE arbgb,")
+  L.push("    DATA: ls_t100 TYPE t100, lv_arbgb TYPE arbgb, lv_exists TYPE arbgb,")
   L.push("          lv_ins TYPE i, lv_upd TYPE i, lv_err TYPE i, lv_tgt TYPE spras, lv_src TYPE spras.")
   // 语言键先在 SAP 内解析（VI 等特殊键从 T002 反查真实值），避免把乱码字符嵌进源码
   const tgtSpec = resolveLanguageSpec(opts.tgtLang) ?? { kind: "literal", char: opts.tgtLang }
@@ -75,17 +75,22 @@ export function generateClassSource(className: string, mode: "copy" | "set", opt
     L.push("        out->write( |SELFCHECK-FAIL:{ ls_src-msgnr }| ). ENDIF.")
     L.push("    ENDLOOP.")
   } else {
-    L.push("    CLEAR lv_arbgb.")
     for (const t of opts.texts ?? []) {
       const num = t.msgNumber
-      L.push("    CLEAR ls_t100.")
-      L.push(`    ls_t100-arbgb = ${abapStr(cls)}. ls_t100-msgnr = ${abapStr(num)}. ls_t100-sprsl = lv_tgt. ls_t100-text = ${abapStr(t.text)}.`)
-      L.push("    CLEAR lv_arbgb.")
-      L.push("      SELECT SINGLE arbgb FROM t100 INTO @lv_arbgb WHERE arbgb = @ls_t100-arbgb AND msgnr = @ls_t100-msgnr AND sprsl = @lv_tgt.")
-      L.push("    IF sy-subrc = 0.")
-      L.push("      MODIFY t100 FROM ls_t100. IF sy-subrc = 0. lv_upd = lv_upd + 1. ENDIF.")
+      // 先确认消息号在任意语言下真实存在，防止把不存在的消息号写进 T100 制造脏数据（客户端常见误操作）
+      L.push("    CLEAR lv_exists.")
+      L.push(`    SELECT SINGLE arbgb FROM t100 INTO @lv_exists WHERE arbgb = ${abapStr(cls)} AND msgnr = ${abapStr(num)}.`)
+      L.push(`    IF sy-subrc <> 0. lv_err = lv_err + 1. out->write( 'NOMSG:${num}' ).`)
       L.push("    ELSE.")
-      L.push("      INSERT t100 FROM ls_t100. IF sy-subrc = 0. lv_ins = lv_ins + 1. ENDIF.")
+      L.push("      CLEAR ls_t100.")
+      L.push(`      ls_t100-arbgb = ${abapStr(cls)}. ls_t100-msgnr = ${abapStr(num)}. ls_t100-sprsl = lv_tgt. ls_t100-text = ${abapStr(t.text)}.`)
+      L.push("      CLEAR lv_arbgb.")
+      L.push("        SELECT SINGLE arbgb FROM t100 INTO @lv_arbgb WHERE arbgb = @ls_t100-arbgb AND msgnr = @ls_t100-msgnr AND sprsl = @lv_tgt.")
+      L.push("      IF sy-subrc = 0.")
+      L.push("        MODIFY t100 FROM ls_t100. IF sy-subrc = 0. lv_upd = lv_upd + 1. ENDIF.")
+      L.push("      ELSE.")
+      L.push("        INSERT t100 FROM ls_t100. IF sy-subrc = 0. lv_ins = lv_ins + 1. ENDIF.")
+      L.push("      ENDIF.")
       L.push("    ENDIF.")
     }
     L.push(`    out->write( |写入完成: 新增 { lv_ins } 更新 { lv_upd }| ).`)
@@ -127,13 +132,13 @@ export const translateMessageClassTool = {
   write: true,
   title: "Translate Message Class (SE91/T100)",
   description:
-    "消息类多语言翻译工具：用户要求翻译/多语言/消息类文本/消息文案/加英文/越南语时可用。" +
-    "按指定语言写入/翻译消息类(SE91)的短文本，文本存在表 T100（每条消息按 消息类+消息号+语言 分行，短文本最长 72 字符）。" +
-    "两种模式：copy（把源语言消息文本整体复制为指定目标语言，messageClass 可带 % 通配批量处理）、" +
-    "set（按 [{msgNumber, text}] 直接写入翻译文本）。" +
-    "msgNumber 是消息号（如 '001'，输入 1/01 会自动补全为 3 位）。" +
+    "消息类(SE91/T100)翻译工具：用户说「翻译/多语言/加英文/加越南语/消息类/消息文本/消息文案/报错提示/警告提示」时用。\n" +
+    "【翻译对象】SE91 消息类里的提示文案（每条按 消息类+消息号+语言 分行，短文本最长 72 字符）。\n" +
+    "【先分清对象再选工具】程序代码里的文本符号/选择文本→用 translate_text_pool；屏幕画面上的标题/字段标签→用 translate_screen_text；本工具只处理消息类提示文案。\n" +
+    "【两种模式】copy=把源语言消息文本整体复制成目标语言（messageClass 可带 % 通配批量，如 'ZFI%'）；set=按 [{msgNumber,text}] 直接写入翻译文本。\n" +
+    "【消息号】自动补 3 位：输 '1'/'01' 都按 '001' 处理；文本最长 72 字符；set 模式写入前会先确认消息号在消息类里真实存在，不存在则报错不写入。\n" +
     LANG_KEY_HELP +
-    "写入后自动读回核对，文本对不上会回滚不落库。",
+    "写入后自动读回核对，文本对不上回滚不落库。",
   inputSchema: z.object({
     messageClass: z.string().describe("消息类名，如 ZFI001（ARBGB）。copy 模式可带 % 通配（如 'ZFI%'）批量复制"),
     mode: z.enum(["copy", "set"]).describe("copy=把源语言消息文本复制到目标语言; set=按消息号直接写入翻译文本"),

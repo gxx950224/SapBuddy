@@ -1,4 +1,4 @@
-/** 工具注册表：导出全部 43 个工具（直接作为 pi customTools 注册） */
+/** 工具注册表：导出全部 44 个工具（直接作为 pi customTools 注册） */
 import { z } from "zod"
 import { connectedSystemsTool } from "./connectedSystems.js"
 import { searchObjectsTool } from "./searchObjects.js"
@@ -16,6 +16,7 @@ import { fixDdicTextTool } from "./ddicText.js"
 import { updateDomainTool } from "./domainProps.js"
 import { translateTextPoolTool } from "./textPool.js"
 import { translateMessageClassTool } from "./messageClassText.js"
+import { translateScreenTextTool } from "./screenText.js"
 
 export interface ToolDef {
   name: string
@@ -78,6 +79,8 @@ export const tools: ToolDef[] = [
   translateTextPoolTool,
   // 消息类翻译（1）
   translateMessageClassTool,
+  // 屏幕文字翻译（1）
+  translateScreenTextTool,
   // 调试（6，降级说明）
   ...debugTools,
 ] as unknown as ToolDef[]

@@ -150,14 +150,14 @@ export const translateTextPoolTool = {
   write: true,
   title: "Translate Text Pool (Program Text Elements)",
   description:
-    "程序文本池多语言翻译工具：用户要求翻译/多语言/文本池/加英文/复制语言/中文文本时用本工具。" +
-    "中文文本元素（如符号/选择文本的简体中文）一律用本工具写入（targetLanguage='1'），不要用 manage_text_elements 直接写中文。" +
-    "按指定语言翻译/写入程序文本元素（text pool）：文本符号 TEXT-xxx、选择文本、程序描述（标题，KEY='T'）。" +
-    "三种模式：copy（把源语言 text pool 整体复制为目标语言）、set（按 [{key,text}] 覆盖/新增指定条目）或 delete（按 deleteKeys 删除指定条目）。" +
-    "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=1~3位字母/数字（如 '001'、'E01' 对应源码 TEXT-001/TEXT-E01）；选择文本=参数名（如 'S_CARRID'、'P_COMP'，通常含下划线或较长）。不要把类型字母 I/S 当 key 传。" +
-    "选择文本会自动补足前导空格（SAP 要求文字从第 9 列开始），且符号/标题/选择文本都会写入正确的类型 ID（I/R/S）——漏写 ID 会导致界面/ADT 读不到写入的内容。" +
+    "程序文本元素(text pool)翻译工具：用户说「翻译/多语言/加英文/加越南语/文本池/文本符号/选择文本/程序描述/程序标题」时用。\n" +
+    "【翻译对象】SE38 程序代码里的文本：文本符号 TEXT-xxx（如 TEXT-001）、选择文本（参数名，如 S_CARRID）、程序描述/标题（key='T'）。\n" +
+    "【先分清对象再选工具】屏幕画面上的标题/字段标签→用 translate_screen_text；SE91 消息类提示文案→用 translate_message_class；本工具只处理程序代码里的文本元素。\n" +
+    "【三种模式】copy=把源语言 text pool 整体复制成目标语言（sourceLanguage 默认 '1'）；set=按 [{key,text}] 覆盖/新增；delete=按 deleteKeys 删除条目。\n" +
+    "【key 怎么填】'T'=程序描述；文本符号=1~3 位字母或数字（'001'/'E01'，对应源码 TEXT-001/TEXT-E01，不要带 TEXT- 前缀，不要把类型字母 I/S 当 key 传）；选择文本=参数名（如 'S_CARRID'，通常含下划线）。\n" +
+    "选择文本自动补前导空格（SAP 要求文字从第 9 列开始），三类文本都写正确类型 ID（I/R/S）——漏 ID 会导致界面/ADT 读不到写入内容。\n" +
     LANG_KEY_HELP +
-    "写入后自动激活；文本池随传输请求传输（无需 SE63）。",
+    "写入后自动读回核对，对不上回滚不落库；文本池自动随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
     mode: z.enum(["copy", "set", "delete"]).describe("copy=复制源语言 text pool; set=按 key 覆盖/新增; delete=按 deleteKeys 删除条目"),

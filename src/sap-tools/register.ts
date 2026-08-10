@@ -1,5 +1,5 @@
 /**
- * 工具注册适配层：把 43 个 SAP 工具（zod schema）注册为 pi 的 customTools
+ * 工具注册适配层：把 44 个 SAP 工具（zod schema）注册为 pi 的 customTools
  * 直接函数调用，不依赖 MCP 框架
  *
  * 代码级强制规则（不依赖 LLM 遵守，写工具内容写入前硬校验）：
