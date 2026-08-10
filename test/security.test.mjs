@@ -202,6 +202,34 @@ test("配置文件拦截：普通 output 文件不受影响", async () => {
   assert.ok(!(r?.reason ?? "").includes("配置文件"), "普通输出文件不应报配置文件拦截")
 })
 
+// ── bash 命令门禁：放行"打开产物"，仍拦敏感配置/读取 ──
+test("bash 命令门禁：start 打开 .SapBuddy/output 产物放行（自动打开 HTML 流程图场景）", async () => {
+  const r = await triggerWriteGate(
+    { command: 'start "" "C:/Users/Administrator/.SapBuddy/output/ZPPR006_NEW2/ZPPR006_NEW2_排产引擎流程图.html"' },
+    "bash"
+  )
+  assert.equal(r?.block, undefined, "打开产物命令不应被拦截")
+})
+
+test("bash 命令门禁：start 指向敏感配置仍拦截", async () => {
+  const r = await triggerWriteGate({ command: 'start "" "C:/Users/Administrator/.SapBuddy/auth.json"' }, "bash")
+  assert.equal(r?.block, true, "指向 auth.json 应拦截")
+  assert.ok((r?.reason ?? "").includes("安全拦截"), `应报安全拦截，实际: ${r?.reason?.slice(0, 60)}`)
+})
+
+test("bash 命令门禁：cat 读取 output 仍拦截（读产物应走 read 工具）", async () => {
+  const r = await triggerWriteGate({ command: "cat C:/Users/Administrator/.SapBuddy/output/x/y.html" }, "bash")
+  assert.equal(r?.block, true, "cat 不是放行操作，应拦截")
+})
+
+test("bash 命令门禁：路径穿越 ../ 不因 output 前缀被放行", async () => {
+  const r = await triggerWriteGate(
+    { command: 'start "" "C:/Users/Administrator/.sapbuddy/output/../auth.json"' },
+    "bash"
+  )
+  assert.equal(r?.block, true, "含 ../ 的 open 命令应拦截")
+})
+
 // ── 自身源码禁读写（installWriteGate：运行中的 AI 不得读写 SapBuddy 自身代码）────
 test("自身源码禁止 AI 读写：write src/register.ts 被拦截", async () => {
   const r = await triggerWriteGate({ path: "src/register.ts" })
@@ -320,4 +348,45 @@ test("临时包写门禁：用户明确确认后 $TMP 放行", async () => {
   handleUserMessage("确认，创建到 $TMP 测试")
   const r = await triggerWriteGate(tmpObj, "create_object_programmatically")
   assert.equal(r, undefined, "已确认后不应再拦截")
+})
+
+// ── MCP 外部服务器写工具门禁（installWriteGate：mcp_* 写工具与 SAP 写工具同等需人工确认）────
+test("MCP 写工具门禁：obsidian 库 append/update/patch/delete/rename/create 全部拦截", async () => {
+  clearWriteApproval()
+  for (const t of ["append_to_note", "update_note", "patch_note", "delete_note", "rename_note", "create_note"]) {
+    const r = await triggerWriteGate({ path: "ZFI001/program-ZFIR015_BANK_SERCH.md", content: "x" }, `mcp_abap_wiki_${t}`)
+    assert.equal(r?.block, true, `${t} 应被拦截`)
+    assert.ok((r?.reason ?? "").includes("MCP 写操作"), `${t} 应提示 MCP 写操作需确认，实际: ${r?.reason?.slice(0, 80)}`)
+  }
+})
+
+test("MCP 写工具门禁：只读 MCP 工具（read/search/list）不受影响", async () => {
+  clearWriteApproval()
+  for (const t of ["read_note", "read_multiple_notes", "search_notes", "list_notes", "list_templates"]) {
+    const r = await triggerWriteGate({ path: "index.md" }, `mcp_abap_wiki_${t}`)
+    assert.equal(r, undefined, `${t} 不应被拦截，实际: ${r?.reason?.slice(0, 80)}`)
+  }
+})
+
+test("MCP 写工具门禁：用户明确确认后放行", async () => {
+  clearWriteApproval()
+  handleUserMessage("确认，更新这条 wiki 记录")
+  const r = await triggerWriteGate({ path: "ZFI001/program-ZFIR015_BANK_SERCH.md", content: "x" }, "mcp_abap_wiki_patch_note")
+  assert.equal(r, undefined, "已确认后不应再拦截")
+})
+
+test("MCP 写工具门禁：SAP 自带 mcp 读工具（abap_download 等）不误拦", async () => {
+  clearWriteApproval()
+  for (const t of ["abap_download", "execute_data_query", "get_tcode_info"]) {
+    const r = await triggerWriteGate({}, `mcp_sap-mcp-dev_${t}`)
+    assert.equal(r, undefined, `${t} 不应被拦截，实际: ${r?.reason?.slice(0, 80)}`)
+  }
+})
+
+test("MCP 写工具门禁：仅 abap_wiki 受限，其他 MCP 服务器的写工具不拦截", async () => {
+  clearWriteApproval()
+  for (const t of ["append_note", "patch_note", "update_note", "delete_note", "create_record"]) {
+    const r = await triggerWriteGate({ path: "a.md", content: "x" }, `mcp_notes_${t}`)
+    assert.equal(r, undefined, `${t} 属于其他 MCP 服务器，不应被拦截，实际: ${r?.reason?.slice(0, 80)}`)
+  }
 })

@@ -176,7 +176,9 @@
         const id = "mermaid-" + Math.random().toString(36).slice(2, 8);
         const { svg } = await window.mermaid.render(id, code);
         // v10 render 解析失败不报错，而是 resolve 一张错误 SVG（含 error-text/Syntax error），需识别后降级
-        if (!svg || /error-text|Syntax error|Parse error/i.test(svg)) {
+        // 先剥掉 <style>：每张正常 SVG 的样式里都定义了 .error-text 类，不剥会误伤所有图
+        const svgText = String(svg ?? "").replace(/<style[\s\S]*?<\/style>/gi, "")
+        if (!svg || /error-text|Syntax error|Parse error/i.test(svgText)) {
           markMermaidError(el, raw, new Error("语法错误"));
           continue;
         }
@@ -240,8 +242,8 @@
     try {
       const id = "mermaid-zoom-" + Math.random().toString(36).slice(2, 8);
       window.mermaid.render(id, code).then(({ svg }) => {
-        // 与列表同规则：render 返回的错误 SVG（Syntax error）也要降级显示源码
-        if (!svg || /error-text|Syntax error|Parse error/i.test(svg)) {
+        // 与列表同规则：render 返回的错误 SVG（Syntax error）也要降级显示源码（先剥 <style> 避免误伤正常图）
+        if (!svg || /error-text|Syntax error|Parse error/i.test(String(svg ?? "").replace(/<style[\s\S]*?<\/style>/gi, ""))) {
           body.innerHTML = '<pre class="mermaid-lightbox-fallback">' + App.escapeHtml(rawCode) + "</pre>";
           return;
         }

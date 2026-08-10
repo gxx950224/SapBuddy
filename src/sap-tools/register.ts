@@ -128,7 +128,12 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     // bash 命令行工具不在 read/glob/grep 名单，输入字段是 command 而非 path —— 单独拦截涉及敏感路径/文件名的命令
     if (name === "bash") {
       const cmd = String((input as Record<string, unknown>).command ?? "").toLowerCase()
-      if (cmd.includes(".sapbuddy") || PROTECTED_CONFIG.some((f) => cmd.includes(f))) {
+      const isOpenArtifact =
+        /^(start|explorer|open)(\s|$)/.test(cmd) &&
+        /\.sapbuddy[\/\\]output[\/\\]/.test(cmd) &&
+        !cmd.includes("..") &&
+        !PROTECTED_CONFIG.some((f) => cmd.includes(f))
+      if (!isOpenArtifact && (cmd.includes(".sapbuddy") || PROTECTED_CONFIG.some((f) => cmd.includes(f)))) {
         return {
           block: true,
           reason:
@@ -240,6 +245,27 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
               `用户在对话中输入"确认"后重试即可生成报告文件。`,
           }
     }
+    }
+    // abap_wiki 知识库专用写门禁：mcp_abap_wiki_ 写类工具（append/create/update/patch/delete/rename 等）与 SAP 写工具同等人工确认 + 只读模式；其他 MCP 服务器工具不拦截
+    const ABAP_WIKI_WRITE_RE = /^mcp_abap_wiki_(append|create|update|patch|delete|rename|write|edit|move|remove|set)(_|$)/i
+    if (ABAP_WIKI_WRITE_RE.test(name)) {
+      if (isReadOnly()) {
+        return { block: true, reason: `⛔ 当前为只读模式（security.readOnly=true），外部 MCP 写操作已禁止：${name}` }
+      }
+      if (isWriteApproved()) return
+      if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
+        const ok = await ctx.ui.confirm("SapBuddy MCP 写操作确认", `AI 请求执行外部 MCP 写操作：${name}\n${JSON.stringify(event.input ?? {})?.slice(0, 300)}\n\n允许执行吗？`)
+        if (ok) return
+        return { block: true, reason: `⛔ 用户拒绝了外部 MCP 写操作 ${name}。请调整方案，不要再次尝试。` }
+      }
+      opts?.onBlocked?.({ toolName: name, input: event.input })
+      return {
+        block: true,
+        reason:
+          `⛔ 外部 MCP 写操作需人工确认（已拦截，未执行）：${name}\n` +
+          `请向用户展示将修改什么内容，并明确请求确认。\n` +
+          `用户在对话中输入"确认"后重试即可放行。`,
+      }
     }
     if (!isWriteTool(name)) return
     // 混合工具：只读 action 不拦截（manage_transport_requests 的查询、manage_text_elements 的 read）

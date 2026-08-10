@@ -154,7 +154,7 @@ ENDFUNCTION.
 - **连接**：不确定 connectionId 时先调用 `get_connected_systems`
 - **搜索**：`search_abap_objects`（通配符，如 `ZCL_*`）
 - **读源码**：`get_abap_object_lines`（类可用 methodName 提取方法）
-- **引用分析**：`find_where_used`
+- **引用分析**：`find_where_used`（**先查知识库对象页的 `used_by`** 拿已整理的影响清单，再实测核实）
 - **数据查询**：`execute_data_query`（仅 SELECT/WITH，只读）
 - **质量**：`run_atc_analysis` / `run_unit_tests`
 - **诊断**：`analyze_abap_dumps`（ST22）/ `analyze_abap_traces`（ST05）
@@ -170,6 +170,30 @@ ENDFUNCTION.
 - **编辑流程**：读源码 → `replace_string_in_abap_object`（唯一匹配）→ `get_abap_diagnostics` 检查 → `abap_activate` 激活
 - **函数组 include 写路径（强制）**：编辑函数组内部程序（`L<FG><后缀>`，如 `LZBCG014F01`）必须用 `/sap/bc/adt/functions/groups/<函数组>/includes/<include>` 格式——工具已自动把 `/programs/includes/...` 形式转换过去（读能直读、写不行）；若仍报 URI 格式错误，主动改用该格式重试，**禁止**深挖 `/programs/includes/` 通用通道写。
 - **表/结构 DSL 写后必检（强制）**：写完表/结构 DSL 必须立即 `get_abap_diagnostics` + `abap_activate`；引用程序报 "Unknown column name" 时，**先核对字段名拼写是否与表 DSL 一致**（字段定义与引用必须同名同大小写，如 `zycpjh` vs `ZYCPJH` 就是这类笔误），不要盲目去改引用处。
+
+## 用户输入识别（事务码 / 接口 ID，先解析再查）
+
+- 用户习惯输**事务码**（如 FB50）提问，而非程序/函数名。识别为事务码后：
+  1. 直接按事务码名查知识库（知识库含事务码页面）；
+  2. 知识库没有 → 内置工具核实：`execute_data_query` 查标准表 `tstc`（`SELECT * FROM tstc WHERE tcode = '<事务码>'`，`pname` 字段即对应程序/方法），再按该程序/方法继续。
+- 业务顾问问**接口逻辑**时习惯输**接口 ID**（形如字母+数字，如 `FI004`）。识别为接口 ID 后**先查底表 `ZBCT_INTF_CONFIG` 解析出对应的函数模块**：
+  1. `execute_data_query` 查 `ZBCT_INTF_CONFIG`（按接口 ID 过滤），从记录中读出函数模块字段；
+  2. 不同 SAP 系统该表结构与映射可能不同，**以当前所连系统查到的为准**，不凭记忆假设字段/对象名；
+  3. 表里没有该 ID 的记录 → 按普通对象名继续处理；
+  4. 解析出函数模块后 → 按函数模块名查知识库 / 走内置工具。
+- 输入本身能直接匹配对象名（程序/表/函数模块/类/CDS/增强）时，直接按对象名处理，无需上述解析。
+
+## 知识库查询（abap_wiki，强制优先）
+
+- 当 `mcp_abap_wiki_*` 工具可用（用户已在设置-MCP 配置 abap_wiki 知识库服务）时，存在一份公司 S/4HANA 开发系统**自开发对象的已分析知识库**（页面英文，含代码分析与业务功能分析，结论带可信度标记）。
+- **强制规则**：用户询问某个 SAP 对象（程序/表/函数模块/类/CDS/增强/事务码）的**用途、业务逻辑、解释/分析、依赖、影响面（被谁用/修改影响哪些程序）**时，**必须先查知识库**：
+  1. read `~/.SapBuddy/skills/abap-wiki/SKILL.md` 按浏览规则取页（或 `mcp_abap_wiki_search_notes` 直接搜对象名）；
+  2. 对象页 `doc_level >= L1`（已有分析）→ **直接引用，禁止从头读全量源码**，用双括号链接 `[[...]]` 注明出处；
+  3. 知识库没有 / 只有 L0 占位页 → 明说「知识库没有分析」，再走内置 SAP 工具（读源码 / `find_where_used`）核实。
+- 「看下/解释/分析一下 XXX 逻辑」同样先走知识库（abap-explain 技能已内置此步骤）。
+- 回答区分「知识库里写的」与「系统上查到的」，标明可信度（VERIFIED/INFERRED/UNVERIFIABLE）。
+- 知识库是**只读参考**，不替代内置 SAP 工具对线上系统的查询与写操作。
+- **未配置 abap_wiki 知识库服务时**：跳过本章所有规则，直接走内置 SAP 工具（读源码 / `find_where_used` 等），不要提及「知识库没有分析」。
 
 ## 输出约定
 
