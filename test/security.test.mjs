@@ -350,13 +350,13 @@ test("临时包写门禁：用户明确确认后 $TMP 放行", async () => {
   assert.equal(r, undefined, "已确认后不应再拦截")
 })
 
-// ── MCP 外部服务器写工具门禁（installWriteGate：mcp_* 写工具与 SAP 写工具同等需人工确认）────
+// ── MCP 外部服务器写工具门禁（installWriteGate：mcp_abap_wiki_* 写工具一律直接拦截，不可确认放行）────
 test("MCP 写工具门禁：obsidian 库 append/update/patch/delete/rename/create 全部拦截", async () => {
   clearWriteApproval()
   for (const t of ["append_to_note", "update_note", "patch_note", "delete_note", "rename_note", "create_note"]) {
     const r = await triggerWriteGate({ path: "ZFI001/program-ZFIR015_BANK_SERCH.md", content: "x" }, `mcp_abap_wiki_${t}`)
     assert.equal(r?.block, true, `${t} 应被拦截`)
-    assert.ok((r?.reason ?? "").includes("MCP 写操作"), `${t} 应提示 MCP 写操作需确认，实际: ${r?.reason?.slice(0, 80)}`)
+    assert.ok((r?.reason ?? "").includes("知识库为只读参考"), `${t} 应提示知识库只读已直接拦截，实际: ${r?.reason?.slice(0, 80)}`)
   }
 })
 
@@ -368,11 +368,12 @@ test("MCP 写工具门禁：只读 MCP 工具（read/search/list）不受影响"
   }
 })
 
-test("MCP 写工具门禁：用户明确确认后放行", async () => {
+test("MCP 写工具门禁：用户确认后仍拦截（知识库只读，不可放行）", async () => {
   clearWriteApproval()
   handleUserMessage("确认，更新这条 wiki 记录")
   const r = await triggerWriteGate({ path: "ZFI001/program-ZFIR015_BANK_SERCH.md", content: "x" }, "mcp_abap_wiki_patch_note")
-  assert.equal(r, undefined, "已确认后不应再拦截")
+  assert.equal(r?.block, true, "确认后仍应拦截")
+  assert.ok((r?.reason ?? "").includes("知识库为只读参考"), "应提示知识库只读已直接拦截，实际: " + (r?.reason ?? "").slice(0, 80))
 })
 
 test("MCP 写工具门禁：SAP 自带 mcp 读工具（abap_download 等）不误拦", async () => {

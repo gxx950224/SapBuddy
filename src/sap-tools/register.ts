@@ -246,25 +246,16 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
           }
     }
     }
-    // abap_wiki 知识库专用写门禁：mcp_abap_wiki_ 写类工具（append/create/update/patch/delete/rename 等）与 SAP 写工具同等人工确认 + 只读模式；其他 MCP 服务器工具不拦截
+        // abap_wiki 知识库专用写门禁：mcp_abap_wiki_ 写类工具（append/create/update/patch/delete/rename 等）一律直接拦截，不可人工确认放行（知识库只读）；其他 MCP 服务器工具不拦截
     const ABAP_WIKI_WRITE_RE = /^mcp_abap_wiki_(append|create|update|patch|delete|rename|write|edit|move|remove|set)(_|$)/i
     if (ABAP_WIKI_WRITE_RE.test(name)) {
-      if (isReadOnly()) {
-        return { block: true, reason: `⛔ 当前为只读模式（security.readOnly=true），外部 MCP 写操作已禁止：${name}` }
-      }
-      if (isWriteApproved()) return
-      if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
-        const ok = await ctx.ui.confirm("SapBuddy MCP 写操作确认", `AI 请求执行外部 MCP 写操作：${name}\n${JSON.stringify(event.input ?? {})?.slice(0, 300)}\n\n允许执行吗？`)
-        if (ok) return
-        return { block: true, reason: `⛔ 用户拒绝了外部 MCP 写操作 ${name}。请调整方案，不要再次尝试。` }
-      }
       opts?.onBlocked?.({ toolName: name, input: event.input })
       return {
         block: true,
         reason:
-          `⛔ 外部 MCP 写操作需人工确认（已拦截，未执行）：${name}\n` +
-          `请向用户展示将修改什么内容，并明确请求确认。\n` +
-          `用户在对话中输入"确认"后重试即可放行。`,
+          `⛔ 知识库为只读参考，已直接拦截（未执行）：${name}\n` +
+          `禁止向 abap_wiki 知识库做任何写入（创建/修改/删除笔记均不允许）。\n` +
+          `如需新增或修改知识库分析，请提示用户手动在 Obsidian 中编辑，不要再次尝试写入。`,
       }
     }
     if (!isWriteTool(name)) return
