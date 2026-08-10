@@ -137,12 +137,13 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         }
       }
     }
-    // 目录级拦截（P0-3）：path 落在 ~/.SapBuddy（output/skills/sessions/prompts 子树除外）即 block，
+    // 目录级拦截（P0-3）：path 落在 ~/.SapBuddy（output/skills/sessions/prompts/uploads 子树除外）即 block，
     // 不再依赖"文件名含 connections.json"这类字符串匹配——grep(path=".SapBuddy") 可绕过文件名匹配整目录扫描。
     // prompts/ 放行：SYSTEM.md 避坑记录要求 AI 读 ~/.SapBuddy/prompts/Memory.md 追加经验（非密钥）。
+    // uploads/ 放行：用户上传的文件（如 zits004.xlsx.txt）AI 必须能读取用于分析，不能拦。
     if (READ_TOOLS.includes(name) && /\.sapbuddy(\/|$)/.test(lower)) {
       const rest = (lower.split(".sapbuddy").pop() ?? "").replace(/^[\\/]+/, "")
-      const allowed = /^(output|skills|sessions|prompts)(\/|$)/.test(rest)
+      const allowed = /^(output|skills|sessions|prompts|uploads)(\/|$)/.test(rest)
       if (!allowed) {
         return {
           block: true,

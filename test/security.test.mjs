@@ -229,6 +229,12 @@ test("自身源码拦截：output 产物与 .SapBuddy/skills 不受影响", asyn
   }
 })
 
+test("uploads 目录允许 AI 读取：用户上传文件不拦截（2026-08-10 回归）", async () => {
+  const r = await triggerWriteGate({ path: ".SapBuddy/uploads/zits004.xlsx.txt" }, "read")
+  const reason = r?.reason ?? ""
+  assert.ok(!reason.includes("配置目录禁止由 AI 读取"), `用户上传文件不应被目录拦截，实际: ${reason.slice(0, 80)}`)
+})
+
 // ── 程序相关文件路径强制（installWriteGate：Z*/Y* 程序相关文件须按程序名建子目录）────
 test("审查报告平铺被拦截：.SapBuddy/output/ZAIR004_CodeReview.html", async () => {
   const r = await triggerWriteGate({ path: ".SapBuddy/output/ZAIR004_CodeReview.html" }, "write")
