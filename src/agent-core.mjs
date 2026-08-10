@@ -77,6 +77,32 @@ export function syncDefaultSkills(dst, defaultsSrc, legacySrc) {
     } catch { /* 单个技能补发失败不影响整体 */ }
   }
 }
+/** 系统提示默认内容同步：AGENTS.md / SYSTEM.md 随包版本更新（升级时覆盖为包内最新，本地改动请同步回仓库）；Memory.md 为 AI 记忆，首次 seed 后永不覆盖（用户管理） */
+export function syncDefaultPrompts(dstPrompts, pkgRoot) {
+  let pkgVersion = ""
+  try { pkgVersion = JSON.parse(fs.readFileSync(path.join(pkgRoot, "package.json"), "utf8")).version ?? "" } catch { /* 忽略 */ }
+  fs.mkdirSync(dstPrompts, { recursive: true })
+  const stateFile = path.join(dstPrompts, ".version")
+  let lastSync = ""
+  try { lastSync = fs.readFileSync(stateFile, "utf8").trim() } catch { /* 首次运行 */ }
+  const upgraded = !!pkgVersion && lastSync !== pkgVersion
+  for (const f of ["AGENTS.md", "SYSTEM.md"]) {
+    const s = path.join(pkgRoot, f)
+    const d = path.join(dstPrompts, f)
+    if (!fs.existsSync(s)) continue
+    if (upgraded || !fs.existsSync(d)) {
+      try { fs.copyFileSync(s, d) } catch { /* 单个文件同步失败不影响整体 */ }
+    }
+  }
+  for (const f of ["Memory.md"]) {
+    const d = path.join(dstPrompts, f)
+    if (fs.existsSync(d)) continue
+    const s = path.join(pkgRoot, f)
+    if (fs.existsSync(s)) { try { fs.copyFileSync(s, d) } catch { /* 忽略 */ } }
+  }
+  if (upgraded) { try { fs.writeFileSync(stateFile, pkgVersion) } catch { /* 忽略 */ } }
+}
+
 /** 首次运行引导：初始化 ~/.SapBuddy（技能/提示词/模型注册表），来源优先旧配置 cwd/.pi（迁移）→ 包内默认 */
 export function ensureRuntimeFiles() {
   try {
@@ -125,15 +151,8 @@ export function ensureRuntimeFiles() {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
       }
     }
-    // 系统提示/记忆默认内容 seed（AGENTS/SYSTEM/Memory → ~/.SapBuddy/prompts，不存在才拷，用户定制优先）
-    const dstPrompts = path.join(CONFIG_DIR, "prompts")
-    fs.mkdirSync(dstPrompts, { recursive: true })
-    for (const f of ["AGENTS.md", "SYSTEM.md", "Memory.md"]) {
-      const d = path.join(dstPrompts, f)
-      if (fs.existsSync(d)) continue
-      const s = path.join(ROOT, f)
-      if (fs.existsSync(s)) { try { fs.copyFileSync(s, d) } catch { /* 忽略 */ } }
-    }
+    // 系统提示/记忆默认内容同步（AGENTS/SYSTEM 随包版本更新；Memory 首次 seed 后不覆盖）
+    syncDefaultPrompts(path.join(CONFIG_DIR, "prompts"), ROOT)
     // 历史会话迁移（旧 cwd/.pi/sessions → ~/.SapBuddy/sessions，补复制不覆盖）
     const dstSessions = path.join(CONFIG_DIR, "sessions")
     const legacySessions = path.join(LEGACY_PI, "sessions")
