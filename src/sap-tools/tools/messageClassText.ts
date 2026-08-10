@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto"
 import { session_types, objectPath } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
 import { resolveConnectionId, toToolError, connectionIdSchema } from "./shared.js"
+import { resolveLanguageSpec, emitLangResolution, LANG_KEY_HELP } from "./languageKeys.js"
 
 const abapStr = (s: string) => `'${s.replace(/'/g, "''")}'`
 
@@ -41,19 +42,24 @@ export function generateClassSource(className: string, mode: "copy" | "set", opt
   const L: string[] = []
   L.push("  METHOD if_oo_adt_classrun~main.")
   L.push("    DATA: ls_t100 TYPE t100, lv_arbgb TYPE arbgb,")
-  L.push("          lv_ins TYPE i, lv_upd TYPE i, lv_err TYPE i.")
+  L.push("          lv_ins TYPE i, lv_upd TYPE i, lv_err TYPE i, lv_tgt TYPE spras, lv_src TYPE spras.")
+  // 语言键先在 SAP 内解析（VI 等特殊键从 T002 反查真实值），避免把乱码字符嵌进源码
+  const tgtSpec = resolveLanguageSpec(opts.tgtLang) ?? { kind: "literal", char: opts.tgtLang }
+  const srcSpec = resolveLanguageSpec(opts.srcLang) ?? { kind: "literal", char: opts.srcLang ?? "E" }
+  L.push(...emitLangResolution("lv_tgt", tgtSpec))
   L.push("    COMMIT WORK.")
   L.push(`    out->write( |开始处理: 目标语言 ${tgt}| ).`)
 
   if (mode === "copy") {
     const src = opts.srcLang ?? "E"
+    L.push(...emitLangResolution("lv_src", srcSpec))
     L.push("    DATA: lt_src TYPE TABLE OF t100, ls_src TYPE t100.")
-    L.push(`    SELECT * FROM t100 INTO TABLE @lt_src WHERE arbgb LIKE ${abapStr(cls)} AND sprsl = ${abapStr(src)}.`)
+    L.push(`    SELECT * FROM t100 INTO TABLE @lt_src WHERE arbgb LIKE ${abapStr(cls)} AND sprsl = @lv_src.`)
     L.push("    LOOP AT lt_src INTO ls_src.")
     L.push("      ls_t100 = ls_src.")
-    L.push(`      ls_t100-sprsl = ${abapStr(tgt)}.`)
+    L.push("      ls_t100-sprsl = lv_tgt.")
     L.push("      CLEAR lv_arbgb.")
-    L.push(`      SELECT SINGLE arbgb FROM t100 INTO @lv_arbgb WHERE arbgb = @ls_t100-arbgb AND msgnr = @ls_t100-msgnr AND sprsl = ${abapStr(tgt)}.`)
+    L.push("      SELECT SINGLE arbgb FROM t100 INTO @lv_arbgb WHERE arbgb = @ls_t100-arbgb AND msgnr = @ls_t100-msgnr AND sprsl = @lv_tgt.")
     L.push("      IF sy-subrc = 0.")
     L.push("        MODIFY t100 FROM ls_t100. IF sy-subrc = 0. lv_upd = lv_upd + 1. ENDIF.")
     L.push("      ELSE.")
@@ -64,7 +70,7 @@ export function generateClassSource(className: string, mode: "copy" | "set", opt
     // 自检：逐个重读源消息的目标语言行，核对文本一致；对不上说明写入未生效，必须回滚
     L.push("    LOOP AT lt_src INTO ls_src.")
     L.push("      CLEAR ls_t100.")
-    L.push(`      SELECT SINGLE * FROM t100 INTO @ls_t100 WHERE arbgb = @ls_src-arbgb AND msgnr = @ls_src-msgnr AND sprsl = ${abapStr(tgt)}.`)
+    L.push("      SELECT SINGLE * FROM t100 INTO @ls_t100 WHERE arbgb = @ls_src-arbgb AND msgnr = @ls_src-msgnr AND sprsl = @lv_tgt.")
     L.push("      IF sy-subrc <> 0 OR ls_t100-text <> ls_src-text. lv_err = lv_err + 1.")
     L.push("        out->write( |SELFCHECK-FAIL:{ ls_src-msgnr }| ). ENDIF.")
     L.push("    ENDLOOP.")
@@ -73,9 +79,9 @@ export function generateClassSource(className: string, mode: "copy" | "set", opt
     for (const t of opts.texts ?? []) {
       const num = t.msgNumber
       L.push("    CLEAR ls_t100.")
-      L.push(`    ls_t100-arbgb = ${abapStr(cls)}. ls_t100-msgnr = ${abapStr(num)}. ls_t100-sprsl = ${abapStr(tgt)}. ls_t100-text = ${abapStr(t.text)}.`)
+      L.push(`    ls_t100-arbgb = ${abapStr(cls)}. ls_t100-msgnr = ${abapStr(num)}. ls_t100-sprsl = lv_tgt. ls_t100-text = ${abapStr(t.text)}.`)
       L.push("    CLEAR lv_arbgb.")
-      L.push(`    SELECT SINGLE arbgb FROM t100 INTO @lv_arbgb WHERE arbgb = @ls_t100-arbgb AND msgnr = @ls_t100-msgnr AND sprsl = ${abapStr(tgt)}.`)
+      L.push("      SELECT SINGLE arbgb FROM t100 INTO @lv_arbgb WHERE arbgb = @ls_t100-arbgb AND msgnr = @ls_t100-msgnr AND sprsl = @lv_tgt.")
       L.push("    IF sy-subrc = 0.")
       L.push("      MODIFY t100 FROM ls_t100. IF sy-subrc = 0. lv_upd = lv_upd + 1. ENDIF.")
       L.push("    ELSE.")
@@ -87,7 +93,7 @@ export function generateClassSource(className: string, mode: "copy" | "set", opt
     for (const t of opts.texts ?? []) {
       const num = t.msgNumber
       L.push("    CLEAR ls_t100.")
-      L.push(`    SELECT SINGLE * FROM t100 INTO @ls_t100 WHERE arbgb = ${abapStr(cls)} AND msgnr = ${abapStr(num)} AND sprsl = ${abapStr(tgt)}.`)
+      L.push(`    SELECT SINGLE * FROM t100 INTO @ls_t100 WHERE arbgb = ${abapStr(cls)} AND msgnr = ${abapStr(num)} AND sprsl = @lv_tgt.`)
       L.push(`    IF sy-subrc <> 0 OR ls_t100-text <> ${abapStr(t.text)}. lv_err = lv_err + 1.`)
       L.push(`      out->write( 'SELFCHECK-FAIL:${num}' ). ENDIF.`)
     }
@@ -126,13 +132,13 @@ export const translateMessageClassTool = {
     "两种模式：copy（把源语言消息文本整体复制为指定目标语言，messageClass 可带 % 通配批量处理）、" +
     "set（按 [{msgNumber, text}] 直接写入翻译文本）。" +
     "msgNumber 是消息号（如 '001'，输入 1/01 会自动补全为 3 位）。" +
-    "语言键: 1=中文简体, M=繁体, E=英文, D=德文, V=越南语 等（T100 的 SPRSL 值）。" +
+    LANG_KEY_HELP +
     "写入后自动读回核对，文本对不上会回滚不落库。",
   inputSchema: z.object({
     messageClass: z.string().describe("消息类名，如 ZFI001（ARBGB）。copy 模式可带 % 通配（如 'ZFI%'）批量复制"),
     mode: z.enum(["copy", "set"]).describe("copy=把源语言消息文本复制到目标语言; set=按消息号直接写入翻译文本"),
-    targetLanguage: z.string().describe("目标语言键（如 '1' 中文、'E' 英文、'V' 越南语）"),
-    sourceLanguage: z.string().optional().describe("copy 模式：源语言键，默认 'E'"),
+    targetLanguage: z.string().describe("目标语言：标准键（E/D/1/M/J/K 等）、ISO 代码（EN/DE/ZH/VI 等）或中文名（英文/德文/中文/越南 等）。越南语请用 VI 或「越南」，注意 V 是瑞典语"),
+    sourceLanguage: z.string().optional().describe("copy 模式：源语言，默认 'E'，同上格式"),
     messages: z
       .array(z.object({ msgNumber: z.string().describe("消息号（3 位，如 '001'；输入 1/01 自动补全）"), text: z.string().describe("消息文本（最多 72 字符）") }))
       .optional()
@@ -154,6 +160,10 @@ export const translateMessageClassTool = {
       const cls = (args.messageClass ?? "").trim().toUpperCase()
 
       if (!cls) return "需要 messageClass 参数（消息类名，如 ZFI001）。"
+      if (!resolveLanguageSpec(tgt)) return `⛔ 无法识别的目标语言: "${tgt}"。${LANG_KEY_HELP}`
+      if (args.sourceLanguage && !resolveLanguageSpec(args.sourceLanguage)) {
+        return `⛔ 无法识别的源语言: "${args.sourceLanguage}"。${LANG_KEY_HELP}`
+      }
       if (!isValidMsgClass(cls, args.mode === "copy")) {
         return `⛔ 无效的消息类名: ${cls}（最长 20 字符，仅字母/数字/下划线${args.mode === "copy" ? "，copy 模式可用 % 通配" : ""}）。`
       }

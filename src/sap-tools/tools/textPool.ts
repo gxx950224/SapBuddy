@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto"
 import { session_types, objectPath } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
 import { resolveConnectionId, toToolError, connectionIdSchema } from "./shared.js"
+import { resolveLanguageSpec, emitLangResolution, LANG_KEY_HELP } from "./languageKeys.js"
 
 const abapStr = (s: string) => `'${s.replace(/'/g, "''")}'`
 
@@ -38,17 +39,24 @@ export function generateClassSource(className: string, mode: "copy" | "set" | "d
   // READ/INSERT TEXTPOOL 要求行结构与 text pool 兼容：用系统类型 TABLE OF textpool；
   // INSERT TEXTPOOL ... FROM 接收整个内表（不是逐行）；计数用字符串模板（CONCATENATE 不接受数字）
   L.push("    DATA: lt_tp TYPE TABLE OF textpool, ls_tp LIKE LINE OF lt_tp, lv_ins TYPE i, lv_upd TYPE i,")
-  L.push("          lt_chk TYPE TABLE OF textpool, ls_chk LIKE LINE OF lt_chk, lv_err TYPE i.")
+  L.push("          lt_chk TYPE TABLE OF textpool, ls_chk LIKE LINE OF lt_chk, lv_err TYPE i,")
+  L.push("          lv_tgt TYPE spras, lv_src TYPE spras.")
+  // 语言键先在 SAP 内解析（VI 等特殊键从 T002 反查真实值），避免把乱码字符嵌进源码
+  const tgtSpec = resolveLanguageSpec(opts.tgtLang) ?? { kind: "literal", char: opts.tgtLang }
+  const srcSpec = resolveLanguageSpec(opts.srcLang) ?? { kind: "literal", char: opts.srcLang ?? "1" }
 
   if (mode === "copy") {
-    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.srcLang ?? "1")}.`)
-    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(...emitLangResolution("lv_src", srcSpec))
+    L.push(...emitLangResolution("lv_tgt", tgtSpec))
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE lv_src.`)
+    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE lv_tgt.`)
     L.push("    DATA(lv_msg) = |copied { lines( lt_tp ) } entries|.")
     L.push("    out->write( lv_msg ).")
-    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE lv_tgt.`)
     L.push("    IF lines( lt_chk ) <> lines( lt_tp ). lv_err = lv_err + 1. out->write( 'SELFCHECK-FAIL:copy-count' ). ENDIF.")
   } else if (mode === "set") {
-    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(...emitLangResolution("lv_tgt", tgtSpec))
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE lv_tgt.`)
     for (const t of opts.texts ?? []) {
       const key = t.key.toUpperCase()
       if (key === "T") {
@@ -71,10 +79,10 @@ export function generateClassSource(className: string, mode: "copy" | "set" | "d
         L.push(`    CLEAR ls_tp. ls_tp-id = ${abapStr(id)}. ls_tp-key = ${abapStr(key)}. ls_tp-entry = ${abapStr(entryText)}. APPEND ls_tp TO lt_tp.`)
       }
     }
-    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE lv_tgt.`)
     // 写入后自检：重读目标语言池，逐条核对 key/ID/文本；对不上说明写入格式有问题（如漏 ID），
     // 界面/ADT 读不到，必须报错回滚而不是假装成功
-    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE lv_tgt.`)
     L.push("    DATA(lv_msg2) = |added { lv_ins } updated { lv_upd }|.")
     L.push("    out->write( lv_msg2 ).")
     for (const t of opts.texts ?? []) {
@@ -94,7 +102,8 @@ export function generateClassSource(className: string, mode: "copy" | "set" | "d
     }
   } else {
     // delete 模式：读目标语言池 → 按 deleteKeys 逐键删除（删同键所有 ID 行）→ 写回 → 自检键已消失
-    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(...emitLangResolution("lv_tgt", tgtSpec))
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE lv_tgt.`)
     L.push("    DATA(lv_del) = 0.")
     for (const k of opts.deleteKeys ?? []) {
       L.push(`    READ TABLE lt_tp TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(k)}.`)
@@ -103,9 +112,9 @@ export function generateClassSource(className: string, mode: "copy" | "set" | "d
       L.push("      lv_del = lv_del + 1.")
       L.push("    ENDIF.")
     }
-    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(`    INSERT TEXTPOOL ${abapStr(progUpper)} FROM lt_tp LANGUAGE lv_tgt.`)
     L.push("    out->write( |deleted { lv_del }| ).")
-    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE ${abapStr(opts.tgtLang)}.`)
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_chk LANGUAGE lv_tgt.`)
     for (const k of opts.deleteKeys ?? []) {
       L.push(`    READ TABLE lt_chk TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(k)}.`)
       L.push(`    IF sy-subrc = 0. lv_err = lv_err + 1. out->write( 'SELFCHECK-FAIL:${k}' ). ENDIF.`)
@@ -147,12 +156,13 @@ export const translateTextPoolTool = {
     "三种模式：copy（把源语言 text pool 整体复制为目标语言）、set（按 [{key,text}] 覆盖/新增指定条目）或 delete（按 deleteKeys 删除指定条目）。" +
     "key 必须直接填文本池真实键：'T'=程序描述/标题；文本符号=1~3位字母/数字（如 '001'、'E01' 对应源码 TEXT-001/TEXT-E01）；选择文本=参数名（如 'S_CARRID'、'P_COMP'，通常含下划线或较长）。不要把类型字母 I/S 当 key 传。" +
     "选择文本会自动补足前导空格（SAP 要求文字从第 9 列开始），且符号/标题/选择文本都会写入正确的类型 ID（I/R/S）——漏写 ID 会导致界面/ADT 读不到写入的内容。" +
-    "语言键: 1=中文简体, M=繁体, E=英文, D=德文 等。写入后自动激活；文本池随传输请求传输（无需 SE63）。",
+    LANG_KEY_HELP +
+    "写入后自动激活；文本池随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
     mode: z.enum(["copy", "set", "delete"]).describe("copy=复制源语言 text pool; set=按 key 覆盖/新增; delete=按 deleteKeys 删除条目"),
-    targetLanguage: z.string().describe("目标语言键（如 'E'、'1'、'M'）"),
-    sourceLanguage: z.string().optional().describe("copy 模式：源语言键，默认 '1'（主语言）"),
+    targetLanguage: z.string().describe("目标语言：标准键（E/D/1/M/J/K 等）、ISO 代码（EN/DE/ZH/VI 等）或中文名（英文/德文/中文/越南 等）。越南语请用 VI 或「越南」"),
+    sourceLanguage: z.string().optional().describe("copy 模式：源语言，默认 '1'（主语言），同上格式"),
     texts: z
       .array(z.object({ key: z.string().describe("text pool key: T=描述/标题, I=符号(001/E01), S=选择文本(P_COMP)"), text: z.string().describe("文本内容") }))
       .optional()
@@ -175,6 +185,9 @@ export const translateTextPoolTool = {
       const tgt = args.targetLanguage
       const src = args.sourceLanguage ?? "1"
       const prog = args.objectName.toUpperCase()
+
+      if (!resolveLanguageSpec(tgt)) return `⛔ 无法识别的目标语言: "${tgt}"。${LANG_KEY_HELP}`
+      if (!resolveLanguageSpec(src)) return `⛔ 无法识别的源语言: "${src}"。${LANG_KEY_HELP}`
 
       if (args.mode === "set" && (!args.texts || args.texts.length === 0)) {
         return "set 模式需要 texts 参数（[{key, text}]，key: T/符号编号/选择参数名）。"
