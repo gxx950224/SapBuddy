@@ -8,7 +8,7 @@
  *   sapbuddy "提问内容"         单次提问
  *   sapbuddy --json "提问"      单次提问（JSON 输出）
  *   sapbuddy web                启动 Web 版（浏览器访问 http://127.0.0.1:7400）
- *   sapbuddy tools              列出 42 个 SAP 工具
+ *   sapbuddy tools              列出 43 个 SAP 工具
  *   sapbuddy doctor             环境自检
  */
 import path from "node:path"
@@ -146,7 +146,7 @@ async function cmdPrompt(text, jsonMode) {
   session.dispose()
 }
 
-// ===== 交互式对话：直接复用 pi CLI（完整 TUI + 42 工具扩展）=====
+// ===== 交互式对话：直接复用 pi CLI（完整 TUI + 43 工具扩展）=====
 // ── Web 端口占用处理：若 7400 被旧的 SapBuddy Web 占用，先关闭旧进程再启动新的 ──
 function portPids(port) {
   try {

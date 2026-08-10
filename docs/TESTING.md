@@ -20,7 +20,7 @@ node cli.mjs doctor
 
 ```
 Node: v24.x.x
-SAP 工具: 42 个已加载
+SAP 工具: 43 个已加载
 API Key: ✅ 已配置
 默认模型: deepseek/deepseek-v4-flash
 SAP 连接: ✅ 1 个已配置
@@ -34,7 +34,7 @@ SAP 连接: ✅ 1 个已配置
 node cli.mjs tools
 ```
 
-预期：42 个工具（37 只读 + 5 写操作）。
+预期：43 个工具（37 只读 + 5 写操作）。
 
 | 分组 | 数量 | 代表工具 |
 |---|---|---|
@@ -94,7 +94,7 @@ node cli.mjs web
 接口自检（可选）：
 
 ```bash
-curl http://127.0.0.1:7400/api/tools     # 42 个工具
+curl http://127.0.0.1:7400/api/tools     # 43 个工具
 curl http://127.0.0.1:7400/api/state     # 会话状态
 curl -N http://127.0.0.1:7400/api/events # SSE 事件流
 ```
@@ -131,7 +131,7 @@ curl -N http://127.0.0.1:7400/api/events # SSE 事件流
 | 现象 | 原因 | 处理 |
 |---|---|---|
 | `403 Request not allowed` | 模型名无效或 Key 错误 | 检查 `.pi/settings.json` 的 `defaultModel`（应为 `deepseek-v4-flash` 等 pi 内置模型）与 `.pi/auth.json` |
-| 工具未注册（只有 4 个内置） | 未编译或注册失败 | 执行 `npm run build`；检查 `[sapbuddy] 已注册 42 个` 日志 |
+| 工具未注册（只有 4 个内置） | 未编译或注册失败 | 执行 `npm run build`；检查 `[sapbuddy] 已注册 43 个` 日志 |
 | SAP 连接超时 | 网络/系统未启动 | 确认 SAP 可达、ADT 服务正常；自签名证书需 `ssl.allowSelfSigned` |
 | 单次提问无输出 | 模型未显式解析 | 确认 `agent-core.mjs` 中模型解析逻辑；检查错误事件 |
 | Web 端口占用 | 7400 被占用 | `node cli.mjs web --port 7401` |

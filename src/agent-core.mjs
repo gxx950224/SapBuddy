@@ -1,5 +1,5 @@
 /**
- * Agent 内核：pi SDK 会话管理 + 注册 42 个 SAP 工具
+ * Agent 内核：pi SDK 会话管理 + 注册 43 个 SAP 工具
  */
 import { createRequire } from "node:module"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -52,7 +52,7 @@ export function loadSettings() {
 }
 
 /**
- * 创建带 42 个 SAP 工具的 Agent 会话
+ * 创建带 43 个 SAP 工具的 Agent 会话
  * @param opts.sessionFile 指定会话文件（切换历史会话用）
  */
 /** 技能默认内容同步：包内 defaults/skills 首次运行整体拷贝；升级时合并补发本地缺失的技能（已有技能视为用户管理，不覆盖） */
