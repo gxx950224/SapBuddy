@@ -55,6 +55,28 @@ export function loadSettings() {
  * 创建带 42 个 SAP 工具的 Agent 会话
  * @param opts.sessionFile 指定会话文件（切换历史会话用）
  */
+/** 技能默认内容同步：包内 defaults/skills 首次运行整体拷贝；升级时合并补发本地缺失的技能（已有技能视为用户管理，不覆盖） */
+export function syncDefaultSkills(dst, defaultsSrc, legacySrc) {
+  if (!fs.existsSync(dst)) {
+    // 首次运行：整体拷贝（旧 cwd/.pi 优先，其次包内 defaults/）
+    for (const src of [legacySrc, defaultsSrc]) {
+      if (fs.existsSync(src)) { fs.cpSync(src, dst, { recursive: true }); break }
+    }
+    return
+  }
+  // 升级场景：skills 目录已存在 → 合并补发 defaults 中本地缺失的技能（已有技能视为用户管理，不覆盖）
+  if (fs.existsSync(defaultsSrc)) {
+    try {
+      for (const e of fs.readdirSync(defaultsSrc, { withFileTypes: true })) {
+        const s = path.join(defaultsSrc, e.name)
+        const d = path.join(dst, e.name)
+        if (fs.existsSync(d)) continue
+        if (e.isDirectory()) fs.cpSync(s, d, { recursive: true })
+        else fs.copyFileSync(s, d)
+      }
+    } catch { /* 单个技能补发失败不影响整体 */ }
+  }
+}
 /** 首次运行引导：初始化 ~/.SapBuddy（技能/提示词/模型注册表），来源优先旧配置 cwd/.pi（迁移）→ 包内默认 */
 export function ensureRuntimeFiles() {
   try {
@@ -72,14 +94,10 @@ export function ensureRuntimeFiles() {
         }
       } catch { /* 单个源失败不影响整体 */ }
     }
-    // 技能默认内容（来源：旧 cwd/.pi → 包内 defaults/，随 npm 包发布）。
+    // 技能默认内容（来源：旧 cwd/.pi → 包内 defaults/，随 npm 包发布；升级时合并补发缺失技能）。
     // ⚠️ 不再迁移 prompts（已弃用，由技能覆盖）
     for (const sub of ["skills"]) {
-      const dst = path.join(CONFIG_DIR, sub)
-      if (fs.existsSync(dst)) continue
-      for (const src of [path.join(LEGACY_PI, sub), path.join(ROOT, "defaults", sub)]) {
-        if (fs.existsSync(src)) { fs.cpSync(src, dst, { recursive: true }); break }
-      }
+      syncDefaultSkills(path.join(CONFIG_DIR, sub), path.join(ROOT, "defaults", sub), path.join(LEGACY_PI, sub))
     }
     // 配置示例模板：拷贝到 ~/.SapBuddy/config/（用户照着填，存在不覆盖）
     const dstCfg = path.join(CONFIG_DIR, "config")
