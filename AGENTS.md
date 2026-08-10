@@ -76,7 +76,7 @@ node cli.mjs tools   # 工具列表
 | 写工具名单 / 授权窗口 / 只读模式 | `src/sap-tools/register.ts`（isWriteTool/handleUserMessage/isReadOnly）| 硬强制 |
 | 写操作拦截（确认/路径/HTML 确认/查询放行）| `register.ts` `installWriteGate`（挂 pi.on("tool_call")）| 硬强制 |
 | 外部 MCP 写工具拦截（**仅 `mcp_abap_wiki_*` 知识库**：append/create/update/patch/delete/rename 等命名，**一律直接拦截，不可人工确认放行**（知识库只读）；其他 MCP 服务器工具不拦截）| `register.ts` `installWriteGate`（ABAP_WIKI_WRITE_RE）| 硬强制 |
-| 敏感配置禁止 AI 读写（connections/auth/settings/models/mcp；bash 命令含敏感路径/文件名也拦）| `register.ts` `installWriteGate`（read/glob/grep/find/ls 拦读取 + `.SapBuddy` 目录级拦截（output/skills/sessions/prompts/uploads 除外）；write/edit 拦写入；bash 拦含 `.SapBuddy`/敏感文件名的命令）| 硬强制 |
+| 敏感配置禁止 AI 读写（connections/auth/settings/models/mcp；bash 命令含敏感路径/文件名也拦）| `register.ts` `installWriteGate`（read/glob/grep/find/ls 拦读取 + `.SapBuddy` 目录级拦截（output/skills/sessions/prompts/uploads 除外）；write/edit 拦写入；bash 拦含 `.SapBuddy`/敏感文件名的命令，**仅放行两类**：打开 `.SapBuddy/output` 产物、分析 `.SapBuddy/uploads` 上传文件）| 硬强制 |
 | SapBuddy 自身源码/规则文件禁止 AI 读写（src/、cli.mjs、test/、AGENTS.md、SYSTEM.md 等）| `register.ts` `installWriteGate`（保留 Memory.md、.SapBuddy/skills、output/ 可编辑区）| 硬强制 |
 | 代码规则扫描（硬编码中文（含反引号字面量）/自建表结构字段裸内置类型；程序内局部变量放行）| `register.ts` `scanCodeViolations` | 硬强制 |
 | 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |

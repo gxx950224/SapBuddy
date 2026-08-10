@@ -128,12 +128,27 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     // bash 命令行工具不在 read/glob/grep 名单，输入字段是 command 而非 path —— 单独拦截涉及敏感路径/文件名的命令
     if (name === "bash") {
       const cmd = String((input as Record<string, unknown>).command ?? "").toLowerCase()
+      // 仅两类命令可触碰 .SapBuddy：
+      //  ① 打开产物：start/explorer/open + .SapBuddy/output/（自动打开 HTML 流程图等）
+      //  ② 分析上传文件：命令中对 .SapBuddy 的引用仅限 uploads/ 子树（如 python 读用户上传的 Excel，与读工具一致放行）
+      // 两者都禁止路径穿越（..）与敏感配置文件名，防止借白名单目录逃逸读取 auth/connections 等。
       const isOpenArtifact =
         /^(start|explorer|open)(\s|$)/.test(cmd) &&
-        /\.sapbuddy[\/\\]output[\/\\]/.test(cmd) &&
-        !cmd.includes("..") &&
-        !PROTECTED_CONFIG.some((f) => cmd.includes(f))
-      if (!isOpenArtifact && (cmd.includes(".sapbuddy") || PROTECTED_CONFIG.some((f) => cmd.includes(f)))) {
+        /\.sapbuddy[\/\\]output[\/\\]/.test(cmd)
+      let uploadsOnly = false
+      if (cmd.includes(".sapbuddy")) {
+        uploadsOnly = true
+        const RE = /\.sapbuddy[\\/]?/gi
+        let m: RegExpExecArray | null
+        while ((m = RE.exec(cmd)) !== null) {
+          const tail = cmd.slice(m.index + m[0].length).replace(/^[\\/]+/, "")
+          if (!/^uploads([\\/]|[\s;&|]|$)/.test(tail)) { uploadsOnly = false; break }
+        }
+      }
+      const traversal = cmd.includes("..")
+      const refsProtected = PROTECTED_CONFIG.some((f) => cmd.includes(f))
+      const allowed = (isOpenArtifact || uploadsOnly) && !traversal && !refsProtected
+      if (!allowed && (cmd.includes(".sapbuddy") || refsProtected)) {
         return {
           block: true,
           reason:

@@ -230,6 +230,36 @@ test("bash 命令门禁：路径穿越 ../ 不因 output 前缀被放行", async
   assert.equal(r?.block, true, "含 ../ 的 open 命令应拦截")
 })
 
+test("bash 命令门禁：python 读 uploads 上传的 Excel 放行（分析上传文件场景）", async () => {
+  const r = await triggerWriteGate(
+    { command: 'cd /c/Users/24990/.SapBuddy/uploads && python -c "import openpyxl; wb = openpyxl.load_workbook(\'越南翻译文本清单.xlsx\')"' },
+    "bash"
+  )
+  assert.equal(r?.block, undefined, "引用仅限 uploads 子树的命令不应被拦截")
+})
+
+test("bash 命令门禁：python 内联路径引用 uploads 文件也放行", async () => {
+  const r = await triggerWriteGate(
+    { command: "python -c \"import openpyxl; wb = openpyxl.load_workbook('.SapBuddy/uploads/zits004.xlsx')\"" },
+    "bash"
+  )
+  assert.equal(r?.block, undefined, "uploads 子树引用不应被拦截")
+})
+
+test("bash 命令门禁：uploads 引用带路径穿越 ../ 仍拦截", async () => {
+  const r = await triggerWriteGate(
+    { command: "python -c \"open('.SapBuddy/uploads/../../auth.json').read()\"" },
+    "bash"
+  )
+  assert.equal(r?.block, true, "含 ../ 的 uploads 命令应拦截")
+})
+
+test("bash 命令门禁：uploads 引用命中敏感配置文件名仍拦截", async () => {
+  const r = await triggerWriteGate({ command: "cat .SapBuddy/uploads/connections.json" }, "bash")
+  assert.equal(r?.block, true, "uploads 下命中敏感配置文件名也应拦截")
+  assert.ok((r?.reason ?? "").includes("安全拦截"), `应报安全拦截，实际: ${r?.reason?.slice(0, 60)}`)
+})
+
 // ── 自身源码禁读写（installWriteGate：运行中的 AI 不得读写 SapBuddy 自身代码）────
 test("自身源码禁止 AI 读写：write src/register.ts 被拦截", async () => {
   const r = await triggerWriteGate({ path: "src/register.ts" })
