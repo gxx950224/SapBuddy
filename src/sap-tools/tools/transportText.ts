@@ -210,10 +210,20 @@ export const textElementsTool = {
       const client = await getClient(connId)
       const { textElementsUrl } = await import("abap-adt-api")
 
-      const url = textElementsUrl(args.objectType, args.objectName)
+      // ⛔ 函数组主程序归一化：SAPL* 主程序（如 SAPLZBCG004AA）走 PROG 路径会报 CUA 错误
+      // （"系统XX不是中央用户管理的一部分"）；必须按函数组（FUGR）读取，名称去掉 SAPL 前缀。
+      let objName = args.objectName
+      let objType = args.objectType
+      const upperName = objName.toUpperCase()
+      if (upperName.startsWith("SAPL") && /^SAPL[A-Z0-9_]{0,20}$/.test(upperName)) {
+        objName = upperName.slice(4)
+        objType = "FUGR"
+      }
+
+      const url = textElementsUrl(objType, objName)
       if (args.action === "read") {
         const categories = args.category ? [args.category] : ["symbols", "selections", "headings"]
-        const lines = [`文本元素 for ${args.objectType} ${args.objectName}:`, ""]
+        const lines = [`文本元素 for ${objType} ${objName}:`, ""]
         for (const cat of categories) {
           const result = await client.getTextElements(url, cat as never)
           const elements = result?.textElements ?? []
@@ -280,12 +290,12 @@ export const textElementsTool = {
           await client.unLock(url, lock.LOCK_HANDLE).catch(() => undefined)
         }
         // 文本元素写入后需激活（等价 abap_fs 的 activate(objectName, url)）
-        await client.activate(args.objectName.toUpperCase(), url)
+        await client.activate(objName.toUpperCase(), url)
       } finally {
         client.stateful = oldState
       }
       return (
-        `✅ 文本元素已写入并激活 ${args.objectType} ${args.objectName}（${args.category}，${args.elements.length} 个）:\n` +
+        `✅ 文本元素已写入并激活 ${objType} ${objName}（${args.category}，${args.elements.length} 个）:\n` +
         args.elements.map((e) => `  ${e.id}: ${e.text}`).join("\n")
       )
     } catch (err) {

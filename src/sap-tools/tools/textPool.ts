@@ -3,8 +3,10 @@
  *
  * SAP text pool 通过 READ TEXTPOOL / INSERT TEXTPOOL 语句按语言读写。
  * 本工具生成可执行类在 SAP 内执行：
+ *  - list 模式：读取目标语言现有 text pool（输出 ID|KEY|文本，供核对真实 key/文本）
  *  - copy 模式：把源语言 text pool 复制为指定目标语言
  *  - set 模式：按 [{key,text}] 写入目标语言（key: T=标题/描述, I=文本符号 TEXT-xxx, S=选择文本）
+ *  - delete 模式：按 deleteKeys 删除条目
  * 程序描述(SE38标题)即 text pool 的 KEY='T' 条目。
  */
 import { z } from "zod"
@@ -26,7 +28,7 @@ const padSelectionText = (text: string) => " ".repeat(8) + text.trimStart()
 export const isTextSymbolKey = (key: string) => /^[A-Z0-9]{1,3}$/.test(key.toUpperCase())
 
 /** 生成可执行类源码 */
-export function generateClassSource(className: string, mode: "copy" | "set" | "delete", opts: {
+export function generateClassSource(className: string, mode: "copy" | "set" | "delete" | "list", opts: {
   prog: string
   srcLang?: string
   tgtLang: string
@@ -100,7 +102,7 @@ export function generateClassSource(className: string, mode: "copy" | "set" | "d
         L.push(`      out->write( 'SELFCHECK-FAIL:${key}' ). ENDIF.`)
       }
     }
-  } else {
+  } else if (mode === "delete") {
     // delete 模式：读目标语言池 → 按 deleteKeys 逐键删除（删同键所有 ID 行）→ 写回 → 自检键已消失
     L.push(...emitLangResolution("lv_tgt", tgtSpec))
     L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE lv_tgt.`)
@@ -119,15 +121,25 @@ export function generateClassSource(className: string, mode: "copy" | "set" | "d
       L.push(`    READ TABLE lt_chk TRANSPORTING NO FIELDS WITH KEY key = ${abapStr(k)}.`)
       L.push(`    IF sy-subrc = 0. lv_err = lv_err + 1. out->write( 'SELFCHECK-FAIL:${k}' ). ENDIF.`)
     }
+  } else if (mode === "list") {
+    // list 模式：只读目标语言现有 text pool，输出 ID|KEY|文本，供核对真实 key/文本（不写入、不提交）
+    L.push(...emitLangResolution("lv_tgt", tgtSpec))
+    L.push(`    READ TEXTPOOL ${abapStr(progUpper)} INTO lt_tp LANGUAGE lv_tgt.`)
+    L.push("    LOOP AT lt_tp INTO ls_tp.")
+    L.push("      out->write( ls_tp-id && '|' && ls_tp-key && '|' && ls_tp-entry ).")
+    L.push("    ENDLOOP.")
+    L.push("    out->write( |TOTAL| && ':' && |{ lines( lt_tp ) }| ).")
   }
-  // 自检通过才提交落库；失败回滚（INSERT TEXTPOOL 在 DB LUW 中，ROLLBACK 可撤销）
-  L.push("    IF lv_err = 0.")
-  L.push("      COMMIT WORK.")
-  L.push("      out->write( 'SELFCHECK-OK' ).")
-  L.push("    ELSE.")
-  L.push("      ROLLBACK WORK.")
-  L.push("      out->write( 'SELFCHECK-FAIL' ).")
-  L.push("    ENDIF.")
+  // list 模式纯读取，不做提交/回滚；其余模式自检通过才提交落库，失败回滚（INSERT TEXTPOOL 在 DB LUW 中，ROLLBACK 可撤销）
+  if (mode !== "list") {
+    L.push("    IF lv_err = 0.")
+    L.push("      COMMIT WORK.")
+    L.push("      out->write( 'SELFCHECK-OK' ).")
+    L.push("    ELSE.")
+    L.push("      ROLLBACK WORK.")
+    L.push("      out->write( 'SELFCHECK-FAIL' ).")
+    L.push("    ENDIF.")
+  }
   L.push("  ENDMETHOD.")
 
   return (
@@ -153,14 +165,14 @@ export const translateTextPoolTool = {
     "程序文本元素(text pool)翻译工具：用户说「翻译/多语言/加英文/加越南语/文本池/文本符号/选择文本/程序描述/程序标题」时用。\n" +
     "【翻译对象】SE38 程序代码里的文本：文本符号 TEXT-xxx（如 TEXT-001）、选择文本（参数名，如 S_CARRID）、程序描述/标题（key='T'）。\n" +
     "【先分清对象再选工具】屏幕画面上的标题/字段标签→用 translate_screen_text；SE91 消息类提示文案→用 translate_message_class；本工具只处理程序代码里的文本元素。\n" +
-    "【三种模式】copy=把源语言 text pool 整体复制成目标语言（sourceLanguage 默认 '1'）；set=按 [{key,text}] 覆盖/新增；delete=按 deleteKeys 删除条目。\n" +
+    "【四种模式】list=读取目标语言现有文本池（输出 ID|KEY|文本，供核对真实 key，不做任何写入）；copy=把源语言 text pool 整体复制成目标语言（sourceLanguage 默认 '1'）；set=按 [{key,text}] 覆盖/新增；delete=按 deleteKeys 删除条目。\n" +
     "【key 怎么填】'T'=程序描述；文本符号=1~3 位字母或数字（'001'/'E01'，对应源码 TEXT-001/TEXT-E01，不要带 TEXT- 前缀，不要把类型字母 I/S 当 key 传）；选择文本=参数名（如 'S_CARRID'，通常含下划线）。\n" +
     "选择文本自动补前导空格（SAP 要求文字从第 9 列开始），三类文本都写正确类型 ID（I/R/S）——漏 ID 会导致界面/ADT 读不到写入内容。\n" +
     LANG_KEY_HELP +
     "写入后自动读回核对，对不上回滚不落库；文本池自动随传输请求传输（无需 SE63）。",
   inputSchema: z.object({
     objectName: z.string().describe("程序名，如 ZAIR004"),
-    mode: z.enum(["copy", "set", "delete"]).describe("copy=复制源语言 text pool; set=按 key 覆盖/新增; delete=按 deleteKeys 删除条目"),
+    mode: z.enum(["list", "copy", "set", "delete"]).describe("list=读取现有文本池核对真实 key(不写入); copy=复制源语言 text pool; set=按 key 覆盖/新增; delete=按 deleteKeys 删除条目"),
     targetLanguage: z.string().describe("目标语言：标准键（E/D/1/M/J/K 等）、ISO 代码（EN/DE/ZH/VI 等）或中文名（英文/德文/中文/越南 等）。越南语请用 VI 或「越南」"),
     sourceLanguage: z.string().optional().describe("copy 模式：源语言，默认 '1'（主语言），同上格式"),
     texts: z
@@ -237,7 +249,7 @@ export const translateTextPoolTool = {
       const uri = `/sap/bc/adt/oo/classes/${className.toLowerCase()}`
       const sourceUri = `${uri}/source/main`
 
-      const source = generateClassSource(className, args.mode as "copy" | "set" | "delete", {
+      const source = generateClassSource(className, args.mode as "copy" | "set" | "delete" | "list", {
         prog,
         srcLang: src,
         tgtLang: tgt,
@@ -290,6 +302,9 @@ export const translateTextPoolTool = {
       }
       if (/^Error:/i.test(result)) {
         return `❌ 程序 ${prog} 文本元素写入失败（目标语言 ${tgt}）：${result}`
+      }
+      if (args.mode === "list") {
+        return `📖 程序 ${prog} 的文本池（目标语言 ${tgt}）如下（ID|KEY|文本；I=文本符号 TEXT-xxx, S=选择文本, R=标题）：\n${result}`
       }
       return (
         `✅ 程序 ${prog} 文本元素已写入（目标语言 ${tgt}${args.mode === "copy" ? `，源语言 ${src}` : ""}）:\n` +

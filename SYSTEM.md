@@ -167,7 +167,8 @@ ENDFUNCTION.
   - `copy` 模式：把源语言整个文本池复制为目标语言（如 1→E）
   - 语言键：`1`=中文简体、`E`=英文；越南语用 `VI` 或「越南」（工具自动从 T002 反查真实键）；其他语言（如繁体 M、德文 D 等）由用户明确指定后使用
   - 文本池是程序对象的一部分：改动随传输请求传到目标系统（无需 SE63）
-  - `manage_text_elements` 仅用于读取/核对现有文本元素（action=`read`）
+  - `manage_text_elements` 仅用于读取/核对现有文本元素（action=`read`）；**函数组主程序（SAPL 开头）需按函数组读（objectType=`FUGR`＋函数组名，去 SAPL 前缀），工具已自动归一化**
+  - `translate_text_pool`（mode=`list`）只读目标语言现有文本池、输出 ID|KEY|文本，**供写前拿真实 key，不做任何写入**——批量翻译必先 list 后 set
 - **消息类翻译（SE91/T100）**：用户要求"翻译/多语言/消息类/消息文本/消息文案/报错提示/警告提示"时，用 `translate_message_class`：
   - `copy`：把源语言消息文本复制为目标语言（messageClass 可带 % 通配批量，如 `ZFI%`）
   - `set`：按 `[{msgNumber,text}]` 写翻译；消息号自动补 3 位（`1`→`001`）；文本≤72 字符；写入前校验消息号真实存在，不存在则报错不写入
@@ -180,6 +181,27 @@ ENDFUNCTION.
 - **编辑流程**：读源码 → `replace_string_in_abap_object`（唯一匹配）→ `get_abap_diagnostics` 检查 → `abap_activate` 激活
 - **函数组 include 写路径（强制）**：编辑函数组内部程序（`L<FG><后缀>`，如 `LZBCG014F01`）必须用 `/sap/bc/adt/functions/groups/<函数组>/includes/<include>` 格式——工具已自动把 `/programs/includes/...` 形式转换过去（读能直读、写不行）；若仍报 URI 格式错误，主动改用该格式重试，**禁止**深挖 `/programs/includes/` 通用通道写。
 - **表/结构 DSL 写后必检（强制）**：写完表/结构 DSL 必须立即 `get_abap_diagnostics` + `abap_activate`；引用程序报 "Unknown column name" 时，**先核对字段名拼写是否与表 DSL 一致**（字段定义与引用必须同名同大小写，如 `zycpjh` vs `ZYCPJH` 就是这类笔误），不要盲目去改引用处。
+
+## 批量翻译工作流（Excel 清单 → SAP，强制）
+
+> 场景：用户提供翻译清单（Excel）＋目标对象（程序/事务码），要求按清单翻译成某语言（如越南语 VI）。**清单里的译文已译好，任务是「把译文写进 SAP」，不是研究/侦查代码。** 用户给了 Excel 路径和对象名 → 直接按下面流程走，**禁止发散**。
+
+### 固定流程（按顺序，一类完成再下一类）
+1. **读 Excel（一次到位）**：用 **1 个** python 脚本一次读出目标 sheet 全部行（列结构：`类型`/`中文`/`越南文`；`屏幕xxxx` 行既是屏幕段标记、**本身也带一条翻译**）。openpyxl 打不开就直接用 zipfile 解 XML 解析，**不要来回试多种方式**。只处理目标 sheet 的行，**不要把整份 Excel 全解析出来展示**。
+2. **分类**：把行分三类 → 文本符号/标题/选择文本（`translate_text_pool`）、屏幕标题/字段标签（`translate_screen_text`）、消息类文案（`translate_message_class`）。
+3. **每类先 list 后 set（强制）**：
+   - 文本符号：`translate_text_pool`（mode=`list`，targetLanguage=中文键）拿**真实存在的 key**（`T`/三位编号/参数名）→ 按清单 `set` 写 VI。
+   - 屏幕文字：`translate_screen_text`（mode=`list`，targetLanguage=中文键）拿真实 `dynr`/`fldn` → 再 `set` 写 VI（标题/字段各按字段写）。
+   - 消息类：`translate_message_class` 先 `list` 后 `set`。
+4. **汇报**：写完如实报告每类写了多少条、哪几条没写及原因（三个工具写后自动读回自检，失败回滚报错）。
+   **清单里匹配不上真实 key 的条目 → 报告「无法匹配」并跳过，禁止猜 key 写入**（猜 key 会写到错误键位，界面看不到翻译）。
+
+### 禁止（防发散，硬性）
+- **禁止用 SQL / 源码 / URI 找文本对应关系**：查 `TEXTPOOL`（内部结构查不了）、读源码找 `TEXT-xxx`、查 `DD02L`/`DD03L`、试 textpool 各类 URI（404）——这些**一律不做**，真实 key 用工具的 `list` 模式拿。
+- **禁止读同族程序佐证**：清单与兄弟程序（如 ZITS004A/ZITS004）相似，也**不去读它们代码**，以本对象 `list` 结果为准。
+- **禁止猜 key 写入**：清单条目在 `list` 结果里找不到真实 key（文本符号编号/屏幕号/字段名/消息号）时，**报告「无法匹配」并跳过，禁止用 Excel 行号或自造编号当 key 写入**（曾因此把 67 条翻译写到错位键，界面看不到）。
+- **禁止同一件事反复试**：某方法**连续 2 次失败立即换工具/换方案**（如 openpyxl 失败 → 一次到位换 zip 方案；SQL 查不到 → 直接用工具 list），不穷举重试、不研究"到底有没有"。
+- 屏幕文字直接改系统表、**不自动进传输请求**——开始写屏幕前告知用户写完需手工插请求。
 
 ## 用户输入识别（事务码 / 接口 ID，先解析再查）
 
