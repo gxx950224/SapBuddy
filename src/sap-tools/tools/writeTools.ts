@@ -7,6 +7,7 @@ import { parseFunctionModuleParams, normalizeFunctionModuleParams, normalizeForm
 import {
   requireObject,
   resolveConnectionId,
+  findObject,
   toToolError,
   sanitizeErrMsg,
   escapeXmlAttr,
@@ -591,7 +592,7 @@ export const replaceStringTool = {
   inputSchema: z.object({
     fileUri: z
       .string()
-      .describe("对象的 adt:// 工作区 URI（先用 get_abap_object_workspace_uri 获取）或 ADT 对象 URI"),
+      .describe("ADT 对象 URI（如 /sap/bc/adt/programs/programs/zairtest04，来自 get_abap_object_workspace_uri 返回的「ADT 对象 URI」行）。工作区 URI（adt://...）也可传，工具会自动转换为 ADT 对象 URI"),
     oldString: z.string().optional().describe("要替换的原文（必须恰好匹配一处，含缩进；局部替换模式用，与 fullSource 二选一）"),
     newString: z.string().optional().describe("替换后的文本（局部替换模式用）"),
     fullSource: z.string().optional().describe("完整新源码，整段覆盖整个对象（推荐新建/整体重写函数模块时用：FUNCTION + 参数段 + . + 函数体 + ENDFUNCTION.；与 oldString/newString 二选一）"),
@@ -612,6 +613,16 @@ export const replaceStringTool = {
       }
       const finalConnId = await resolveConnectionId(connId)
       const client = await getClient(finalConnId)
+
+      // 工作区 URI（adt://dev/$TMP/ZAIRTEST04）的 pathname 是 ADT 树定位路径（开发包/对象名），不是 REST 资源 URI。
+      // 自动解析为 ADT 对象 URI（/sap/bc/adt/programs/programs/zairtest04），避免 "Invalid Object URL" 式重试。
+      if (!adtUri.startsWith("/sap/bc/adt/")) {
+        const name = (adtUri.split("/").filter(Boolean).pop() || "").toUpperCase()
+        if (name) {
+          const resolved = await findObject(finalConnId, name, undefined, undefined, { includeDirectRead: false })
+          if (resolved?.["adtcore:uri"]) adtUri = resolved["adtcore:uri"]
+        }
+      }
 
       // 函数组 include 写路径不认 /programs/includes/ 通用通道，改写为 /functions/groups/<fg>/includes/<inc>
       const fgUri = await normalizeFunctionGroupIncludeUri(finalConnId, adtUri)
@@ -926,7 +937,7 @@ export const diagnosticsTool = {
   inputSchema: z.object({
     fileUri: z
       .string()
-      .describe("对象的 adt:// 工作区 URI 或 ADT 对象 URI（与 replace_string_in_abap_object 相同）"),
+      .describe("ADT 对象 URI（与 replace_string_in_abap_object 相同）；工作区 URI（adt://...）会自动转换"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: { fileUri: string; connectionId?: string }): Promise<string> {
@@ -940,6 +951,16 @@ export const diagnosticsTool = {
       }
       const finalConnId = await resolveConnectionId(connId)
       const client = await getClient(finalConnId)
+
+      // 工作区 URI（adt://dev/$TMP/ZAIRTEST04）的 pathname 是 ADT 树定位路径（开发包/对象名），不是 REST 资源 URI。
+      // 自动解析为 ADT 对象 URI（/sap/bc/adt/programs/programs/zairtest04），避免 "Invalid Object URL" 式重试。
+      if (!adtUri.startsWith("/sap/bc/adt/")) {
+        const name = (adtUri.split("/").filter(Boolean).pop() || "").toUpperCase()
+        if (name) {
+          const resolved = await findObject(finalConnId, name, undefined, undefined, { includeDirectRead: false })
+          if (resolved?.["adtcore:uri"]) adtUri = resolved["adtcore:uri"]
+        }
+      }
 
       // 函数组 include 写路径不认 /programs/includes/ 通用通道，改写为 /functions/groups/<fg>/includes/<inc>
       const fgUri = await normalizeFunctionGroupIncludeUri(finalConnId, adtUri)

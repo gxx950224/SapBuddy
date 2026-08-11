@@ -14,7 +14,7 @@ Follow the official **SAP Clean ABAP style guide** (an adoption of Robert C. Mar
 
 > **命名例外（本项目覆盖）**：本技能的无前缀命名建议**不适用于本项目**——
 > SapBuddy 保留匈牙利前缀（`lv_`/`ls_`/`lt_`/`iv_`/`ev_`/`gv_`/`gt_` 等，企业通行惯例），
-> 以 `SYSTEM.md` 命名规则为准；其余规范（方法短小、OO 优先、错误处理、SQL、注释、单测）仍然适用。
+> 以 `dev-write` 技能命名规则为准；其余规范（方法短小、OO 优先、错误处理、SQL、注释、单测）仍然适用。
 >
 > **触发协调**：本技能提供代码规范与质量评审标准；
 > 用户要求"审查/审计/code review XXX"并产出 HTML 报告时，走 `abap-code-review` 技能（含 4 页签报告模板），

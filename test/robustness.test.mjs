@@ -10,7 +10,7 @@ import assert from "node:assert/strict"
 import { createRequire } from "node:module"
 
 const require = createRequire(import.meta.url)
-const { withConnMutex, isConnectionError, markConnectionUnhealthy, __setClientFactoryForTest } = require(
+const { withConnMutex, withReadLock, isConnectionError, markConnectionUnhealthy, __setClientFactoryForTest } = require(
   "../dist/sap-tools/adtManager.js"
 )
 const { __setConfigForTest } = require("../dist/sap-tools/config.js")
@@ -84,6 +84,51 @@ test("findObject：全部搜索失败时如实报'ADT 搜索服务异常'（不�
     __setConfigForTest(null)
     markConnectionUnhealthy("dev")
   }
+})
+
+test("读闸门：同一连接上的并发读不超过 4 个（保护 SAP 不被请求洪峰打垮）", async () => {
+  const state = { active: 0, max: 0, done: 0 }
+  const read = () =>
+    withReadLock("concur-read-1", async () => {
+      state.active++
+      state.max = Math.max(state.max, state.active)
+      await new Promise((r) => setTimeout(r, 10))
+      state.active--
+      state.done++
+    })
+  await Promise.all(Array.from({ length: 12 }, read))
+  assert.ok(state.max <= 4, `并发读应≤4，实际峰值 ${state.max}`)
+  assert.ok(state.max >= 2, `应有并发（不是全部串行），实际峰值 ${state.max}`)
+  assert.equal(state.done, 12, "全部读都应完成")
+})
+
+test("写独占：写进行时新读排队，写完成才放行", async () => {
+  const order = []
+  const write = withConnMutex("concur-write-1", async () => {
+    order.push("write-start")
+    await new Promise((r) => setTimeout(r, 30))
+    order.push("write-end")
+  })
+  const read = withReadLock("concur-write-1", async () => {
+    order.push("read-start")
+    await new Promise((r) => setTimeout(r, 10))
+    order.push("read-end")
+  })
+  await Promise.all([write, read])
+  assert.deepEqual(order, ["write-start", "write-end", "read-start", "read-end"], "写应独占，读等写完成")
+})
+
+test("写锁内读放行：写入回读校验（getObjectSource）不死锁", async () => {
+  const order = []
+  await withConnMutex("concur-reentrant-1", async () => {
+    order.push("write-start")
+    // 写工具内部调用只读客户端方法（如 setObjectSource 后回读）必须直接放行，否则自锁
+    await withReadLock("concur-reentrant-1", async () => {
+      order.push("inner-read")
+    })
+    order.push("write-end")
+  })
+  assert.deepEqual(order, ["write-start", "inner-read", "write-end"], "写锁内读应直接放行不死锁")
 })
 
 test("findObject：部分类型搜索失败时仍返回成功结果（不全盘误报）", async () => {

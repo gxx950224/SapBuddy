@@ -146,7 +146,7 @@ export const getWorkspaceUriTool = {
   name: "get_abap_object_workspace_uri",
   title: "Get ABAP Object Workspace URI",
   description:
-    "返回对象的 adt:// 工作区 URI（格式 adt://<connectionId>/<路径>）。编辑类对象前需要先获取此 URI（配合 replace_string_in_abap_object 使用）。",
+    "返回对象的 ADT 对象 URI（/sap/bc/adt/...，用作 replace_string_in_abap_object 的 fileUri）。工作区 URI（adt://...）只是 ADT 树里的定位路径、不是可读写源码的地址——请用返回结果里的「ADT 对象 URI」行，不要用工作区 URI（写工具虽会自动转换，但直接用 ADT 对象 URI 最稳妥）。",
   inputSchema: z.object({
     objectName: z.string().describe("对象名称"),
     objectType: objectTypeSchema,
@@ -172,7 +172,7 @@ export const getWorkspaceUriTool = {
       }
       // 对象 URI 自带前导 /，直接拼接避免出现 adt://dev//sap 双斜杠
       const ws = path.startsWith("/") ? `adt://${connId}${path}` : `adt://${connId}/${path}`
-      return `工作区 URI: ${ws}\nADT 对象 URI: ${obj["adtcore:uri"]}\n类型: ${obj["adtcore:type"]}`
+      return `ADT 对象 URI: ${obj["adtcore:uri"]}\n类型: ${obj["adtcore:type"]}\n工作区 URI（仅 ADT 树定位，写源码勿用，工具会自动转换）: ${ws}`
     } catch (err) {
       return toToolError(err)
     }

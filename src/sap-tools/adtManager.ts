@@ -4,6 +4,7 @@
  */
 import { ADTClient, ClientOptions } from "abap-adt-api"
 import { createSSLConfig } from "abap-adt-api"
+import { AsyncLocalStorage } from "node:async_hooks"
 import { ConnectionConfig, getConfig } from "./config.js"
 
 interface ManagedClient {
@@ -15,20 +16,112 @@ interface ManagedClient {
 const pool = new Map<string, ManagedClient>()
 
 /**
- * 每连接互斥锁：ADTClient 是共享状态（cookie jar / stateful 会话），
- * 并行工具调用会互相踩踏（解锁命中错误会话 → 残留编辑锁）。用 promise 链把
- * 同一连接上的所有操作串行化。并发场景下后到的调用排队等待先到的完成。
+ * 每连接读写门（reader-writer gate）：
+ * - 读（stateless 查询，如 searchObject/getObjectSource/runQuery）可并发，但每个连接最多
+ *   READ_CONCURRENCY 个同时进行——防止一次分析几十个对象时对 SAP 系统打出请求洪峰。
+ * - 写（编辑/激活：lock→setObjectSource→activate→unLock，需 stateful 会话）必须独占：
+ *   同一连接上任何读、任何其它写都要等它完成，避免 cookie jar / stateful 会话被踩踏
+ *   （解锁命中错误会话 → 残留编辑锁）。
+ * - 写内的读（如写入后回读校验、搜索、语法检查）走 AsyncLocalStorage 记录"当前在写锁内"，
+ *   直接放行（可重入），不会自锁。
  */
-const mutexQueues = new Map<string, Promise<unknown>>()
+const READ_CONCURRENCY = 4
 
-/** 串行执行：同一连接 id 上的操作按顺序执行，互不并发。 */
+interface ConnGate {
+  readers: number
+  writer: boolean
+  waitingReads: Array<() => void>
+  waitingWrites: Array<() => void>
+}
+const gates = new Map<string, ConnGate>()
+
+function gateFor(id: string): ConnGate {
+  let g = gates.get(id)
+  if (!g) {
+    g = { readers: 0, writer: false, waitingReads: [], waitingWrites: [] }
+    gates.set(id, g)
+  }
+  return g
+}
+
+/** 写优先放行：等待中的写比读先走，避免并发读把写饿死 */
+function pump(g: ConnGate): void {
+  if (!g.writer && g.readers === 0 && g.waitingWrites.length > 0) {
+    g.writer = true
+    g.waitingWrites.shift()!()
+    return
+  }
+  while (!g.writer && g.readers < READ_CONCURRENCY && g.waitingReads.length > 0) {
+    g.readers++
+    g.waitingReads.shift()!()
+  }
+}
+
+function acquireRead(id: string): Promise<void> {
+  const g = gateFor(id)
+  if (!g.writer && g.readers < READ_CONCURRENCY) {
+    g.readers++
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => g.waitingReads.push(resolve))
+}
+
+function releaseRead(id: string): void {
+  const g = gateFor(id)
+  g.readers--
+  pump(g)
+}
+
+function acquireWrite(id: string): Promise<void> {
+  const g = gateFor(id)
+  if (!g.writer && g.readers === 0) {
+    g.writer = true
+    return Promise.resolve()
+  }
+  return new Promise((resolve) => g.waitingWrites.push(resolve))
+}
+
+function releaseWrite(id: string): void {
+  const g = gateFor(id)
+  g.writer = false
+  pump(g)
+}
+
+/** 记录"当前异步执行流正持有哪些连接的写锁"，用于写锁内读放行（可重入） */
+const writeLockContext = new AsyncLocalStorage<Set<string>>()
+
+/** 独占执行（写）：同一连接 id 上的操作排他，同时阻止该连接的并发读。 */
 export function withConnMutex<T>(connId: string, fn: () => Promise<T>): Promise<T> {
   const id = connId.toLowerCase()
-  const prev = mutexQueues.get(id) ?? Promise.resolve()
-  const next = prev.catch(() => undefined).then(fn)
-  // 存 settled 后的 promise，保证队列不因某次失败而卡死；错误仍向调用方抛出
-  mutexQueues.set(id, next.catch(() => undefined))
-  return next
+  const store = writeLockContext.getStore()
+  if (store?.has(id)) return Promise.resolve().then(fn) // 已在该连接写锁内（可重入），直接执行
+  return new Promise<T>((resolve, reject) => {
+    acquireWrite(id).then(() => {
+      const next = new Set(store ?? [])
+      next.add(id)
+      writeLockContext.run(next, () => {
+        Promise.resolve()
+          .then(fn)
+          .then(resolve, reject)
+          .finally(() => releaseWrite(id))
+      })
+    })
+  })
+}
+
+/** 并发执行（读）：同连接最多 READ_CONCURRENCY 个同时进行；写锁内调用直接放行。 */
+export function withReadLock<T>(connId: string, fn: () => Promise<T>): Promise<T> {
+  const id = connId.toLowerCase()
+  const store = writeLockContext.getStore()
+  if (store?.has(id)) return Promise.resolve().then(fn) // 写锁内的读（回读校验等），不排队
+  return new Promise<T>((resolve, reject) => {
+    acquireRead(id).then(() => {
+      Promise.resolve()
+        .then(fn)
+        .then(resolve, reject)
+        .finally(() => releaseRead(id))
+    })
+  })
 }
 
 /**
@@ -52,25 +145,116 @@ export function isConnectionError(err: unknown): boolean {
 }
 
 /** 包装客户端：方法抛连接级错误时自动标记不健康，实现自愈 */
+/**
+ * 只读方法白名单：这些调用是 stateless 查询，可安全并发（受 READ_CONCURRENCY 限制）。
+ * 不在白名单的方法一律按写处理（独占）。宁可把读误当写串行化，也不可把写放行并发。
+ */
+const READ_METHODS = new Set([
+  "searchObject",
+  "getObjectSource",
+  "runQuery",
+  "objectStructure",
+  "objectStructureElements",
+  "revisions",
+  "usageReferences",
+  "usageReferenceSnippets",
+  "transportInfo",
+  "getTextElements",
+  "mainPrograms",
+  "syntaxCheck",
+  "syntaxCheckTypes",
+  "getDomainProperties",
+  "getDataElementProperties",
+  "findObjectPath",
+  "unitTestRun",
+  "unitTestEvaluation",
+  "unitTestOccurrenceMarkers",
+  "atcCustomizing",
+  "atcCheckVariant",
+  "createAtcRun",
+  "atcWorklists",
+  "atcUsers",
+  "atcDocumentation",
+  "atcExemptProposal",
+  "dumps",
+  "feeds",
+  "tracesList",
+  "tracesListRequests",
+  "tracesHitList",
+  "tracesDbAccess",
+  "tracesStatements",
+  "userTransports",
+  "transportDetails",
+  "transportsByConfig",
+  "systemUsers",
+  "adtDiscovery",
+  "adtCoreDiscovery",
+  "adtCompatibiliyGraph",
+  "runClass",
+  "tableContents",
+  "loadTypes",
+  "nodeContents",
+  "reentranceTicket",
+  "objectRegistrationInfo",
+  "inactiveObjects",
+  "classComponents",
+  "fragmentMappings",
+  "objectTypes",
+  "prettyPrinter",
+  "prettyPrinterSetting",
+  "codeCompletion",
+  "codeCompletionElement",
+  "codeCompletionFull",
+  "findDefinition",
+  "fixProposals",
+  "fixEdits",
+  "typeHierarchy",
+  "transportConfigurations",
+  "getTransportConfiguration",
+  "ddicElement",
+  "ddicRepositoryAccess",
+  "annotationDefinitions",
+  "bindingDetails",
+  "packageSearchHelp",
+  "gitRepos",
+  "gitExternalRepoInfo",
+  "checkRepo",
+  "remoteRepoInfo",
+  "stageRepo",
+  "transportReference",
+  "hasTransportConfig",
+  "featureDetails",
+  "collectionFeatureDetails",
+  "findCollectionByUrl",
+  "abapDocumentation",
+  "objectEnhancements",
+])
+
 function wrapSelfHeal(client: ADTClient, connId: string): ADTClient {
   return new Proxy(client, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver)
       if (typeof value !== "function") return value
+      const m = String(prop)
       return (...args: unknown[]) => {
-        try {
-          const result = value.apply(target, args)
-          if (result && typeof (result as Promise<unknown>).then === "function") {
-            return (result as Promise<unknown>).catch((err: unknown) => {
-              if (isConnectionError(err)) markConnectionUnhealthy(connId)
-              throw err
-            })
+        const run = () => {
+          try {
+            const result = value.apply(target, args)
+            if (result && typeof (result as Promise<unknown>).then === "function") {
+              return (result as Promise<unknown>).catch((err: unknown) => {
+                if (isConnectionError(err)) markConnectionUnhealthy(connId)
+                throw err
+              })
+            }
+            return result
+          } catch (err) {
+            if (isConnectionError(err)) markConnectionUnhealthy(connId)
+            throw err
           }
-          return result
-        } catch (err) {
-          if (isConnectionError(err)) markConnectionUnhealthy(connId)
-          throw err
         }
+        // 读走并发闸门，写走独占闸门（写锁内再调读/写均可重入，不死锁）
+        if (READ_METHODS.has(m)) return withReadLock(connId, run)
+        return withConnMutex(connId, run)
       }
     },
   })

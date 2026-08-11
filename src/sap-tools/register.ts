@@ -17,6 +17,7 @@ import { tools } from "./tools/index.js"
 import { assertDevClient, withConnMutex } from "./adtManager.js"
 import { resolveConnectionId } from "./tools/shared.js"
 import { resetActiveRequests } from "./taskTransport.js"
+import { appendAudit } from "./auditLog.js"
 
 // ── 写操作人工确认（human-in-the-loop）──
 // 所有写工具执行前必须获得用户确认：TUI 弹窗（CLI）或 Web 确认浮层（block 后重放）。
@@ -28,8 +29,13 @@ const WRITE_TOOL_NAMES = new Set(
 export function isWriteTool(name: string): boolean {
   return WRITE_TOOL_NAMES.has(name)
 }
-export function setWriteApprovalWindow(ms = 60_000): void {
+export function setWriteApprovalWindow(ms = 60_000, objects?: string[]): void {
   writeApprovalUntil = Date.now() + ms
+  // 批准对象：显式传入优先；否则用最近一次被拦截的写操作涉及的对象。窗口只对它们放行
+  if (objects && objects.length > 0) approvedObjects = objects
+  else if (pendingWriteObjects.length > 0) approvedObjects = [...pendingWriteObjects]
+  else approvedObjects = []
+  pendingWriteObjects = []
   // 新需求开始 → 共享传输请求重置，让本需求的对象用新请求（同需求内复用）
   resetActiveRequests()
 }
@@ -38,8 +44,31 @@ export function isWriteApproved(): boolean {
 }
 export function clearWriteApproval(): void {
   writeApprovalUntil = 0
+  approvedObjects = []
+  pendingWriteObjects = []
   // 需求取消/拒绝 → 共享请求一并清掉，避免残留影响下次
   resetActiveRequests()
+}
+
+/** 待批准对象：最近一次被拦截的写操作涉及的对象名（批准时按此绑定，窗口内只对它们放行） */
+let pendingWriteObjects: string[] = []
+/** 已批准对象：本次批准窗口内允许执行写操作的对象名（对象级确认，防"批准后 15 分钟随便写"） */
+let approvedObjects: string[] = []
+
+/** 从写工具参数中提取对象名（统一大写；fileUri 取末段并去 /source/main 等子路径后缀） */
+export function extractObjectNames(input: unknown): string[] {
+  const o = (input ?? {}) as Record<string, unknown>
+  const out = new Set<string>()
+  for (const key of ["name", "objectName", "className", "parentName"] as const) {
+    const v = o[key]
+    if (typeof v === "string" && v.trim()) out.add(v.trim().toUpperCase())
+  }
+  const uri = String(o.fileUri ?? "")
+  if (uri) {
+    const seg = uri.split("/").filter(Boolean).pop()
+    if (seg) out.add(seg.replace(/\.\w+$/, "").toUpperCase())
+  }
+  return [...out]
 }
 
 // ── 用户消息处理（确认词/拒绝词 → 授权窗口；CLI 与 Web 共用同一套规则）──
@@ -283,13 +312,17 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       const act = String((event.input as Record<string, unknown>)?.action || "")
       if (act === "read") return
     }
+    // 记录本次写操作涉及的对象：若被拦截，批准窗口只对它们放行（对象级确认）
+    pendingWriteObjects = extractObjectNames(input)
     // 命名空间强制：只允许 Z*/Y*（代码级兜底，不依赖 LLM 遵守）
     const nsv = namespaceViolation(event.input)
     if (nsv) {
+      appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: `namespace:${nsv.slice(0, 60)}` })
       return { block: true, reason: `⛔ 命名空间拦截（代码级强制）：${nsv}` }
     }
     // 只读模式开关（settings.security.readOnly=true 时全部写操作拒绝）
     if (isReadOnly()) {
+      appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: "readonly" })
       return {
         block: true,
         reason: `⛔ 当前为只读模式（security.readOnly=true），写操作已禁止：${name}\n请在设置中关闭只读模式后再试。`,
@@ -304,9 +337,11 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
           const ok = await ctx.ui.confirm("SapBuddy 临时包创建确认", warn)
           if (ok) return
+          appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: "tmp:user_reject" })
           return { block: true, reason: "⛔ 用户拒绝了创建到 $TMP。请改为正式开发包，或先向用户确认测试意图。" }
         }
         opts?.onBlocked?.({ toolName: name, input: event.input })
+        appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: "tmp:confirm_required" })
         return {
           block: true,
           reason:
@@ -316,23 +351,35 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         }
       }
     }
-    // 批准窗口内放行（Web 确认后 AI 重放）
-    if (isWriteApproved()) return
+    // 批准窗口内放行（Web 确认后 AI 重放）。对象级绑定：窗口只对已批准的对象放行；
+    // 无对象名的写操作（如建传输请求）窗口内放行；窗口内冒出新对象 → 重新确认
+    if (isWriteApproved()) {
+      const objs = extractObjectNames(input)
+      if (objs.length === 0 || objs.some((o) => approvedObjects.includes(o))) {
+        appendAudit({ event: "approved", tool: name, objects: objs.length ? objs : extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined })
+        return
+      }
+    }
     if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
       // CLI/TUI：原生确认弹窗
       const summary = JSON.stringify(event.input ?? {})?.slice(0, 300)
       const ok = await ctx.ui.confirm("SapBuddy 写操作确认", `AI 请求执行写操作：${name}\n${summary}\n\n允许执行吗？`)
-      if (ok) return
+      if (ok) {
+        appendAudit({ event: "approved", tool: name, objects: extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined, reason: "ui_confirm" })
+        return
+      }
+      appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: "user_reject" })
       return { block: true, reason: `⛔ 用户拒绝了写操作 ${name}。请调整方案，不要再次尝试该写操作。` }
     }
     // Web/headless：拦截并提示 AI 先出计划，等待用户手动输入确认
     opts?.onBlocked?.({"toolName": name, "input": event.input})
+    appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined, reason: "confirm_required" })
     return {
       block: true,
       reason:
         `⛔ 写操作需人工确认（已拦截，未执行）：${name}\n` +
         `请先把本次改动计划完整展示给用户（改哪个对象/文件、具体改动内容），并明确请求确认。\n` +
-        `用户在对话中输入"确认/同意/批准/执行"后重试本工具即可放行；若用户提出修改意见，则按新需求调整计划后再请求确认。`,
+        `用户在对话中输入"确认/同意/批准/执行"后重试本工具即可放行；若用户提出修改意见，则按新需求调整方案后再请求确认。`,
     }
   })
 }
@@ -508,32 +555,46 @@ connectionId 缺省用 get_connected_systems 第一个。`,
         try {
           const p = (params ?? {}) as Record<string, unknown>
           // 内容级强制规则：写入代码前硬校验（硬编码中文 / 裸内置类型）——纯本地检查，不触连接
-          if (t.name === "replace_string_in_abap_object" && typeof p.newString === "string") {
-            const violations = scanCodeViolations(p.newString)
-            if (violations.length > 0) {
-              return {
-                content: [{
-                  type: "text" as const,
-                  text: `⛔ 代码级规则拦截（不依赖 AI 自觉，写前硬校验）：\n${violations.join("\n")}\n\n请修正后重试：硬编码中文 → 消息类/文本元素；自建结构/表字段裸内置类型 → DDIC 数据元素（找不到则创建 Z 元素 + 域）。`,
-                }],
-                details: {},
-                isError: true,
+          // 局部替换用 newString、整段覆盖用 fullSource，两者都检查（fullSource 是写函数模块的推荐路径，不能漏）
+          if (t.name === "replace_string_in_abap_object") {
+            const code = p.newString ?? p.fullSource
+            if (typeof code === "string") {
+              const violations = scanCodeViolations(code)
+              if (violations.length > 0) {
+                return {
+                  content: [{
+                    type: "text" as const,
+                    text: `⛔ 代码级规则拦截（不依赖 AI 自觉，写前硬校验）：\n${violations.join("\n")}\n\n请修正后重试：硬编码中文 → 消息类/文本元素；自建结构/表字段裸内置类型 → DDIC 数据元素（找不到则创建 Z 元素 + 域）。`,
+                  }],
+                  details: {},
+                  isError: true,
+                }
               }
             }
           }
-          // 每连接互斥锁：同一连接上的工具调用串行执行，防止并行调用踩踏共享 ADTClient
-          // （cookie jar / stateful 会话竞争 → 解锁命中错误会话 → 残留编辑锁）
+          // 读/写并发策略：
+          // - 写工具在工具级独占锁内执行（lock→改→存→激活 必须原子，防止 cookie jar / stateful
+          //   会话被并行踩踏 → 解锁命中错误会话 → 残留编辑锁）
+          // - 读工具直接执行，由客户端包装层的读闸门限制每连接并发读 ≤ READ_CONCURRENCY
+          //   （防止一次分析几十个对象时对 SAP 打出请求洪峰）
           const connId = await resolveConnectionId(p.connectionId as string | undefined)
-          const text = await withConnMutex(connId, async () => {
-            // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
-            if (t.write) {
-              await assertDevClient(connId)
-            }
-            return t.execute((params ?? {}) as Record<string, unknown>)
-          })
+          const text = t.write
+            ? await withConnMutex(connId, async () => {
+                // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
+                await assertDevClient(connId)
+                return t.execute((params ?? {}) as Record<string, unknown>)
+              })
+            : await t.execute((params ?? {}) as Record<string, unknown>)
+          // 写操作成功执行 → 记审计（谁/何时/改了哪个对象）
+          if (t.write) {
+            appendAudit({ event: "executed", tool: t.name, objects: extractObjectNames(p), connectionId: connId })
+          }
           return { content: [{ type: "text" as const, text }], details: {} }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
+          if (t.write) {
+            appendAudit({ event: "failed", tool: t.name, objects: extractObjectNames(params), connectionId: String((params as Record<string, unknown>)?.connectionId ?? "") || undefined, reason: msg.slice(0, 200) })
+          }
           return {
             content: [{ type: "text" as const, text: `SAP 工具 ${t.name} 执行失败: ${msg}` }],
             details: {},

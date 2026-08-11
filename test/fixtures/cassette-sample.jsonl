@@ -1,0 +1,2 @@
+{"m":"searchObject","args":["ZMMR017","PROG",10],"result":[{"adtcore:name":"ZMMR017","adtcore:type":"PROG/P","adtcore:description":"演示报表","adtcore:packageName":"ZDEV","adtcore:uri":"/sap/bc/adt/programs/programs/zmmr017"}]}
+{"m":"getObjectSource","args":["/sap/bc/adt/programs/programs/zmmr017/source/main"],"result":"REPORT ZMMR017.\n\nWRITE: / 'Hello from cassette'.\nDATA lv_count TYPE i VALUE 42.\n"}

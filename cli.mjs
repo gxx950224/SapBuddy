@@ -302,9 +302,35 @@ async function cmdWeb() {
   process.stdin.resume()
 }
 
+// ── dist/src 同步检查：CLI/Web 加载的是编译产物 dist/，src 改了忘 build 会导致旧代码（含安全修复）不生效 ──
+function checkDistStale() {
+  try {
+    const srcDir = path.join(HERE, "src", "sap-tools")
+    const distFile = path.join(HERE, "dist", "sap-tools", "register.js")
+    if (!fs.existsSync(distFile) || !fs.existsSync(srcDir)) return
+    let newest = 0
+    const walk = (dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name)
+        if (e.isDirectory()) walk(p)
+        else if (/\.(ts|mjs)$/.test(e.name)) {
+          const m = fs.statSync(p).mtimeMs
+          if (m > newest) newest = m
+        }
+      }
+    }
+    walk(srcDir)
+    // 容差 1 秒：同一次构建/安装产生的文件 mtime 可能有亚秒差异
+    if (newest > fs.statSync(distFile).mtimeMs + 1000) {
+      console.log("⚠️  src/sap-tools 有更新但 dist 未重新构建，当前加载的可能是旧代码（安全修复可能不生效）。请运行 npm run build 后再启动。")
+    }
+  } catch { /* 检查失败不阻塞启动 */ }
+}
+
 // ===== 入口 =====
 async function main() {
   const first = args[0]
+  checkDistStale()
   if (first === "tools") return cmdTools()
   if (first === "doctor") return cmdDoctor()
   if (first === "chat") return cmdChat()
