@@ -15,16 +15,22 @@ export const getObjectInfoTool = {
   title: "Get ABAP Object Info",
   description:
     "获取 ABAP 对象的元数据：类型、名称、URI、包、责任人、最后修改时间、子对象列表（如类的 include、程序的事件块）等。" +
-    "适合在深入阅读源码前了解对象结构。",
+    "适合在深入阅读源码前了解对象结构。" +
+    "设 includeStructure=true 可进一步列出：类 → 组件清单（方法/属性/事件）；表/结构 → 字段列表（字段名+类型）。",
   inputSchema: z.object({
     objectName: z.string().describe("对象名称，如 ZCL_MY_CLASS"),
     objectType: objectTypeSchema,
     connectionId: connectionIdSchema,
+    includeStructure: z
+      .boolean()
+      .optional()
+      .describe("是否列出结构明细（类→组件清单，表/结构→字段列表）。默认 false"),
   }),
   async execute(args: {
     objectName: string
     objectType?: string
     connectionId?: string
+    includeStructure?: boolean
   }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
@@ -61,9 +67,71 @@ export const getObjectInfoTool = {
           }
         }
       }
+
+      if (args.includeStructure) {
+        if (isClassStructure(structure)) {
+          try {
+            const comps = await client.classComponents(obj["adtcore:uri"])
+            const flat = flattenComponents(comps)
+            if (flat.length > 0) {
+              lines.push("", `类组件（${flat.length} 个）:`)
+              for (const c of flat) {
+                const vis = c.visibility ? `[${c.visibility}]` : ""
+                const extra = c.constant ? " CONST" : c.readOnly ? " READ-ONLY" : ""
+                lines.push(`  - ${c.name}  (${c.type})${vis}${extra}`)
+              }
+            }
+          } catch {
+            lines.push("", "（类组件清单获取失败）")
+          }
+        } else {
+          try {
+            const fields = await client.objectStructureElements(obj["adtcore:uri"])
+            if (fields.length > 0) {
+              lines.push("", `结构字段（${fields.length} 个）:`)
+              for (const f of fields.slice(0, 200)) {
+                const t = f.type ?? f.name
+                const d = f.description ? `  - ${f.description}` : ""
+                lines.push(`  - ${f.name}  ${t}${d}`.trimEnd())
+              }
+              if (fields.length > 200) lines.push(`  ... 其余 ${fields.length - 200} 个省略`)
+            }
+          } catch {
+            lines.push("", "（结构字段列表获取失败）")
+          }
+        }
+      }
       return lines.join("\n")
     } catch (err) {
       return toToolError(err)
     }
   },
+}
+
+/** 递归展开 ClassComponent 树为扁平列表（顶层名称已含在结构里，这里取叶子组件） */
+function flattenComponents(node: { components?: ClassComponentNode[] }, prefix = ""): Array<{ name: string; type: string; visibility: string; constant?: boolean; readOnly?: boolean }> {
+  const out: Array<{ name: string; type: string; visibility: string; constant?: boolean; readOnly?: boolean }> = []
+  for (const c of node.components ?? []) {
+    if (c.components?.length) {
+      out.push(...flattenComponents(c, `${prefix}${c["adtcore:name"]}.`))
+    } else {
+      out.push({
+        name: `${prefix}${c["adtcore:name"]}`,
+        type: c["adtcore:type"] ?? "?",
+        visibility: c.visibility ?? "",
+        constant: c.constant,
+        readOnly: c.readOnly,
+      })
+    }
+  }
+  return out
+}
+
+interface ClassComponentNode {
+  "adtcore:name": string
+  "adtcore:type": string
+  visibility: string
+  constant?: boolean
+  readOnly?: boolean
+  components?: ClassComponentNode[]
 }

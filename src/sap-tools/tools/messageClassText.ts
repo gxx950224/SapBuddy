@@ -165,6 +165,11 @@ export const translateMessageClassTool = {
       const cls = (args.messageClass ?? "").trim().toUpperCase()
 
       if (!cls) return "需要 messageClass 参数（消息类名，如 ZFI001）。"
+      // 命名空间强制：只能处理 Z*/Y* 开头的二开消息类（copy 可带 % 通配，如 ZFI%）
+      const clsLiteral = cls.replace(/[%*]+$/, "")
+      if (!clsLiteral || !/^[ZY]/.test(clsLiteral)) {
+        return `⛔ 只能处理 Z*/Y* 开头的二开消息类（如 ZFI001、ZFI%），SAP 标准消息类（如 00）只读不写。`
+      }
       if (!resolveLanguageSpec(tgt)) return `⛔ 无法识别的目标语言: "${tgt}"。${LANG_KEY_HELP}`
       if (args.sourceLanguage && !resolveLanguageSpec(args.sourceLanguage)) {
         return `⛔ 无法识别的源语言: "${args.sourceLanguage}"。${LANG_KEY_HELP}`
@@ -224,23 +229,28 @@ export const translateMessageClassTool = {
         client.stateful = session_types.stateless
       }
 
+      // 临时类统一清理：激活失败也必须删，否则 $TMP 残留 ZCL_MSAGTR* 类
+      const cleanup = async () => {
+        const oldState2 = client.stateful
+        client.stateful = session_types.stateful
+        try {
+          const lock2 = await client.lock(uri).catch(() => undefined)
+          if (lock2) {
+            await client.deleteObject(uri, lock2.LOCK_HANDLE, undefined).catch(() => undefined)
+            await client.unLock(uri, lock2.LOCK_HANDLE).catch(() => undefined)
+          }
+        } catch { /* 清理失败不影响结果 */ } finally {
+          client.stateful = oldState2
+        }
+      }
+
       const act = await client.activate(className, uri)
       if (!act.success) {
+        await cleanup()
         return `激活失败: ${act.messages?.map((m) => m.shortText).join("; ").slice(0, 200)}`
       }
       const result = String(await client.runClass(className)).trim()
-
-      const oldState2 = client.stateful
-      client.stateful = session_types.stateful
-      try {
-        const lock2 = await client.lock(uri).catch(() => undefined)
-        if (lock2) {
-          await client.deleteObject(uri, lock2.LOCK_HANDLE, undefined).catch(() => undefined)
-          await client.unLock(uri, lock2.LOCK_HANDLE).catch(() => undefined)
-        }
-      } catch { /* 清理失败不影响结果 */ } finally {
-        client.stateful = oldState2
-      }
+      await cleanup()
 
       if (/SELFCHECK-FAIL/i.test(result)) {
         return `❌ 消息类 ${cls} 翻译后自检未通过（目标语言 ${tgt}），已回滚不落库：\n${result}`

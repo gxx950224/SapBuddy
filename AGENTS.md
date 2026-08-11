@@ -2,14 +2,14 @@
 
 ## 项目简介
 
-SapBuddy：SAP ABAP AI 全能助手，面向开发顾问与业务顾问。基于 pi-coding-agent（AI Agent 引擎）与 abap-adt-api（SAP ADT 协议），通过自然语言驱动 44 个 SAP 工具。CLI + Web 双模式，跨平台。
+SapBuddy：SAP ABAP AI 全能助手，面向开发顾问与业务顾问。基于 pi-coding-agent（AI Agent 引擎）与 abap-adt-api（SAP ADT 协议），通过自然语言驱动 48 个 SAP 工具。CLI + Web 双模式，跨平台。
 
 ## 核心架构
 
 ```
 cli.mjs ──► src/agent-core.mjs ──► pi SDK (AgentSession)
                │
-               └── src/sap-tools/    # 44 个 SAP 工具（纯 Node）
+               └── src/sap-tools/    # 48 个 SAP 工具（纯 Node）
                     ├── tools/*.ts      工具实现（zod schema + execute）
                     ├── adtManager.ts   SAP 连接池（basic/OAuth2）
                     ├── config.ts       连接配置加载

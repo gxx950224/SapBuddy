@@ -79,13 +79,18 @@ export const traceAnalysisTool = {
   name: "analyze_abap_traces",
   title: "Analyze ABAP Traces",
   description:
-    "分析 ABAP 性能追踪（ST05）：列出用户的追踪请求，或查看单个追踪的命中明细（表访问、语句耗时）。用于性能瓶颈分析。",
+    "分析 ABAP 性能追踪（ST05）：列出用户的追踪请求，或查看单个追踪的命中明细。" +
+    "analyze_trace=命中列表（粗粒度）；statements=SQL 语句明细（看具体哪条语句慢）；db_access=数据库表访问明细（看哪张表慢）。" +
+    "delete_trace=删除某个追踪。用于性能瓶颈定位。",
   inputSchema: z.object({
-    action: z.enum(["list_traces", "analyze_trace"]).describe("list_traces=列出追踪请求; analyze_trace=分析单个追踪的命中明细"),
-    traceId: z.string().optional().describe("追踪 ID（analyze_trace 必填）"),
+    action: z
+      .enum(["list_traces", "analyze_trace", "statements", "db_access", "delete_trace"])
+      .describe("list_traces=列出追踪请求; analyze_trace=命中列表; statements=语句明细; db_access=DB表访问明细; delete_trace=删除追踪"),
+    traceId: z.string().optional().describe("追踪 ID（analyze_trace/statements/db_access/delete_trace 必填）"),
+    maxResults: z.number().int().min(1).max(500).optional().describe("statements/db_access 最大返回条数，默认 100"),
     connectionId: connectionIdSchema,
   }),
-  async execute(args: { action: string; traceId?: string; connectionId?: string }): Promise<string> {
+  async execute(args: { action: string; traceId?: string; maxResults?: number; connectionId?: string }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
       const client = await getClient(connId)
@@ -120,6 +125,46 @@ export const traceAnalysisTool = {
         }
         if (items.length > 100) lines.push(`... 其余 ${items.length - 100} 条省略`)
         return lines.join("\n")
+      }
+
+      if (args.action === "statements") {
+        if (!args.traceId) return "statements 需要 traceId 参数（先用 list_traces 获取）。"
+        const max = Math.min(args.maxResults ?? 100, 500)
+        const data = await client.tracesStatements(args.traceId)
+        const stmts = data?.statements ?? []
+        if (stmts.length === 0) return `追踪 ${args.traceId} 无语句明细。`
+        const lines = [`追踪 ${args.traceId} 语句明细（${stmts.length} 条，显示前 ${Math.min(max, stmts.length)} 条）:`, ""]
+        for (const s of stmts.slice(0, max)) {
+          const ms = s.grossTime?.time ?? 0
+          const prog = s.callingProgram?.name ? ` [${s.callingProgram.name}]` : ""
+          lines.push(`- ${s.description}  [耗时: ${ms}ms] [命中: ${s.hitCount}]${prog}`)
+        }
+        if (stmts.length > max) lines.push(`... 其余 ${stmts.length - max} 条省略`)
+        return lines.join("\n")
+      }
+
+      if (args.action === "db_access") {
+        if (!args.traceId) return "db_access 需要 traceId 参数（先用 list_traces 获取）。"
+        const max = Math.min(args.maxResults ?? 100, 500)
+        const data = await client.tracesDbAccess(args.traceId)
+        const dbs = data?.dbaccesses ?? []
+        if (dbs.length === 0) return `追踪 ${args.traceId} 无数据库访问明细。`
+        // 按总耗时降序，把最慢的表放前面
+        const sorted = [...dbs].sort((a, b) => (b.accessTime?.total ?? 0) - (a.accessTime?.total ?? 0))
+        const lines = [`追踪 ${args.traceId} 数据库访问明细（按耗时降序，显示前 ${Math.min(max, sorted.length)} 条）:`, ""]
+        for (const d of sorted.slice(0, max)) {
+          const ms = d.accessTime?.total ?? 0
+          const buffered = d.bufferedCount ? ` (缓冲 ${d.bufferedCount})` : ""
+          lines.push(`- 表 ${d.tableName}  [耗时: ${ms}ms] [访问: ${d.totalCount}${buffered}]  ${d.statement || ""}`)
+        }
+        if (sorted.length > max) lines.push(`... 其余 ${sorted.length - max} 条省略`)
+        return lines.join("\n")
+      }
+
+      if (args.action === "delete_trace") {
+        if (!args.traceId) return "delete_trace 需要 traceId 参数。"
+        await client.tracesDelete(args.traceId)
+        return `已删除追踪 ${args.traceId}。`
       }
       return `未知操作: ${args.action}`
     } catch (err) {

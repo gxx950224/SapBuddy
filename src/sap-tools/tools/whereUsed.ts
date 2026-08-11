@@ -14,18 +14,24 @@ export const whereUsedTool = {
   title: "Find Where Used",
   description:
     "查找 ABAP 对象被引用的位置（where-used）：哪些对象调用了它、使用了它。" +
-    "用于变更影响分析、依赖分析。返回引用对象的名称、类型、包和使用信息。",
+    "用于变更影响分析、依赖分析。返回引用对象的名称、类型、包和使用信息。" +
+    "可设置 includeSnippets=true 附上引用处那一段代码，直接看引用上下文（比只报位置更能判断影响）。",
   inputSchema: z.object({
     objectName: z.string().describe("对象名称，如 ZCL_MY_CLASS、ZREPORT、结构 ZS_HEADER"),
     objectType: objectTypeSchema,
     connectionId: connectionIdSchema,
     maxResults: z.number().int().min(1).max(200).optional().describe("最大返回条数，默认 50"),
+    includeSnippets: z
+      .boolean()
+      .optional()
+      .describe("是否附上每处引用的代码片段（默认 false；开启会额外请求服务器，返回内容更多）"),
   }),
   async execute(args: {
     objectName: string
     objectType?: string
     connectionId?: string
     maxResults?: number
+    includeSnippets?: boolean
   }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
@@ -44,10 +50,10 @@ export const whereUsedTool = {
         return `${obj["adtcore:type"]} ${args.objectName} 未找到引用。可能未被任何对象使用，或引用分析被授权限制。`
       }
 
-      const lines: string[] = [
-        `${obj["adtcore:type"]} ${args.objectName} 被 ${refs.length} 处引用${max < refs.length ? `（显示前 ${max} 条）` : ""}:\n`,
-      ]
       const shown = refs.slice(0, max)
+      const lines: string[] = [
+        `${obj["adtcore:type"]} ${args.objectName} 被 ${refs.length} 处引用${max < refs.length ? `（显示前 ${max} 条）` : ""}:`,
+      ]
       for (const r of shown) {
         const type = r["adtcore:type"] ?? "?"
         const name = r["adtcore:name"] ?? r.objectIdentifier
@@ -58,6 +64,24 @@ export const whereUsedTool = {
       }
       if (refs.length > max) {
         lines.push("", `提示: 还有 ${refs.length - max} 条未显示，可用更大的 maxResults 获取。`)
+      }
+
+      if (args.includeSnippets && shown.length > 0) {
+        try {
+          const snippets = await client.usageReferenceSnippets(shown)
+          lines.push("", "引用处代码片段:")
+          for (const s of snippets) {
+            const refName = s.objectIdentifier || "?"
+            for (const sn of s.snippets ?? []) {
+              const where = sn.uri?.uri ? sn.uri.uri.split("/").pop() : refName
+              const at = sn.uri?.start ? ` @${sn.uri.start.line}:${sn.uri.start.column}` : ""
+              const content = String(sn.content ?? "").replace(/\s+/g, " ").trim()
+              lines.push(`- ${where}${at}: ${content.slice(0, 200)}`)
+            }
+          }
+        } catch {
+          lines.push("", "（引用代码片段获取失败，仅显示位置信息）")
+        }
       }
       return lines.join("\n")
     } catch (err) {

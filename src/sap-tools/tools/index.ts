@@ -1,4 +1,4 @@
-/** 工具注册表：导出全部 44 个工具（直接作为 pi customTools 注册） */
+/** 工具注册表：导出全部 48 个工具（直接作为 pi customTools 注册） */
 import { z } from "zod"
 import { connectedSystemsTool } from "./connectedSystems.js"
 import { searchObjectsTool } from "./searchObjects.js"
@@ -17,6 +17,8 @@ import { updateDomainTool } from "./domainProps.js"
 import { translateTextPoolTool } from "./textPool.js"
 import { translateMessageClassTool } from "./messageClassText.js"
 import { translateScreenTextTool } from "./screenText.js"
+import { readTableContentsTool } from "./dataTable.js"
+import { findCodeDefinitionTool, getClassHierarchyTool, getAbapDocumentationTool } from "./codeNav.js"
 
 export interface ToolDef {
   name: string
@@ -49,12 +51,13 @@ export const tools: ToolDef[] = [
   diagnosticsTool,
   createTestIncludeTool,
   updateDescriptionTool,
-  // 质量/测试/数据（5）
+  // 质量/测试/数据（6）
   runUnitTestsTool,
   atcTool,
   atcDecorationsTool,
   dataQueryTool,
   sqlSyntaxTool,
+  readTableContentsTool,
   // 传输/文本（2）
   transportTool,
   textElementsTool,
@@ -71,6 +74,10 @@ export const tools: ToolDef[] = [
   sapSystemInfoTool,
   adtDiscoveryTool,
   documentationTool,
+  // 代码导航（3）
+  findCodeDefinitionTool,
+  getClassHierarchyTool,
+  getAbapDocumentationTool,
   // DDIC 文本修复（1）
   fixDdicTextTool,
   // 域属性（1）

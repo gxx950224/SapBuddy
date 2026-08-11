@@ -147,13 +147,26 @@ export const fixDdicTextTool = {
       const types = args.types?.length ? args.types : (["data_element", "domain"] as const)
 
       // 校验参数
-      if (args.mode === "copy" && !args.prefix) return "copy 模式需要 prefix 参数（对象名前缀）。"
+      if (args.mode === "copy") {
+        if (!args.prefix) return "copy 模式需要 prefix 参数（对象名前缀）。"
+        // 命名空间强制：只能处理 Z*/Y* 开头的二开对象范围（前缀可带尾部通配如 ZE_%）
+        const pLiteral = args.prefix.trim().replace(/[%*]+$/, "")
+        if (!pLiteral || !/^[ZY]/i.test(pLiteral)) {
+          return `⛔ prefix 必须限定 Z*/Y* 开头的二开对象范围（如 ZE_%、ZD_AI004），SAP 标准对象只读不写。`
+        }
+      }
       if (args.mode === "set" && (!args.texts || args.texts.length === 0)) {
         return "set 模式需要 texts 参数（[{name, text}]）。"
       }
       if (args.mode === "set" && args.texts) {
-        const bad = args.texts.filter((t) => !/^[A-Z0-9_/]{1,30}$/.test(t.name.toUpperCase()))
-        if (bad.length > 0) return `非法的对象名: ${bad.map((b) => b.name).join(", ")}（仅字母数字下划线）`
+        // 命名空间强制：只写 Z*/Y* 开头的二开对象（标准 DDIC 对象只读不写）
+        const bad = args.texts.filter((t) => {
+          const n = t.name.trim().toUpperCase()
+          return !/^[A-Z0-9_/]{1,30}$/.test(n) || !/^[ZY]/.test(n)
+        })
+        if (bad.length > 0) {
+          return `非法的对象名: ${bad.map((b) => b.name).join(", ")}（仅限 Z*/Y* 开头的字母数字下划线，SAP 标准对象只读不写）`
+        }
       }
 
       // 动态类名（固定名 + 进程随机后缀避免并发冲突）
@@ -198,24 +211,28 @@ export const fixDdicTextTool = {
         client.stateful = session_types.stateless
       }
 
+      // 临时类统一清理：激活失败也必须删，否则 $TMP 残留 ZCL_DDICTXT* 类
+      const cleanup = async () => {
+        try {
+          const oldState2 = client.stateful
+          client.stateful = session_types.stateful
+          const lock2 = await client.lock(uri).catch(() => undefined)
+          if (lock2) {
+            await client.deleteObject(uri, lock2.LOCK_HANDLE, undefined).catch(() => undefined)
+            await client.unLock(uri, lock2.LOCK_HANDLE).catch(() => undefined)
+          }
+          client.stateful = oldState2
+        } catch { /* 清理失败不影响结果 */ }
+      }
+
       // 激活 + 运行
       const act = await client.activate(className, uri)
       if (!act.success) {
+        await cleanup()
         return `激活失败: ${act.messages?.map((m) => m.shortText).join("; ").slice(0, 200)}`
       }
       const result = String(await client.runClass(className)).trim()
-
-      // 清理临时类
-      try {
-        const oldState2 = client.stateful
-        client.stateful = session_types.stateful
-        const lock2 = await client.lock(uri).catch(() => undefined)
-        if (lock2) {
-          await client.deleteObject(uri, lock2.LOCK_HANDLE, undefined).catch(() => undefined)
-          await client.unLock(uri, lock2.LOCK_HANDLE).catch(() => undefined)
-        }
-        client.stateful = oldState2
-      } catch { /* 清理失败不影响结果 */ }
+      await cleanup()
 
       if (/^Error:/i.test(result)) {
         return `❌ DDIC 文本写入失败（目标语言 ${tgt}）：${result}`

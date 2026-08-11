@@ -153,7 +153,14 @@ export const documentationTool = {
         "23. create_mermaid_diagram / validate_mermaid_syntax / get_mermaid_documentation / detect_mermaid_diagram_type - Mermaid 图表\n" +
         "24. create_object_programmatically / abap_activate / replace_string_in_abap_object / create_test_include - 写操作（需 readOnly=false）\n" +
         "25. get_abap_diagnostics - 语法检查\n" +
-        "26. abap_debug_* - 调试（独立部署不支持，需 VS Code）"
+        "26. abap_debug_* - 调试（独立部署不支持，需 VS Code）\n" +
+        "27. read_table_contents - 直接读表（不用写 SQL，限行数，只读）\n" +
+        "28. find_code_definition - 定位标识符定义处\n" +
+        "29. get_class_hierarchy - 类的父/子继承结构\n" +
+        "30. get_abap_documentation - 查询 ABAP 帮助文档\n" +
+        "31. find_where_used(includeSnippets=true) - 引用分析带代码片段\n" +
+        "32. get_abap_object_info(includeStructure=true) - 类组件/表字段清单\n" +
+        "33. analyze_abap_traces(statements/db_access) - 追踪语句与DB访问明细"
       )
     }
     if (topic.includes("edit")) {

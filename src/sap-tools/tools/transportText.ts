@@ -129,8 +129,10 @@ export const transportTool = {
           // 读详情拿请求属性，再 PUT 完整 tm:request（实测 ADT 支持，未释放请求可改描述）
           const details = await client.transportDetails(args.transportNumber)
           const d = details as unknown as Record<string, string>
-          const esc = escapeXmlAttr(String(args.description))
-          const body = `<?xml version="1.0" encoding="ASCII"?><tm:root xmlns:tm="http://www.sap.com/cts/adt/tm"><tm:request tm:number="${args.transportNumber}" tm:owner="${d["tm:owner"] ?? ""}" tm:desc="${esc}" tm:type="${d["tm:type"] ?? "K"}" tm:status="${d["tm:status"] ?? "D"}" tm:target="${d["tm:target"] ?? ""}"/></tm:root>`
+          // ⛔ 所有拼进 XML 属性的值一律转义（含 transportNumber/owner/type/status/target），
+          // 防止请求号或详情文本含引号/& 等字符时注入额外 XML 属性。
+          const esc = (v: unknown) => escapeXmlAttr(String(v ?? ""))
+          const body = `<?xml version="1.0" encoding="ASCII"?><tm:root xmlns:tm="http://www.sap.com/cts/adt/tm"><tm:request tm:number="${esc(args.transportNumber)}" tm:owner="${esc(d["tm:owner"])}" tm:desc="${esc(args.description)}" tm:type="${esc(d["tm:type"])}" tm:status="${esc(d["tm:status"])}" tm:target="${esc(d["tm:target"])}"/></tm:root>`
           await client.httpClient.request(`/sap/bc/adt/cts/transportrequests/${args.transportNumber}`, {
             method: "PUT",
             headers: {
@@ -272,8 +274,12 @@ export const textElementsTool = {
           for (const el of args.elements) merged.set(el.id, el.text)
           elements = [...merged.entries()].map(([id, text]) => ({ id, text, maxLength: Math.max(30, text.length) }))
         } catch {
-          // 读取失败则仅用传入列表（不阻塞写入）
-          elements = args.elements.map((e) => ({ ...e, maxLength: Math.max(30, e.text.length) }))
+          // 读取失败必须中止：setTextElements 是全量替换语义，若退化为"只写传入列表"会把
+          // 原有 TEXT-001/002 等符号全部清空还报成功（数据丢失伪装成功）。宁可让用户重试。
+          throw new Error(
+            `读取现有文本元素失败，已中止写入（避免全量覆盖清空原有符号）。` +
+            `请检查连接/权限后重试，或先用 action="read" 确认当前文本元素内容。`
+          )
         }
       }
       const oldState = client.stateful

@@ -12,6 +12,11 @@
 ├─ 查对象是否存在 → §1.1 search_abap_objects
 ├─ 读源码/看逻辑  → §1.2 get_abap_object_lines
 ├─ 谁调用了我     → §1.3 find_where_used
+├─ 变量/方法定义在哪儿 → §1.4 find_code_definition
+├─ 类的父类/子类  → §1.4 get_class_hierarchy
+├─ 对象信息/激活状态 → §1.5 get_abap_object_info
+├─ 某语句/方法用法文档 → §1.6 get_abap_documentation
+├─ 直接读表内容   → §1.7 read_table_contents
 ├─ 创建程序/类    → §2（4 步流程）
 ├─ 修改代码       → §3（请求处理 + 替换）
 ├─ 激活           → §2.4 abap_activate
@@ -50,6 +55,35 @@
 ```json
 { "objectName": "ZCL_X", "objectType": "CLAS" }
 ```
+> 返回调用方清单（含调用片段）。**先查知识库对象页的 `used_by`** 拿已整理的影响清单，再实测核实。
+
+### 1.4 代码定位 / 类结构
+```json
+// 定位某行某个标识符（变量/方法/类）的定义处（先 get_abap_object_lines 拿行号，再传 line+token）
+{ "objectName": "ZCL_X", "objectType": "CLAS", "line": 42, "token": "GET_DATA" }
+// 类继承链：superTypes=true 查父类/接口，false 查子类
+{ "objectName": "ZCL_X", "objectType": "CLAS", "superTypes": true }
+```
+> `find_code_definition` 需要行号 + 该行标识符文字；`get_class_hierarchy` 只需类名。两者都只读。
+
+### 1.5 对象信息 / 激活状态
+```json
+{ "objectName": "ZCL_X", "objectType": "CLAS", "withStructure": true }
+```
+> `withStructure=true` 列出组件清单（类→组件/表→字段）。**报完成前用它核对激活状态**（active/inactive）。
+
+### 1.6 ABAP 文档说明
+```json
+{ "objectName": "ZAIR004", "objectType": "PROG", "line": 15, "token": "CALL FUNCTION" }
+```
+> 给源码对象 + 行号 + 标识符，返回该元素（语句/方法/类/函数）的 ADT 官方说明，无需读全量源码。
+
+### 1.7 直接读表内容
+```json
+{ "tableName": "T001", "rowLimit": 20 }
+{ "tableName": "MARC", "filter": "WERKS = '1000' AND MATNR LIKE 'Z%'", "rowLimit": 50 }
+```
+> 只读，默认 50 行、最大 500。`filter` 是 WHERE 子句内容（不带 WHERE 关键字）。
 
 ---
 
@@ -110,13 +144,13 @@
 
 ### 4.3 消息类翻译（SE91 / T100）
 ```json
-// 先 list 看现有条目与消息号
-{ "objectName": "ZBC_ITS001", "mode": "list", "targetLanguage": "V" }
-// 按消息号 set 写入
-{ "objectName": "ZBC_ITS001", "mode": "set", "targetLanguage": "V",
+// copy：把源语言消息文本复制为目标语言（messageClass 可带 % 通配批量）
+{ "messageClass": "ZFI%", "mode": "copy", "sourceLanguage": "E", "targetLanguage": "V" }
+// set：按消息号直接写翻译文本
+{ "messageClass": "ZBC_ITS001", "mode": "set", "targetLanguage": "V",
   "messages": [ { "msgNumber": "001", "text": "物料不存在" } ] }
 ```
-> 只用于**消息类**（SE91 对象）；文本符号/屏幕文字别用错工具。`targetLanguage` 传语言键（VI 越南语由 T002 反查自动解析，传 `VI` 或「越南」）。set 前会自动校验消息号在 T100 存在，不存在报 NOMSG 并回滚。**写入自动挂传输请求**。
+> 只用于**消息类**（SE91 对象）；文本符号/屏幕文字别用错工具。消息号自动补 3 位（'1'/'01'→'001'）；`targetLanguage` 传语言键（VI 越南语由 T002 反查自动解析，传 `VI` 或「越南」）。set 前会自动校验消息号在 T100 存在，不存在报 NOMSG 并回滚；写入后自检读回核对，对不上回滚不落库。copy 模式通配批量仅限 Z*/Y* 开头的消息类。
 
 ### 4.4 屏幕文字翻译（D020T / D021T）
 ```json
@@ -149,7 +183,7 @@
 ```json
 { "sqlQuery": "SELECT BUKRS, BUTXT FROM T001 WHERE BUKRS = '1000'", "limit": 50 }
 ```
-> 仅 SELECT/WITH；禁止 INSERT/UPDATE/DELETE 等（会被拦截）；`limit` 默认 50 最大 1000。
+> 仅 SELECT/WITH；禁止 INSERT/UPDATE/DELETE 等（会被拦截）；`limit` 默认 50 最大 1000。简单读表（不 join 不聚合）也可用 §1.7 `read_table_contents`。
 
 ---
 
@@ -162,12 +196,16 @@
 ## §8 诊断（崩溃 / 性能）
 
 ```json
-// ST22 崩溃转储
-{ "action": "list", "maxResults": 10 }                    // 列最近 dumps
-{ "action": "get", "dumpId": "20260802000000" }           // 查单个
-// ST05 性能追踪
-{ "action": "list" }                                      // 列追踪请求
-{ "action": "get", "traceId": "..." }                     // 查命中明细
+// ST22 崩溃转储（analyze_abap_dumps）
+{ "action": "list_dumps", "maxResults": 10 }              // 列最近 dumps（dumpId 从结果复制）
+{ "action": "analyze_dump", "dumpId": "20260802000000..." }  // 查单个 dump 详情
+
+// ST05 性能追踪（analyze_abap_traces）
+{ "action": "list_traces" }                               // 列当前用户的追踪请求
+{ "action": "analyze_trace", "traceId": "..." }           // 命中列表（粗粒度）
+{ "action": "statements", "traceId": "..." }              // SQL 语句明细（哪条慢）
+{ "action": "db_access", "traceId": "..." }               // DB 表访问明细（哪张表慢，按耗时降序）
+{ "action": "delete_trace", "traceId": "..." }            // 删除追踪
 ```
 
 ---
@@ -175,11 +213,15 @@
 ## §9 DDIC
 
 ```json
-// 批量修 DDIC 文本（数据元素/域描述，copy 模式按 prefix）
-{ "mode": "copy", "sourceLanguage": "1", "targetLanguage": "E", "prefix": "ZMM", "types": ["DTEL", "DOMA"] }
-// 改域属性
-{ "domainName": "ZMATNR", "conversionExit": "MATN1", "lowercase": true }
+// 批量修 DDIC 文本（数据元素/域描述，copy 模式按 prefix 限定 Z*/Y* 范围）
+{ "mode": "copy", "sourceLanguage": "1", "targetLanguage": "E", "prefix": "ZMM", "types": ["data_element", "domain"] }
+// set 模式按对象名逐条写入
+{ "mode": "set", "targetLanguage": "1", "types": ["data_element"],
+  "texts": [ { "name": "ZE_AI004_DOCDATE", "text": "单据日期" } ] }
+// 改域属性（仅 Z*/Y* 开头的二开域）
+{ "domainName": "ZD_AI004_SCENARIO", "conversionExit": "ALPHA", "lowercase": true, "sign": false }
 ```
+> `types` 取值 `data_element`（数据元素 DD04T）/ `domain`（域 DD01T），默认两个都处理；`fix_ddic_text` 写文本只允许 Z*/Y* 二开对象范围，`update_domain_properties` 只允许 Z*/Y* 二开域，标准对象只读不写。
 
 ---
 

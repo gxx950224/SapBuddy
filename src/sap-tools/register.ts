@@ -1,5 +1,5 @@
 /**
- * 工具注册适配层：把 44 个 SAP 工具（zod schema）注册为 pi 的 customTools
+ * 工具注册适配层：把 48 个 SAP 工具（zod schema）注册为 pi 的 customTools
  * 直接函数调用，不依赖 MCP 框架
  *
  * 代码级强制规则（不依赖 LLM 遵守，写工具内容写入前硬校验）：
@@ -55,13 +55,26 @@ let pendingWriteObjects: string[] = []
 /** 已批准对象：本次批准窗口内允许执行写操作的对象名（对象级确认，防"批准后 15 分钟随便写"） */
 let approvedObjects: string[] = []
 
-/** 从写工具参数中提取对象名（统一大写；fileUri 取末段并去 /source/main 等子路径后缀） */
+/** 从写工具参数中提取对象名（统一大写；fileUri 取末段并去 /source/main 等子路径后缀）。
+ * 除常规对象名外，也收集翻译工具的写目标（messageClass=消息类、prefix=DDIC 文本前缀、texts[].name=逐条对象名），
+ * 保证审计日志能记录这类"写表"工具的改动范围。 */
 export function extractObjectNames(input: unknown): string[] {
   const o = (input ?? {}) as Record<string, unknown>
   const out = new Set<string>()
   for (const key of ["name", "objectName", "className", "parentName"] as const) {
     const v = o[key]
     if (typeof v === "string" && v.trim()) out.add(v.trim().toUpperCase())
+  }
+  for (const key of ["messageClass", "prefix"] as const) {
+    const v = o[key]
+    if (typeof v === "string" && v.trim()) out.add(v.trim().toUpperCase())
+  }
+  const texts = o.texts
+  if (Array.isArray(texts)) {
+    for (const t of texts) {
+      const n = (t as Record<string, unknown>)?.name
+      if (typeof n === "string" && n.trim()) out.add(n.trim().toUpperCase())
+    }
   }
   const uri = String(o.fileUri ?? "")
   if (uri) {
@@ -111,6 +124,20 @@ function isCustomerFunctionGroupProgram(name: string): boolean {
   return /^(SAPL|L)[ZY]/i.test(name)
 }
 
+/** 从 ADT 对象 URI（/sap/bc/adt/... 或 adt://host/...）提取对象名：
+ * 从右往左跳过资源子路径段（source/main/includes/fmodules/subcomponents 等），取第一个名字段。 */
+function objectNameFromUri(uri: string): string {
+  let path = uri.trim()
+  if (/^adt:\/\//i.test(path)) {
+    try { path = new URL(path).pathname } catch { return "" }
+  }
+  const segs = path.split("/").filter(Boolean)
+  const SKIP = new Set(["source", "main", "includes", "fmodules", "subcomponents", "fragments", "texts", "lines", "methods", "attributes", "events", "types"])
+  while (segs.length && SKIP.has(segs[segs.length - 1].toLowerCase())) segs.pop()
+  const name = segs.pop()
+  return name ? name.toUpperCase() : ""
+}
+
 /** 命名空间强制：写操作对象名必须以 Z 或 Y 开头（SAP 标准对象只读不写）。
  * 函数组内部程序（SAPL<FG>/L<FG>*）按所属函数组判断：函数组为 Z/Y 开头时放行。
  * 只检查明确的"对象名"字段（name/objectName/className/parentName），传输请求号等不参与。
@@ -125,6 +152,27 @@ export function namespaceViolation(input: unknown): string {
       // 函数组内部程序（SAPL<FG>/L<FG><后缀>）：所属函数组为 Z*/Y* 即为客户对象，放行
       if (isCustomerFunctionGroupProgram(n)) continue
       return `对象名 "${n}" 不是 Z*/Y* 开头（SAP 标准对象只读不写）。请确认对象名，或改用只读工具查询。`
+    }
+  }
+  // 工具特定写目标：fix_ddic_text 的 prefix（copy 模式批量对象范围）、translate_message_class 的
+  // messageClass（消息类，copy 可带 % 通配）——同样限定 Z*/Y*，否则 prefix="%" 可批量改全系统文本、
+  // 消息类可写标准类（如 00）。去掉尾部通配符（ZE_% / Z*）后的字面部分必须 Z*/Y* 开头；全通配（%）视为违规。
+  for (const key of ["prefix", "messageClass"] as const) {
+    const v = o[key]
+    if (typeof v !== "string" || !v.trim()) continue
+    const n = v.trim()
+    const literal = n.replace(/[%*]+$/, "").trim()
+    if (!literal || (/^[A-Za-z0-9_/-]+$/.test(literal) && !/^[ZY]/i.test(literal))) {
+      return `对象范围 "${n}" 不是 Z*/Y* 开头（SAP 标准对象只读不写）。请确认对象名，或改用只读工具查询。`
+    }
+  }
+  // fileUri：按文件地址定位对象的写工具（如 replace_string_in_abap_object）只有 URI、没有上面的对象名字段，
+  // 从 URI 提取对象名后同样做 Z*/Y* 校验，堵住"改标准对象不被命名空间卡"的口子。
+  const fileUri = String(o.fileUri ?? "")
+  if (fileUri) {
+    const n = objectNameFromUri(fileUri)
+    if (n && /^[A-Za-z0-9_/-]+$/.test(n) && !/^[ZY]/i.test(n) && !isCustomerFunctionGroupProgram(n)) {
+      return `对象 "${n}"（来自 fileUri ${fileUri.slice(0, 60)}）不是 Z*/Y* 开头（SAP 标准对象只读不写）。请确认对象名，或改用只读工具查询。`
     }
   }
   return ""

@@ -1,6 +1,6 @@
 /**
  * SapBuddy SAP 工具 Pi 扩展（文件扩展）
- * 加载期注册 44 个 SAP 工具 + MCP 外部工具 + 打印启动图标
+ * 加载期注册 48 个 SAP 工具 + MCP 外部工具 + 打印启动图标
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import path from "node:path"
@@ -18,7 +18,7 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   if (!(globalThis as any).__sapbuddy_banner_shown) {
     ;(globalThis as any).__sapbuddy_banner_shown = true
     console.log(SAPBUDDY_BANNER)
-    console.log(`  SapBuddy · SAP ABAP AI 全能助手 · 44 个 SAP 工具 · author:guoxiaoxi · 版本:${SAPBUDDY_VERSION}`)
+    console.log(`  SapBuddy · SAP ABAP AI 全能助手 · 48 个 SAP 工具 · author:guoxiaoxi · 版本:${SAPBUDDY_VERSION}`)
   }
   try {
     registerSapTools(pi)

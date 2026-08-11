@@ -33,7 +33,14 @@ export const updateDomainTool = {
     try {
       const connId = await resolveConnectionId(args.connectionId)
       const client = await getClient(connId)
-      const name = args.domainName.toUpperCase()
+      const name = args.domainName.trim().toUpperCase()
+      // 命名空间强制：只能修改 Z*/Y* 开头的二开域；标准域（CHAR100 等）只读不写
+      if (!/^[A-Z][A-Z0-9_]{1,29}$/.test(name)) {
+        return `域名不合法：应为大写字母/数字/下划线（如 ZD_AI004_SCENARIO）。`
+      }
+      if (!/^[ZY]/i.test(name)) {
+        return `⛔ 只能修改 Z*/Y* 开头的二开域（SAP 标准域只读不写）。请确认域名。`
+      }
       const url = `/sap/bc/adt/ddic/domains/${name.toLowerCase()}`
 
       // 读现有属性

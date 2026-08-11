@@ -8,7 +8,7 @@
  *   POST /api/abort           停止当前生成
  *   POST /api/compress        压缩上下文
  *   GET  /api/state           会话状态（模型/流式/消息数等）
- *   GET  /api/tools           44 个工具清单
+ *   GET  /api/tools           48 个工具清单
  *   GET  /api/history         会话消息历史
  *   GET  /api/sessions        会话列表
  *   POST /api/session/new     新建会话
@@ -793,7 +793,7 @@ const ids = models.map((m) => m.id)
       try { fs.mkdirSync(path.dirname(memoryFile), { recursive: true }); fs.writeFileSync(memoryFile, content ?? ""); return json(res, 200, { success: true }) }
       catch (e) { return json(res, 500, { error: e.message }) }
     }
-    // ── MCP（已直接集成 44 工具，返回空配置）──
+    // ── MCP（已直接集成 48 工具，返回空配置）──
     if (p === "/api/mcp") {
       const { loadMcpServersAll, saveMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
       if (req.method === "POST") {

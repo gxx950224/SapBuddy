@@ -190,7 +190,6 @@ const READ_METHODS = new Set([
   "adtDiscovery",
   "adtCoreDiscovery",
   "adtCompatibiliyGraph",
-  "runClass",
   "tableContents",
   "loadTypes",
   "nodeContents",

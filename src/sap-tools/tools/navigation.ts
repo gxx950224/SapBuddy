@@ -131,10 +131,25 @@ export const getObjectByUriTool = {
   async execute(args: { uri: string; startLine?: number; lineCount?: number; connectionId?: string }): Promise<string> {
     try {
       const connId = await resolveConnectionId(args.connectionId)
+      // ⛔ URI 格式校验：必须是 ADT 对象 URI（/sap/bc/adt/...）。
+      // ① get_abap_object_workspace_uri 返回的「工作区 URI」（adt://...）是 ADT 树定位路径、不是可读源码地址，直接拒绝；
+      // ② 拒绝路径穿越（..）、查询串、锚点与空白——防止任意 URI 直读绕过对象解析（读源码只走对象 URI 通道）。
+      const uri = (args.uri ?? "").trim()
+      if (!/^\/sap\/bc\/adt\/[a-z0-9/._-]+$/i.test(uri) || uri.includes("..")) {
+        return (
+          `⛔ 无效的 ADT 对象 URI: "${args.uri}"（应形如 /sap/bc/adt/oo/classes/zcl_xxx/source/main）。\n` +
+          `请用 get_abap_object_workspace_uri 返回的「ADT 对象 URI」行，不要用 adt:// 工作区 URI。`
+        )
+      }
       const client = await getClient(connId)
-      const source = await readSourceSmart(client, undefined, args.uri)
+      const source = await readSourceSmart(client, undefined, uri)
       const { header, content } = sliceLines(source, args.startLine, args.lineCount)
-      return `URI ${args.uri} 的源码（${header}）:\n\n${content}`
+      // 可识别的对象名（末段前含类型目录的 URI）：非 Z*/Y* 对象仅作只读参考，写操作会被写门禁拦截
+      const lastSeg = uri.split("/").filter(Boolean).pop() ?? ""
+      const note = lastSeg !== "main" && /^[A-Za-z][A-Za-z0-9_]*$/.test(lastSeg) && !/^[ZY]/i.test(lastSeg)
+        ? `\n（${lastSeg} 为 SAP 标准对象，只读参考；写操作会被拦截）`
+        : ""
+      return `URI ${uri} 的源码（${header}）:\n\n${content}${note}`
     } catch (err) {
       return toToolError(err)
     }
