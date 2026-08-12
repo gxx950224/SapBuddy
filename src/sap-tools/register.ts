@@ -21,28 +21,17 @@ import { appendAudit } from "./auditLog.js"
 
 // ── 写操作人工确认（human-in-the-loop）──
 // 所有写工具执行前必须获得用户确认：TUI 弹窗（CLI）或 Web 确认浮层（block 后重放）。
-// 批准后有一个时间窗口，让 AI 一轮内连续完成多个写操作（create→replace→activate）无需逐次确认。
+// 批准后有一个时间窗口（默认 15 分钟，可配置 approvalWindowMinutes），窗口内放行全部写操作，
+// 让 AI 一轮内连续完成多个写操作（create→replace→activate）无需逐次确认。
 let writeApprovalUntil = 0
-/** 用户提前确认（尚无待批准对象）时：放行接下来第一个写操作作为锚点，并把它的对象绑定为本次批准范围 */
-let approveNextWrite = false
 const WRITE_TOOL_NAMES = new Set(
   tools.filter((t) => t.write).map((t) => t.name),
 )
 export function isWriteTool(name: string): boolean {
   return WRITE_TOOL_NAMES.has(name)
 }
-export function setWriteApprovalWindow(ms = 60_000, objects?: string[]): void {
+export function setWriteApprovalWindow(ms = 60_000): void {
   writeApprovalUntil = Date.now() + ms
-  // 批准对象：显式传入优先；否则用最近一次被拦截的写操作涉及的对象。窗口只对它们放行
-  if (objects && objects.length > 0) approvedObjects = objects
-  else if (pendingWriteObjects.length > 0) approvedObjects = [...pendingWriteObjects]
-  else {
-    approvedObjects = []
-    // 用户提前确认（AI 还没尝试过写操作，待批准对象为空）→ 放行下一个写操作作为锚点，
-    // 避免"确认开了窗口但什么都没放行"导致写操作一直拦截
-    approveNextWrite = true
-  }
-  pendingWriteObjects = []
   // 新需求开始 → 共享传输请求重置，让本需求的对象用新请求（同需求内复用）
   resetActiveRequests()
 }
@@ -51,17 +40,9 @@ export function isWriteApproved(): boolean {
 }
 export function clearWriteApproval(): void {
   writeApprovalUntil = 0
-  approvedObjects = []
-  pendingWriteObjects = []
-  approveNextWrite = false
   // 需求取消/拒绝 → 共享请求一并清掉，避免残留影响下次
   resetActiveRequests()
 }
-
-/** 待批准对象：最近一次被拦截的写操作涉及的对象名（批准时按此绑定，窗口内只对它们放行） */
-let pendingWriteObjects: string[] = []
-/** 已批准对象：本次批准窗口内允许执行写操作的对象名（对象级确认，防"批准后 15 分钟随便写"） */
-let approvedObjects: string[] = []
 
 /** 从写工具参数中提取对象名（统一大写；fileUri 取末段并去 /source/main 等子路径后缀）。
  * 除常规对象名外，也收集翻译工具的写目标（messageClass=消息类、prefix=DDIC 文本前缀、texts[].name=逐条对象名），
@@ -368,8 +349,6 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       const act = String((event.input as Record<string, unknown>)?.action || "")
       if (act === "read") return
     }
-    // 记录本次写操作涉及的对象：若被拦截，批准窗口只对它们放行（对象级确认）
-    pendingWriteObjects = extractObjectNames(input)
     // 命名空间强制：只允许 Z*/Y*（代码级兜底，不依赖 LLM 遵守）
     const nsv = namespaceViolation(event.input)
     if (nsv) {
@@ -407,19 +386,11 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         }
       }
     }
-    // 批准窗口内放行（Web 确认后 AI 重放）。对象级绑定：窗口只对已批准的对象放行；
-    // 无对象名的写操作（如建传输请求）窗口内放行；窗口内冒出新对象 → 重新确认
+    // 批准窗口内放行（用户确认后 AI 重放）。窗口时长默认 15 分钟（settings.approvalWindowMinutes 可配），
+    // 窗口内放行全部写操作，无需逐次确认。
     if (isWriteApproved()) {
-      const objs = extractObjectNames(input)
-      if (objs.length === 0 || approveNextWrite || objs.some((o) => approvedObjects.includes(o))) {
-        // 提前确认的锚点：把本次写操作的对象绑定为批准范围，之后窗口内只放行同类对象
-        if (approveNextWrite && objs.length > 0) {
-          approvedObjects = [...objs]
-          approveNextWrite = false
-        }
-        appendAudit({ event: "approved", tool: name, objects: objs.length ? objs : extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined })
-        return
-      }
+      appendAudit({ event: "approved", tool: name, objects: extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined })
+      return
     }
     if (ctx?.hasUI && typeof ctx.ui?.confirm === "function") {
       // CLI/TUI：原生确认弹窗

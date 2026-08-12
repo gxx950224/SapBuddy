@@ -383,17 +383,18 @@ test("临时包写门禁：用户明确确认后 $TMP 放行（确认绑定被�
   assert.equal(r, undefined, "确认被拦截对象后重试应放行")
 })
 
-test("对象级确认：确认对象 A 后，窗口内写对象 B 仍拦截", async () => {
+test("15 分钟授权窗口：确认后窗口内所有写操作放行", async () => {
   clearWriteApproval()
-  await triggerWriteGate(tmpObj, "create_object_programmatically") // 拦截 A，记录待批准 [ZTEST001]
+  // 拦截 A → 用户确认 → 打开授权窗口
+  const first = await triggerWriteGate(tmpObj, "create_object_programmatically")
+  assert.equal(first?.block, true)
   handleUserMessage("确认")
-  // A 放行
+  // 窗口内写 A 放行
   const a = await triggerWriteGate(tmpObj, "create_object_programmatically")
-  assert.equal(a, undefined, "已确认的 A 应放行")
-  // B（另一对象）在同一批准窗口内仍拦截
+  assert.equal(a, undefined, "确认后 A 应放行")
+  // 窗口内写另一个对象 B 也放行（15 分钟授权窗口，不做对象级限制）
   const b = await triggerWriteGate({ ...tmpObj, name: "ZTEST002" }, "create_object_programmatically")
-  assert.equal(b?.block, true, "未确认的 B 应拦截")
-  assert.ok((b?.reason ?? "").includes("写操作需人工确认"), `B 应走通用写确认，实际: ${b?.reason?.slice(0, 80)}`)
+  assert.equal(b, undefined, "确认后窗口内写 B 也应放行")
 })
 
 // ── MCP 外部服务器写工具门禁（installWriteGate：mcp_abap_wiki_* 写工具一律直接拦截，不可确认放行）────
