@@ -118,8 +118,11 @@
           App.refreshState().catch(() => {});
           App.refreshSessions().catch(() => {});
         } else if (payload.kind === "compress_result") {
-          const saved = payload.saved ? `，节省约 ${payload.saved} tokens` : "";
-          App.addSystemNote(`上下文压缩完成${saved}`);
+          const parts = [];
+          if (payload.tokensSaved > 0) parts.push(`节省约 ${App.formatTokens(payload.tokensSaved)} tokens`);
+          if (payload.saved > 0) parts.push(`减少 ${payload.saved} 条消息`);
+          const note = `上下文压缩完成${parts.length ? "，" + parts.join("、") : ""}`;
+          App.addSystemNote(note);
           App.setCompressUI(false);
           if (window._ctxTooltip && window._ctxTooltip.classList.contains("visible")) App.refreshCtxTooltip();
         } else if (payload.kind === "error") {

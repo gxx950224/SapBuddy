@@ -77,6 +77,15 @@ try {
   EXT_TOKENS = Math.max(1000, Math.round(schemaChars * 0.4 / 3.5 + descChars / 3.5))
 } catch { /* 保持 8000 */ }
 
+/** pi SDK 懒加载（对话占用用 buildSessionContext/estimateTokens 做真实估算） */
+let _sdkModule = null
+async function loadPiSdk() {
+  if (!_sdkModule) {
+    _sdkModule = await import(pathToFileURL(path.join(ROOT, "node_modules", "@earendil-works", "pi-coding-agent", "dist", "index.js")).href)
+  }
+  return _sdkModule
+}
+
 // ─── Agent 会话 ────────────────────────────────────────────────────────────
 let agent = null
 let session = null
@@ -237,6 +246,35 @@ function readSessionMessages(file) {
   return msgs
 }
 
+// 统计会话中"用户实际看到"的消息条数（与前端 renderMessageList 口径一致）：
+// 元数据行（session/model_change/thinking_level_change）与 toolResult 不计气泡；
+// 连续多条 assistant 消息合并成一个气泡只算 1 条；空内容 assistant 消息跳过；
+// 空文本 user 消息也跳过但不影响后续 assistant 连续段合并。
+function countVisibleMessages(lines) {
+  let count = 0
+  let prevAssistant = false
+  for (const l of lines) {
+    let e
+    try { e = JSON.parse(l) } catch { continue }
+    const m = e.message
+    if (!m || !m.role) continue
+    if (m.role === "user") {
+      prevAssistant = false
+      let text = ""
+      if (Array.isArray(m.content)) text = m.content.map((c) => c.text || "").join("")
+      else if (typeof m.content === "string") text = m.content
+      if (text) count++
+    } else if (m.role === "assistant") {
+      const empty = !m.content || (Array.isArray(m.content) && m.content.length === 0)
+      if (empty) continue
+      if (!prevAssistant) count++
+      prevAssistant = true
+    }
+    // toolResult：不生成气泡，也不打断 assistant 连续段（与渲染器一致）
+  }
+  return count
+}
+
 // ─── HTTP ───────────────────────────────────────────────────────────────────
 const MIME = {
   ".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8",
@@ -329,12 +367,24 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/compress" && req.method === "POST") {
       try {
+        const sm = session?.sessionManager
+        const countTokens = async () => {
+          if (!sm) return 0
+          try {
+            const sdk = await loadPiSdk()
+            const ctx = sdk.buildSessionContext(sm.getEntries())
+            return ctx.messages.reduce((a, m) => a + sdk.estimateTokens(m), 0)
+          } catch { return 0 }
+        }
         const before = session?.agent?.state?.messages?.length ?? 0
+        const tokensBefore = await countTokens()
         await session?.compact()
         const after = session?.agent?.state?.messages?.length ?? 0
+        const tokensAfter = await countTokens()
         const saved = Math.max(0, before - after)
-        broadcast({ kind: "compress_result", saved, ts: Date.now() })
-        return json(res, 200, { success: true, saved })
+        const tokensSaved = Math.max(0, tokensBefore - tokensAfter)
+        broadcast({ kind: "compress_result", saved, tokensSaved, ts: Date.now() })
+        return json(res, 200, { success: true, saved, tokensSaved })
       } catch (e) {
         const msg = String(e?.message || e)
         if (msg.includes("Nothing to compact")) {
@@ -366,18 +416,46 @@ const server = http.createServer(async (req, res) => {
         if (ctxStatsCache.msgs === msgsNow) return json(res, 200, ctxStatsCache.body)
       }
       const msgs = session?.agent?.state?.messages ?? []
+      // 历史累计消耗（input/output 含重复计数的历史输入，仅作参考；当前占用看 conversation）
       const usage = msgs.reduce((a, m) => ({ input: a.input + (m.usage?.input ?? 0), output: a.output + (m.usage?.output ?? 0) }), { input: 0, output: 0 })
       const t = (txt) => Math.max(1, Math.ceil(String(txt ?? "").length / 3))
       let agents = 0, systemMd = 0, memory = 0, skills = 0
       const readPrompt = (name) => { try { return t(fs.readFileSync(path.join(USER_PI, "prompts", name), "utf8")) } catch { try { return t(fs.readFileSync(path.join(ROOT, name), "utf8")) } catch { return 0 } } }
       try { agents = readPrompt("AGENTS.md") } catch {}
       try { systemMd = readPrompt("SYSTEM.md") } catch {}
-      try { memory = t(fs.readFileSync(memoryFile, "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
-      try { for (const base of [skillsDir, path.join(ROOT, "defaults", "skills")]) { for (const f of fs.readdirSync(base, { recursive: true })) if (String(f).endsWith(".md")) skills += t(fs.readFileSync(path.join(base, String(f)), "utf8")) } } catch {}
+      // 记忆：用户真实记忆（主目录优先，回退项目根）
+      try { memory = t(fs.readFileSync(path.join(USER_PI, "prompts", "Memory.md"), "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
+      // 技能：只统计各技能目录的 SKILL.md（框架实际注入上下文的部分），用户目录优先，同名去重
+      {
+        const seen = new Set()
+        for (const base of [path.join(USER_PI, "skills"), path.join(ROOT, "defaults", "skills")]) {
+          let names = []
+          try { names = fs.readdirSync(base).filter((x) => { try { return fs.statSync(path.join(base, x)).isDirectory() } catch { return false } }) } catch { continue }
+          for (const name of names) {
+            if (seen.has(name)) continue
+            seen.add(name)
+            try { skills += t(fs.readFileSync(path.join(base, name, "SKILL.md"), "utf8")) } catch {}
+          }
+        }
+      }
+      // MCP 工具占用：注册时累计的 schema 估算
+      let mcp = 0
+      try {
+        const { getMcpTokensEstimate } = await import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
+        mcp = getMcpTokensEstimate()
+      } catch { /* 未注册则 0 */ }
+      // 对话占用：当前可见消息的真实 token 估算（非 usage 累加，避免历史重复计数虚高）
+      let conversation = 0
+      try {
+        const sm = agent?.session?.sessionManager
+        if (sm) {
+          const sdk = await loadPiSdk()
+          const ctx = sdk.buildSessionContext(sm.getEntries())
+          conversation = ctx.messages.reduce((a, m) => a + sdk.estimateTokens(m), 0)
+        }
+      } catch { /* 会话未就绪则 0 */ }
       const piAgent = 1500
       const extensions = EXT_TOKENS
-      const mcp = 0
-      const conversation = usage.input + usage.output
       // 设置读取（主目录优先 → 项目根 .SapBuddy 兼容旧版）
       let cfg = {}
       for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json")]) {
@@ -453,28 +531,11 @@ const server = http.createServer(async (req, res) => {
         for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
           const full = path.join(dir, f)
           try {
-            // 性能：只读首尾各 128KB——头部取首条 user 消息做标题，尾部找自定义名。
-            // session_info 由重命名 append 到文件末尾，大文件时超出头部窗口，只读头部会漏掉新名字（重命名"失效"）。
-            const fd = fs.openSync(full, "r")
-            const stat = fs.fstatSync(fd)
-            const WINDOW = 128 * 1024
-            let head = "", tail = ""
-            if (stat.size <= WINDOW) {
-              const buf = Buffer.alloc(stat.size || 1)
-              const read = fs.readSync(fd, buf, 0, stat.size, 0)
-              head = buf.toString("utf8", 0, read)
-              tail = head
-            } else {
-              const hb = Buffer.alloc(WINDOW)
-              fs.readSync(fd, hb, 0, WINDOW, 0)
-              head = hb.toString("utf8")
-              const tb = Buffer.alloc(WINDOW)
-              const tread = fs.readSync(fd, tb, 0, WINDOW, stat.size - WINDOW)
-              tail = tb.toString("utf8", 0, tread)
-            }
-            fs.closeSync(fd)
-            const lineCount = head.split("\n").filter(Boolean).length
-            const firstUserLine = head.split("\n").find((l) => l.includes('"role":"user"'))
+            // 读全文：消息数需精确统计（元数据行/toolResult 不计、连续 assistant 合并成一个气泡），
+            // 会话文件通常在几百 KB 内，本地读取开销可忽略；标题取首条 user 消息，自定义名取末尾 session_info。
+            const lines = fs.readFileSync(full, "utf8").split("\n").filter(Boolean)
+            const messageCount = countVisibleMessages(lines)
+            const firstUserLine = lines.find((l) => l.includes('"role":"user"'))
             let title = ""
             if (firstUserLine) {
               try {
@@ -482,14 +543,13 @@ const server = http.createServer(async (req, res) => {
                 title = (m?.content ?? []).map((c) => c.text || "").join("").slice(0, 40)
               } catch { /* 忽略坏行 */ }
             }
-            // 自定义名称（session_info 事件，pi /name、Ctrl+R 同机制）；新名字 append 在文件末尾，尾部优先
+            // 自定义名称（session_info 事件，pi /name、Ctrl+R 同机制）；新名字 append 在文件末尾，取最后一条
             let customName = ""
             try {
-              const pick = (chunk) => chunk.split("\n").filter((l) => l.includes('"type":"session_info"')).pop()
-              const line = pick(tail) || pick(head)
+              const line = lines.filter((l) => l.includes('"type":"session_info"')).pop()
               if (line) { const i = JSON.parse(line); customName = (i.name || "").trim() }
             } catch { /* 忽略 */ }
-            list.push({ path: full, name: customName || title || "新会话", time: fs.statSync(full).mtimeMs, messageCount: lineCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
+            list.push({ path: full, name: customName || title || "新会话", time: fs.statSync(full).mtimeMs, messageCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
           } catch { /* 忽略 */ }
         }
       }

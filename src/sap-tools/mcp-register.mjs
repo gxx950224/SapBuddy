@@ -9,6 +9,21 @@ import path from "node:path"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "../..")
 
+// 已注册 MCP 工具的 schema 占用估算（与 Web 端 EXT_TOKENS 同口径：
+// 紧凑 JSON Schema ×0.4 /3.5 + 描述 /3.5），供 /api/context-stats 统计 mcp 占用
+let mcpTokenEstimate = 0
+const _mcpSeen = new Set()
+export function getMcpTokensEstimate() { return mcpTokenEstimate }
+function accountMcpToolSchema(toolName, inputSchema, description) {
+  if (_mcpSeen.has(toolName)) return
+  _mcpSeen.add(toolName)
+  try {
+    const schemaStr = JSON.stringify(inputSchema || {})
+    const descStr = String(description || "")
+    mcpTokenEstimate += Math.round(schemaStr.length * 0.4 / 3.5 + descStr.length / 3.5)
+  } catch { /* 估算失败不影响注册 */ }
+}
+
 export async function registerMcpTools(pi) {
   const { loadMcpServers, testServer, callMcpTool } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
   const { jsonSchemaToTypebox } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
@@ -22,6 +37,7 @@ export async function registerMcpTools(pi) {
       }
       for (const t of st.tools) {
         const toolName = `mcp_${name}_${t.name}`
+        accountMcpToolSchema(toolName, t.inputSchema, t.description)
         pi.registerTool({
           name: toolName,
           label: `${name}/${t.name}`,
