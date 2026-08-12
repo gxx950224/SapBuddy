@@ -8,7 +8,7 @@
  *   POST /api/abort           停止当前生成
  *   POST /api/compress        压缩上下文
  *   GET  /api/state           会话状态（模型/流式/消息数等）
- *   GET  /api/tools           48 个工具清单
+ *   GET  /api/tools           41 个工具清单
  *   GET  /api/history         会话消息历史
  *   GET  /api/sessions        会话列表
  *   POST /api/session/new     新建会话

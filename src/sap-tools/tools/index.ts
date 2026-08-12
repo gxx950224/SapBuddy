@@ -1,4 +1,4 @@
-/** 工具注册表：导出全部 48 个工具（直接作为 pi customTools 注册） */
+/** 工具注册表：导出全部 41 个工具（直接作为 pi customTools 注册） */
 import { z } from "zod"
 import { connectedSystemsTool } from "./connectedSystems.js"
 import { searchObjectsTool } from "./searchObjects.js"
@@ -7,11 +7,11 @@ import { getObjectInfoTool } from "./getObjectInfo.js"
 import { whereUsedTool } from "./whereUsed.js"
 import { searchObjectLinesTool, getBatchLinesTool, getObjectByUriTool, getWorkspaceUriTool, getObjectUrlTool } from "./navigation.js"
 import { createObjectTool, activateTool, replaceStringTool, diagnosticsTool, createTestIncludeTool, updateDescriptionTool } from "./writeTools.js"
-import { runUnitTestsTool, atcTool, atcDecorationsTool, dataQueryTool, sqlSyntaxTool } from "./quality.js"
+import { runUnitTestsTool, atcTool, dataQueryTool, sqlSyntaxTool } from "./quality.js"
 import { transportTool, textElementsTool } from "./transportText.js"
 import { createMermaidTool, validateMermaidTool, mermaidDocTool, detectMermaidTool } from "./mermaid.js"
 import { dumpAnalysisTool, traceAnalysisTool, versionHistoryTool } from "./runtime.js"
-import { sapSystemInfoTool, adtDiscoveryTool, documentationTool, debugTools } from "./system.js"
+import { sapSystemInfoTool, adtDiscoveryTool, documentationTool } from "./system.js"
 import { fixDdicTextTool } from "./ddicText.js"
 import { updateDomainTool } from "./domainProps.js"
 import { translateTextPoolTool } from "./textPool.js"
@@ -51,10 +51,9 @@ export const tools: ToolDef[] = [
   diagnosticsTool,
   createTestIncludeTool,
   updateDescriptionTool,
-  // 质量/测试/数据（6）
+  // 质量/测试/数据（5）
   runUnitTestsTool,
   atcTool,
-  atcDecorationsTool,
   dataQueryTool,
   sqlSyntaxTool,
   readTableContentsTool,
@@ -88,6 +87,4 @@ export const tools: ToolDef[] = [
   translateMessageClassTool,
   // 屏幕文字翻译（1）
   translateScreenTextTool,
-  // 调试（6，降级说明）
-  ...debugTools,
 ] as unknown as ToolDef[]

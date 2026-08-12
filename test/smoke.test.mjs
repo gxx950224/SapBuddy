@@ -17,9 +17,9 @@ describe("工具注册", () => {
     tools = t
   })
 
-  test("48 个 SAP 工具已加载", () => {
+  test("41 个 SAP 工具已加载", () => {
     assert.ok(Array.isArray(tools), "tools 应为数组")
-    assert.equal(tools.length, 48, `期望 48 个工具，实际 ${tools.length}`)
+    assert.equal(tools.length, 41, `期望 41 个工具，实际 ${tools.length}`)
   })
 
   test("工具名唯一且符合 snake_case", () => {
@@ -42,14 +42,14 @@ describe("工具注册", () => {
 })
 
 describe("CLI", () => {
-  test("node cli.mjs tools 输出 48 个工具", () => {
+  test("node cli.mjs tools 输出 41 个工具", () => {
     const out = execFileSync(process.execPath, ["cli.mjs", "tools"], { cwd: ROOT, encoding: "utf8", timeout: 30000 })
-    assert.match(out, /SAP 工具共 48 个/)
+    assert.match(out, /SAP 工具共 41 个/)
   })
 
   test("node cli.mjs doctor 自检通过", () => {
     const out = execFileSync(process.execPath, ["cli.mjs", "doctor"], { cwd: ROOT, encoding: "utf8", timeout: 60000 })
-    assert.match(out, /SAP 工具: 48 个已加载/)
+    assert.match(out, /SAP 工具: 41 个已加载/)
   })
 })
 

@@ -40,8 +40,9 @@
 ### 1.1 对象是否存在（精确查）
 ```json
 { "pattern": "ZAIR004" }              // 精确名，不带 *（模糊搜 ZAIR* 会浪费大量请求）
+{ "pattern": "ZITS014A" }             // 不确定类型就不要传 types（多类型搜，事务码 TRAN 也能命中）
 ```
-> 确认存在性永远用精确名；`types` 限定时传类型数组；`maxResults` 默认 20。
+> 确认存在性永远用精确名；`types` 限定时传类型数组；**不确定对象类型时不要传 `types`**（限定 PROG 会漏掉事务码/函数组/类）；`maxResults` 默认 20。
 
 ### 1.2 读源码（大对象分页 / 类提取方法）
 ```json
@@ -184,6 +185,16 @@
 { "sqlQuery": "SELECT BUKRS, BUTXT FROM T001 WHERE BUKRS = '1000'", "limit": 50 }
 ```
 > 仅 SELECT/WITH；禁止 INSERT/UPDATE/DELETE 等（会被拦截）；`limit` 默认 50 最大 1000。简单读表（不 join 不聚合）也可用 §1.7 `read_table_contents`。
+
+### 6.1 高频标准表真实列名（防猜列名）
+
+| 表 | 用途 | 关键列（注意大小写） |
+|---|---|---|
+| `tstc` | 事务码 → 程序 | **`PGMNA`（不是 PNAME）**、`TCODE`、`DYPNO`、`CINFO` |
+| `tstct` | 事务码文本 | `TCODE`、`SPRSL`（语言）、`STEXT`（短文本） |
+| `tfdir` | 函数模块 → 主程序 | **`PNAME`**、`FUNCNAME`、`INCLUDE` |
+
+> 别搞混：**`tstc` 用 `PGMNA`、`tfdir` 用 `PNAME`**，两者相反。查表列名没把握时，先 `SELECT * FROM <表> LIMIT 1` 或 §1.7 `read_table_contents` 看真实列名，禁止猜。
 
 ---
 

@@ -1,4 +1,4 @@
-/** 工具组：质量/测试/数据（run_unit_tests、run_atc_analysis、get_atc_decorations、execute_data_query、get_abap_sql_syntax） */
+/** 工具组：质量/测试/数据（run_unit_tests、run_atc_analysis、execute_data_query、get_abap_sql_syntax） */
 import { z } from "zod"
 import { getClient } from "../adtManager.js"
 import {
@@ -109,25 +109,40 @@ export const atcTool = {
   },
 }
 
-// ─── get_atc_decorations（独立部署降级为引导）──────────────────────────────
-export const atcDecorationsTool = {
-  name: "get_atc_decorations",
-  title: "Get ATC Decorations",
-  description:
-    "获取编辑器中的 ATC 高亮信息。注意：独立 MCP 部署无编辑器，请使用 run_atc_analysis 获取 ATC 检查结果。本工具返回说明。",
-  inputSchema: z.object({}),
-  async execute(): Promise<string> {
-    return (
-      "ATC 高亮（decorations）是 VS Code 编辑器的功能。独立 MCP 部署中请使用 run_atc_analysis 工具：\n" +
-      "1. run_atc_analysis（objectName, objectType）获取 ATC 问题列表\n" +
-      "2. get_abap_object_lines 定位问题行\n" +
-      "3. replace_string_in_abap_object 修复\n" +
-      "4. 重新运行 run_atc_analysis 验证"
-    )
-  },
+// ─── execute_data_query ─────────────────────────────────────────────────────
+
+/** 从 SQL 提取涉及的表名（FROM + JOIN），去重，最多取 2 张，避免重试查询扩大成本 */
+export function extractTablesFromSql(sql: string): string[] {
+  const cleaned = sql
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/'(?:[^']|'')*'/g, " ")
+  const tables: string[] = []
+  const from = cleaned.match(/\bFROM\s+([A-Za-z0-9_/]+)/i)
+  if (from) tables.push(from[1])
+  const joinRe = /\bJOIN\s+([A-Za-z0-9_/]+)/gi
+  let m: RegExpExecArray | null
+  while ((m = joinRe.exec(cleaned))) tables.push(m[1])
+  return tables.filter((t, i) => tables.indexOf(t) === i).slice(0, 2)
 }
 
-// ─── execute_data_query ─────────────────────────────────────────────────────
+/** SQL 报错时给 LLM 附上真实列名，避免反复猜列名烧 token：对涉及的表跑 SELECT * LIMIT 1 拿列名 */
+async function hintRealColumns(connId: string, sql: string): Promise<string> {
+  const tables = extractTablesFromSql(sql)
+  if (!tables.length) return ""
+  const parts: string[] = []
+  for (const t of tables) {
+    try {
+      const client = await getClient(connId)
+      const res = await client.runQuery(`SELECT * FROM ${t} UP TO 1 ROWS`, 1, true)
+      const cols = (res?.columns ?? []) as Array<{ name: string }>
+      if (cols.length) parts.push(`表 ${t} 真实可用列: ${cols.map((c) => c.name).join(", ")}`)
+    } catch {
+      /* 表不存在/无权限，跳过该表 */
+    }
+  }
+  return parts.join("\n")
+}
+
 export const dataQueryTool = {
   name: "execute_data_query",
   title: "Execute Data Query",
@@ -139,9 +154,11 @@ export const dataQueryTool = {
     connectionId: connectionIdSchema,
   }),
   async execute(args: { sqlQuery: string; limit?: number; connectionId?: string }): Promise<string> {
+    let connId = ""
+    let sql = ""
     try {
-      const connId = await resolveConnectionId(args.connectionId)
-      const sql = args.sqlQuery.trim()
+      connId = await resolveConnectionId(args.connectionId)
+      sql = args.sqlQuery.trim()
       // 先去掉块注释 /**/ 与字符串字面量再校验：注释里写 INSERT 不会误判，也防 /**/ 把关键字拆开
       // 用空格替换（而非删除），避免 1/**/INSERT 拼成 1INSERT 绕过 \b 词边界
       const cleaned = sql
@@ -178,6 +195,12 @@ export const dataQueryTool = {
       }
       return lines.join("\n")
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      // 列名/类型类错误时附上真实列名，让 LLM 一次改对，不再反复猜
+      if (connId && /unknown column|invalid column|column .* (not found|does not exist)|未知列|列名/i.test(msg)) {
+        const hint = await hintRealColumns(connId, sql)
+        if (hint) return `${toToolError(err)}\n\n${hint}`
+      }
       return toToolError(err)
     }
   },

@@ -4,7 +4,7 @@
 
 **SAP ABAP AI 全能助手** —— 面向开发顾问与业务顾问
 
-用自然语言驱动 **48 个 SAP 工具**：搜索、读码、开发、审查、ATC、单测、SQL、DDIC 管理、程序解读……
+用自然语言驱动 **41 个 SAP 工具**：搜索、读码、开发、审查、ATC、单测、SQL、DDIC 管理、程序解读……
 
 [![npm version](https://img.shields.io/npm/v/sapbuddy.svg)](https://www.npmjs.com/package/sapbuddy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -29,7 +29,7 @@
 ## 🎯 核心特性
 
 - 💬 **自然语言开发**：对话完成 SAP 对象查询、分析、开发、审查、测试
-- 🛠 **48 个内置 SAP 工具**：对象搜索 / 源码读取 / where-used / ATC 质量门禁 / 单元测试 / SQL 查询 / 传输请求 / 版本历史 / ST22 dump 分析 / DDIC 管理（表/结构/数据元素/域/CDS）/ 文本元素与多语言翻译 / 调试辅助
+- 🛠 **41 个内置 SAP 工具**：对象搜索 / 源码读取 / where-used / ATC 质量门禁 / 单元测试 / SQL 查询 / 传输请求 / 版本历史 / ST22 dump 分析 / DDIC 管理（表/结构/数据元素/域/CDS）/ 文本元素与多语言翻译
 - 🔒 **安全三重防线**：默认只读 + **开发客户端守卫**（`T000.CCCATEGORY` 非开发类自动拦截写操作）+ 生产环境 fail-closed
 - 🖥 **CLI + Web 双模式**：终端交互 / 浏览器界面（SSE 流式）
 - 🔀 **多模型**：DeepSeek / OpenAI / Anthropic / Qwen 等（pi 生态）
@@ -96,19 +96,19 @@ sapbuddy                           # 直接进入交互式对话（全屏 TUI）
 sapbuddy chat                      # 交互式对话（同上）
 sapbuddy web                       # Web 版（http://127.0.0.1:7400）
 sapbuddy "搜索 ZCL_* 开头的类"      # 单次提问
-sapbuddy tools                     # 列出 48 个 SAP 工具 + 已配置的 MCP 工具
+sapbuddy tools                     # 列出 41 个 SAP 工具 + 已配置的 MCP 工具
 ```
 
 ## 🧩 架构
 
 ```
 用户 ──CLI / Web──► pi SDK (AgentSession)
-                       │  48 个 SAP 工具（直接函数调用）
+                       │  41 个 SAP 工具（直接函数调用）
                        ▼
                   abap-adt-api ──ADT HTTPS──► SAP /sap/bc/adt
 ```
 
-- **直接集成**：48 个工具是纯函数模块，直接注册为 Agent customTools，不依赖 MCP 框架
+- **直接集成**：41 个工具是纯函数模块，直接注册为 Agent customTools，不依赖 MCP 框架
 - 工具注册在扩展加载期完成；MCP 服务器（可选）通过 async factory 动态注册
 
 ## 📁 项目结构
@@ -118,7 +118,7 @@ sapbuddy/
 ├── cli.mjs                 # CLI 入口（chat / 单次 / web / tools / doctor）
 ├── src/
 │   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析 + 运行时初始化
-│   ├── sap-tools/          # 48 个 SAP 工具（TypeScript，基于 abap-adt-api）
+│   ├── sap-tools/          # 41 个 SAP 工具（TypeScript，基于 abap-adt-api）
 │   └── web/                # 本地 Web 服务器 + UI + MCP 客户端
 ├── defaults/               # 默认技能与 models.json（随包发布，首次运行拷贝到 ~/.SapBuddy/）
 ├── config/                 # 配置模板（不含真实凭据）
@@ -160,7 +160,7 @@ ADT 服务（`/sap/bc/adt`）访问权限 + 目标对象读写权限；查询类
 
 ## 🗺 Roadmap
 
-- [x] 48 个 SAP 工具（搜索/读码/写/ATC/单测/SQL/DDIC/文本/翻译/调试）
+- [x] 41 个 SAP 工具（搜索/读码/写/ATC/单测/SQL/DDIC/文本/翻译）
 - [x] CLI + Web 双模式
 - [x] 开发客户端守卫 + 写前审核门禁
 - [x] MCP 服务器接入

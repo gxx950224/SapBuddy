@@ -140,27 +140,25 @@ export const documentationTool = {
         "10. find_where_used - where-used 分析\n" +
         "11. run_unit_tests - 运行单元测试\n" +
         "12. run_atc_analysis - ATC 代码检查\n" +
-        "13. get_atc_decorations - ATC 说明（独立部署用 run_atc_analysis）\n" +
-        "14. execute_data_query - SQL 查询（只读）\n" +
-        "15. get_abap_sql_syntax - SQL 语法参考\n" +
-        "16. manage_transport_requests - 传输请求\n" +
-        "17. manage_text_elements - 文本元素\n" +
-        "18. analyze_abap_dumps - ST22 dump 分析\n" +
-        "19. analyze_abap_traces - 性能追踪分析\n" +
-        "20. get_version_history - 版本历史\n" +
-        "21. get_sap_system_info - 系统信息\n" +
-        "22. adt_discovery_export - ADT 服务发现\n" +
-        "23. create_mermaid_diagram / validate_mermaid_syntax / get_mermaid_documentation / detect_mermaid_diagram_type - Mermaid 图表\n" +
-        "24. create_object_programmatically / abap_activate / replace_string_in_abap_object / create_test_include - 写操作（需 readOnly=false）\n" +
-        "25. get_abap_diagnostics - 语法检查\n" +
-        "26. abap_debug_* - 调试（独立部署不支持，需 VS Code）\n" +
-        "27. read_table_contents - 直接读表（不用写 SQL，限行数，只读）\n" +
-        "28. find_code_definition - 定位标识符定义处\n" +
-        "29. get_class_hierarchy - 类的父/子继承结构\n" +
-        "30. get_abap_documentation - 查询 ABAP 帮助文档\n" +
-        "31. find_where_used(includeSnippets=true) - 引用分析带代码片段\n" +
-        "32. get_abap_object_info(includeStructure=true) - 类组件/表字段清单\n" +
-        "33. analyze_abap_traces(statements/db_access) - 追踪语句与DB访问明细"
+        "13. execute_data_query - SQL 查询（只读）\n" +
+        "14. get_abap_sql_syntax - SQL 语法参考\n" +
+        "15. manage_transport_requests - 传输请求\n" +
+        "16. manage_text_elements - 文本元素\n" +
+        "17. analyze_abap_dumps - ST22 dump 分析\n" +
+        "18. analyze_abap_traces - 性能追踪分析\n" +
+        "19. get_version_history - 版本历史\n" +
+        "20. get_sap_system_info - 系统信息\n" +
+        "21. adt_discovery_export - ADT 服务发现\n" +
+        "22. create_mermaid_diagram / validate_mermaid_syntax / get_mermaid_documentation / detect_mermaid_diagram_type - Mermaid 图表\n" +
+        "23. create_object_programmatically / abap_activate / replace_string_in_abap_object / create_test_include - 写操作（需 readOnly=false）\n" +
+        "24. get_abap_diagnostics - 语法检查\n" +
+        "25. read_table_contents - 直接读表（不用写 SQL，限行数，只读）\n" +
+        "26. find_code_definition - 定位标识符定义处\n" +
+        "27. get_class_hierarchy - 类的父/子继承结构\n" +
+        "28. get_abap_documentation - 查询 ABAP 帮助文档\n" +
+        "29. find_where_used(includeSnippets=true) - 引用分析带代码片段\n" +
+        "30. get_abap_object_info(includeStructure=true) - 类组件/表字段清单\n" +
+        "31. analyze_abap_traces(statements/db_access) - 追踪语句与DB访问明细"
       )
     }
     if (topic.includes("edit")) {
@@ -201,72 +199,3 @@ export const documentationTool = {
     )
   },
 }
-
-// ─── 调试工具（独立部署降级说明）────────────────────────────────────────────
-function debugNotSupported(name: string, reason: string): string {
-  return (
-    `${name}: 当前独立 MCP 部署不支持交互式 ABAP 调试。\n` +
-    `原因: ${reason}\n` +
-    `替代方案:\n` +
-    `- 使用 VS Code + abap_fs 扩展进行实时调试（断点、单步、变量查看）\n` +
-    `- 使用 SAP GUI 调试器\n` +
-    `- 对运行时报错使用 analyze_abap_dumps 分析 ST22 dump`
-  )
-}
-
-export const debugTools = [
-  {
-    name: "abap_debug_session",
-    title: "ABAP Debug Session",
-    description: "启动/停止 ABAP 调试会话。注意：独立 MCP 部署不支持交互式调试，本工具返回说明。",
-    inputSchema: z.object({ action: z.enum(["start", "stop"]).optional().describe("start/stop，默认 start") }),
-    async execute(): Promise<string> {
-      return debugNotSupported("调试会话", "调试器需要 VS Code 调试适配器与 UI 交互")
-    },
-  },
-  {
-    name: "abap_debug_breakpoint",
-    title: "ABAP Debug Breakpoint",
-    description: "设置/移除断点。注意：独立 MCP 部署不支持交互式调试，本工具返回说明。",
-    inputSchema: z.object({ action: z.enum(["set", "remove"]).optional() }),
-    async execute(): Promise<string> {
-      return debugNotSupported("断点管理", "断点需要调试会话上下文")
-    },
-  },
-  {
-    name: "abap_debug_step",
-    title: "ABAP Debug Step",
-    description: "调试单步执行（step over/into/return/continue）。注意：独立 MCP 部署不支持交互式调试。",
-    inputSchema: z.object({ stepType: z.enum(["step_over", "step_into", "step_return", "continue"]).optional() }),
-    async execute(): Promise<string> {
-      return debugNotSupported("单步执行", "需要活动调试会话")
-    },
-  },
-  {
-    name: "abap_debug_variable",
-    title: "ABAP Debug Variable",
-    description: "查看调试变量值。注意：独立 MCP 部署不支持交互式调试。",
-    inputSchema: z.object({ variableName: z.string().optional() }),
-    async execute(): Promise<string> {
-      return debugNotSupported("变量查看", "需要活动调试会话")
-    },
-  },
-  {
-    name: "abap_debug_stack",
-    title: "ABAP Debug Stack",
-    description: "查看调试调用栈。注意：独立 MCP 部署不支持交互式调试。",
-    inputSchema: z.object({}),
-    async execute(): Promise<string> {
-      return debugNotSupported("调用栈", "需要活动调试会话")
-    },
-  },
-  {
-    name: "abap_debug_status",
-    title: "ABAP Debug Status",
-    description: "检查调试会话状态。注意：独立 MCP 部署不支持交互式调试。",
-    inputSchema: z.object({}),
-    async execute(): Promise<string> {
-      return debugNotSupported("会话状态", "调试器仅在 VS Code 中可用")
-    },
-  },
-]

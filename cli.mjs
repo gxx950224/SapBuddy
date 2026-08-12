@@ -8,7 +8,7 @@
  *   sapbuddy "提问内容"         单次提问
  *   sapbuddy --json "提问"      单次提问（JSON 输出）
  *   sapbuddy web                启动 Web 版（浏览器访问 http://127.0.0.1:7400）
- *   sapbuddy tools              列出 48 个 SAP 工具
+ *   sapbuddy tools              列出 41 个 SAP 工具
  *   sapbuddy doctor             环境自检
  */
 import path from "node:path"
