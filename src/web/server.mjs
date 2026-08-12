@@ -332,7 +332,12 @@ const server = http.createServer(async (req, res) => {
         const a = await ensureAgent()
         await a.session.prompt(text.trim())
       } catch (e) {
-        broadcast({ kind: "error", error: e.message, ts: Date.now() })
+        const msg = String(e?.message || e)
+        // 停止后旧操作仍在收尾（网络异常最长 120s）时发消息会命中 SDK 并发保护，翻译成大白话
+        const friendly = msg.includes("already processing")
+          ? "上一轮操作还在收尾（网络异常时最多等 2 分钟自动结束），请稍候再发。"
+          : msg
+        broadcast({ kind: "error", error: friendly, ts: Date.now() })
       } finally {
         busy = false
         broadcast({ kind: "agent", event: { type: "agent_settled" }, ts: Date.now() })
@@ -341,7 +346,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 停止 / 压缩 / 思考级别
-    if (p === "/api/abort") { try { await session?.abort() } catch {} busy = false; return json(res, 200, { ok: true }) }
+    // 停止：不阻塞等 agent 空闲。session.abort() 内部要等当前操作真正结束才 resolve，
+    // SAP 请求挂起（VPN 断等，最长 120s）时干等下去前端就是"点了没反应"。
+    // 改为：先触发中止信号 + 立即广播终态事件清 UI，后台继续等超时自动收尾。
+    if (p === "/api/abort") {
+      busy = false
+      try {
+        const ap = session?.abort?.()
+        if (ap && typeof ap.then === "function") ap.catch(() => {})
+      } catch { /* 无活动会话忽略 */ }
+      broadcast({ kind: "agent", event: { type: "agent_abort" }, ts: Date.now() })
+      return json(res, 200, { ok: true })
+    }
 
     // 写操作确认：用户点击允许/拒绝后，注入批准窗口并提示 AI 继续
     if (p === "/api/write-approve" && req.method === "POST") {
@@ -359,7 +375,11 @@ const server = http.createServer(async (req, res) => {
             : "用户拒绝执行本次写操作。请先向用户询问具体修改需求：希望调整哪些内容（功能、字段、界面、逻辑等）？有哪些更详细的要求或变更点？在获得用户明确的修改意见之前，不要执行新的写操作，也不要直接生成替代方案。请用简洁的问题引导用户说明。",
         )
       } catch (e) {
-        broadcast({ kind: "error", error: e.message, ts: Date.now() })
+        const msg = String(e?.message || e)
+        const friendly = msg.includes("already processing")
+          ? "上一轮操作还在收尾（网络异常时最多等 2 分钟自动结束），请稍候再试。"
+          : msg
+        broadcast({ kind: "error", error: friendly, ts: Date.now() })
       } finally {
         busy = false
       }
@@ -958,8 +978,10 @@ const ids = models.map((m) => m.id)
           reloadConfig()
         } catch {}
         try {
-          const { dropAllClients } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
+          const { dropAllClients, markConnectionDirty } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
           await dropAllClients()
+          // 连接已变更：强制下一次先 get_connected_systems 重确认，再放行其他 SAP 工具
+          markConnectionDirty()
         } catch {}
         return json(res, 200, { success: true })
       } catch (e) { return json(res, 500, { error: e.message }) }

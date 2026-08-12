@@ -124,6 +124,27 @@ export function withReadLock<T>(connId: string, fn: () => Promise<T>): Promise<T
   })
 }
 
+/** 全连接独占执行：同时持有所有已配置连接的写锁，运行期间任何连接的读/写都被阻塞。
+ *  用于 get_connected_systems —— 连接切换后必须单独执行，其他请求不能与它并行。 */
+export function withAllConnMutex<T>(fn: () => Promise<T>): Promise<T> {
+  const store = writeLockContext.getStore()
+  const ids = getConfig().connections.map((c) => c.id.toLowerCase())
+  const need = ids.filter((id) => !store?.has(id))
+  if (need.length === 0) return Promise.resolve().then(fn) // 已全部持锁（可重入）
+  return new Promise<T>((resolve, reject) => {
+    Promise.all(need.map((id) => acquireWrite(id))).then(() => {
+      const next = new Set(store ?? [])
+      need.forEach((id) => next.add(id))
+      writeLockContext.run(next, () => {
+        Promise.resolve()
+          .then(fn)
+          .then(resolve, reject)
+          .finally(() => need.forEach((id) => releaseWrite(id)))
+      })
+    })
+  })
+}
+
 /**
  * 标记连接为不健康：从池中移除缓存（客户端 + 类别），下次调用自动重新 login。
  * 会话自愈的核心——连接级故障（401/5xx/网络错误）不保留坏会话，宁可重连。
@@ -421,6 +442,23 @@ export async function dropClient(connId: string): Promise<void> {
 export async function dropAllClients(): Promise<void> {
   await Promise.all([...pool.keys()].map(dropClient))
   clientCategoryCache.clear()
+}
+
+// ── 连接变更后的强制重确认 ──
+// 连接配置被保存（/api/sap-config）后置脏。除 get_connected_systems 外所有 SAP 工具
+// 都拒绝执行，直到 get_connected_systems 成功清标记——防止 AI 拿着旧连接假设并行发请求，
+// 正赶上连接切换被全部掐断。
+let connectionDirty = false
+/** 连接配置已变更：强制下一次先 get_connected_systems 再允许其他 SAP 工具 */
+export function markConnectionDirty(): void {
+  connectionDirty = true
+}
+/** get_connected_systems 成功执行后清除 */
+export function clearConnectionDirty(): void {
+  connectionDirty = false
+}
+export function isConnectionDirty(): boolean {
+  return connectionDirty
 }
 
 export function connectedIds(): string[] {

@@ -1,6 +1,6 @@
 {
   "name": "sapbuddy",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "SAP ABAP AI 全能助手（面向开发顾问与业务顾问）— 用自然语言驱动 41 个 SAP 工具（CLI + Web）",
   "type": "module",
   "main": "cli.mjs",

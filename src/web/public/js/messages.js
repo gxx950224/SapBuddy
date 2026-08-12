@@ -530,6 +530,8 @@
         App.finishToolCard(msg.toolCallId, msg.content, msg.isError);
       }
     }
+    // 被中断的历史工具调用（无 toolResult 落盘，如运行中被杀掉）→ 标"中断"，避免永久停在"执行中"
+    App.markToolCardsInterrupted();
     // 检测最后一条 assistant 消息是否被中断（terminated），提示用户可继续，
     // 解决"刷新页面后看到半截消息、对话卡住不继续"的问题。
     const _last = messages[messages.length - 1];

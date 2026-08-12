@@ -14,7 +14,7 @@ import { join } from "node:path"
 import { homedir } from "node:os"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
-import { assertDevClient, withConnMutex } from "./adtManager.js"
+import { assertDevClient, withConnMutex, isConnectionDirty } from "./adtManager.js"
 import { resolveConnectionId } from "./tools/shared.js"
 import { resetActiveRequests } from "./taskTransport.js"
 import { appendAudit } from "./auditLog.js"
@@ -602,6 +602,15 @@ connectionId 缺省用 get_connected_systems 第一个。`,
       async execute(_toolCallId, params) {
         try {
           const p = (params ?? {}) as Record<string, unknown>
+          // 连接变更强制重确认：连接配置被修改后，除 get_connected_systems 外一律拒绝，
+          // 直到 get_connected_systems 成功清标记——防止 AI 拿着旧连接假设并行发请求被掐断
+          if (t.name !== "get_connected_systems" && isConnectionDirty()) {
+            return {
+              content: [{ type: "text" as const, text: `⛔ SAP 连接配置已变更，必须先调用 get_connected_systems 确认当前连接，然后再重试本操作。` }],
+              details: {},
+              isError: true,
+            }
+          }
           // 内容级强制规则：写入代码前硬校验（硬编码中文 / 裸内置类型）——纯本地检查，不触连接
           // 局部替换用 newString、整段覆盖用 fullSource，两者都检查（fullSource 是写函数模块的推荐路径，不能漏）
           if (t.name === "replace_string_in_abap_object") {

@@ -233,14 +233,7 @@
         state.currentAssistantEl = null;
         state.currentTextDiv = null;
         state.pendingTexts = [];
-        // 把所有"执行中"的工具卡片标记为已中止
-        state.toolCards.forEach((card) => {
-          const stateEl = card.querySelector(".tool-state");
-          if (stateEl && stateEl.classList.contains("running")) {
-            stateEl.className = "tool-state failed";
-            stateEl.textContent = "⏹ 已中止";
-          }
-        });
+        App.markToolCardsInterrupted(); // 未完成的工具调用标"中断"
         App.setStreaming(false);
         App.refreshState();
         break;

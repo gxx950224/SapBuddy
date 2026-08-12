@@ -106,6 +106,17 @@
   // 渲染完成后立即执行 + 定时扫描兜底
   setInterval(enforceToolCollapse, 1200);
 
+  // ── 中断未完成的工具调用（点停止时本地立即生效，不依赖 SSE 往返）──
+  App.markToolCardsInterrupted = function() {
+    state.toolCards.forEach((card) => {
+      const stateEl = card.querySelector(".tool-state");
+      if (stateEl && stateEl.classList.contains("running")) {
+        stateEl.className = "tool-state failed";
+        stateEl.textContent = "⏹ 中断";
+      }
+    });
+  };
+
   // ── 完成工具卡片 ──
   App.finishToolCard = function(id, resultContent, isError) {
     const card = state.toolCards.get(id);

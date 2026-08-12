@@ -94,6 +94,7 @@
   sendBtn.addEventListener("click", (e) => {
     if (state.streaming) {
       navigator.sendBeacon("/api/abort");
+      App.markToolCardsInterrupted(); // 本地立即标"中断"，不等 SSE 广播
       App.setStreaming(false);
       return;
     }
