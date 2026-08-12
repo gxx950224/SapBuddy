@@ -634,45 +634,211 @@
     btn.title = isHidden ? "隐藏密码" : "显示密码";
   });
 
-  // ── 加载 SAP 配置 ──
+  // ── SAP 多连接配置 ──
+  let sapEditingId = "";   // 为空=新增；否则=正在编辑的原连接 id
+  let sapConnCache = [];
+
+  function renderConnList(conns) {
+    sapConnCache = conns || [];
+    const list = $("#sap-conn-list");
+    if (!list) return;
+    if (!sapConnCache.length) {
+      list.innerHTML = '<div class="empty-hint">尚未配置任何 SAP 连接，点「＋ 添加连接」新增。</div>';
+      return;
+    }
+    list.innerHTML = sapConnCache.map((c) => {
+      const activeTag = c.active
+        ? '<span class="badge-active">使用中</span>'
+        : `<button class="btn-mini" data-act="active" data-id="${escapeHtml(c.id)}">设为当前</button>`;
+      return `
+        <div class="conn-row">
+          <div class="conn-info">
+            <div class="conn-name">${escapeHtml(c.name)} ${activeTag}</div>
+            <div class="conn-host">${escapeHtml(c.host)}:${escapeHtml(c.port)} · ${escapeHtml(c.user)} · Client ${escapeHtml(c.client)}</div>
+          </div>
+          <div class="conn-actions">
+            <button class="btn-mini" data-act="edit" data-id="${escapeHtml(c.id)}">编辑</button>
+            <button class="btn-mini danger" data-act="del" data-id="${escapeHtml(c.id)}">删除</button>
+          </div>
+        </div>`;
+    }).join("");
+  }
+
+  function openConnForm(conn) {
+    sapEditingId = conn ? conn.id : "";
+    $("#sap-conn-form-title").textContent = conn ? "编辑连接" : "添加连接";
+    $("#sap-name").value = conn ? conn.name : "";
+    $("#sap-host").value = conn ? conn.host : "";
+    $("#sap-port").value = conn ? (conn.port || "44300") : "44300";
+    $("#sap-protocol").value = conn ? (conn.protocol || "https") : "https";
+    $("#sap-user").value = conn ? conn.user : "";
+    $("#sap-client").value = conn ? (conn.client || "100") : "100";
+    const pwd = $("#sap-password");
+    pwd.value = "";
+    pwd.placeholder = conn && conn.hasPassword ? "密码已配置，如需修改请在此输入" : "输入 SAP 密码";
+    $("#sap-cancel").style.display = conn ? "inline-block" : "none";
+    const st = $("#sap-status");
+    if (st) st.textContent = "";
+    $("#sap-conn-form").style.display = "block";
+  }
+
+  function hideConnForm() {
+    $("#sap-conn-form").style.display = "none";
+    sapEditingId = "";
+    const st = $("#sap-status");
+    if (st) st.textContent = "";
+  }
+
+  async function pingActive(verb) {
+    const st = $("#sap-status");
+    st.textContent = `${verb}，Ping 测试中…`;
+    st.style.color = "";
+    const stEl = $("#sap-state");
+    if (stEl) stEl.innerHTML = '<span class="dot"></span> 正在检测当前连接…';
+    App.refreshSapStatus();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const pr = await fetch("/api/sap-status", { signal: controller.signal });
+      const pj = await pr.json();
+      if (pj.success && pj.data) {
+        st.textContent = `${verb} · Ping 成功`;
+        st.style.color = "var(--success)";
+        const cat = pj.data.clientCategoryLabel ? ` · 客户端类别 ${pj.data.clientCategoryLabel}${pj.data.clientCategory ? `(${pj.data.clientCategory})` : ""}` : "";
+        stEl.innerHTML = `<span class="dot ok"></span> 已连接：${pj.data.sid || "SAP"}（用户 ${pj.data.user || ""}${cat}）`;
+        return true;
+      } else {
+        st.textContent = `${verb} · Ping 失败`;
+        st.style.color = "var(--error)";
+        stEl.innerHTML = `<span class="dot err"></span> Ping 失败：${pj.error || "连接失败"}`;
+        return false;
+      }
+    } catch (e) {
+      const isTimeout = e.name === "AbortError";
+      st.textContent = isTimeout ? `${verb} · Ping 超时` : `${verb} · Ping 失败`;
+      st.style.color = "var(--error)";
+      stEl.innerHTML = isTimeout
+        ? '<span class="dot err"></span> Ping 超时：SAP 在 15 秒内无响应（请检查地址/端口/网络）'
+        : '<span class="dot err"></span> Ping 失败：' + (e?.message || "请求异常");
+      return false;
+    } finally {
+      clearTimeout(timer);
+      setTimeout(() => { st.textContent = ""; }, 3000);
+    }
+  }
+
+  // ── 加载 SAP 连接列表 ──
   async function loadSapConfig() {
     try {
       const r = await fetch("/api/sap-config");
       const j = await r.json();
       if (j.success && j.data) {
         const d = j.data;
-        $("#sap-host").value = d.host || "";
-        $("#sap-port").value = d.port || "44300";
-        $("#sap-protocol").value = d.protocol || "https";
-        $("#sap-user").value = d.user || "";
-        $("#sap-client").value = d.client || "100";
-        $("#sap-state").innerHTML = d.host
-          ? `<span class="dot ok"></span> 已配置：${d.host}:${d.port}（用户 ${d.user}，Client ${d.client}）`
-          : '<span class="dot"></span> 尚未配置 SAP 连接';
-        const pwdInput = $("#sap-password");
-        pwdInput.value = "";
-        pwdInput.placeholder = d.host ? "密码已配置，如需修改请在此输入" : "未配置，请输入 SAP 密码";
+        renderConnList(d.connections || []);
+        const stEl = $("#sap-state");
+        const active = (d.connections || []).find((c) => c.active);
+        if (active) {
+          stEl.innerHTML = `<span class="dot ok"></span> 当前使用：${escapeHtml(active.name)}（${escapeHtml(active.host)}:${escapeHtml(active.port)} · 用户 ${escapeHtml(active.user)} · Client ${escapeHtml(active.client)}）`;
+        } else if (d.connections && d.connections.length) {
+          stEl.innerHTML = '<span class="dot"></span> 尚未指定当前连接（默认用第一个）';
+        } else {
+          stEl.innerHTML = '<span class="dot"></span> 尚未配置 SAP 连接';
+        }
       }
     } catch {
       $("#sap-state").innerHTML = '<span class="dot err"></span> 读取配置失败';
     }
   }
 
-  // ── 保存 SAP 配置 ──
+  $("#sap-add").addEventListener("click", () => openConnForm(null));
+  $("#sap-cancel").addEventListener("click", () => hideConnForm());
+
+  $("#sap-conn-list").addEventListener("click", async (e) => {
+    const btn = e.target.closest("button[data-act]");
+    if (!btn) return;
+    const act = btn.dataset.act;
+    const id = btn.dataset.id;
+    const listSt = $("#sap-list-status");
+    if (act === "active") {
+      listSt.textContent = "切换中…";
+      listSt.style.color = "";
+      try {
+        const r = await fetch("/api/sap-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "setActive", id }),
+        });
+        const j = await r.json();
+        if (j.success) {
+          listSt.textContent = "";
+          await loadSapConfig();
+          await pingActive("已切换");
+        } else {
+          listSt.textContent = "切换失败：" + (j.error || r.status);
+          listSt.style.color = "var(--error)";
+          setTimeout(() => { listSt.textContent = ""; listSt.style.color = ""; }, 3000);
+        }
+      } catch (err) {
+        listSt.textContent = "切换失败：" + err.message;
+        listSt.style.color = "var(--error)";
+      }
+    } else if (act === "edit") {
+      const conn = sapConnCache.find((c) => c.id === id);
+      if (conn) openConnForm(conn);
+    } else if (act === "del") {
+      const conn = sapConnCache.find((c) => c.id === id);
+      const nm = conn ? conn.name : id;
+      if (!confirm(`确定删除连接「${nm}」？删除后不可恢复。`)) return;
+      listSt.textContent = "删除中…";
+      listSt.style.color = "";
+      try {
+        const r = await fetch("/api/sap-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete", id }),
+        });
+        const j = await r.json();
+        if (j.success) {
+          listSt.textContent = "";
+          await loadSapConfig();
+        } else {
+          listSt.textContent = "删除失败：" + (j.error || r.status);
+          listSt.style.color = "var(--error)";
+          setTimeout(() => { listSt.textContent = ""; listSt.style.color = ""; }, 3000);
+        }
+      } catch (err) {
+        listSt.textContent = "删除失败：" + err.message;
+        listSt.style.color = "var(--error)";
+      }
+    }
+  });
+
+  // ── 保存 SAP 连接（新增/编辑）──
   $("#sap-save").addEventListener("click", async () => {
     const st = $("#sap-status");
     st.textContent = "保存中…";
     st.style.color = "";
-    try {
-      const sapPayload = {
+    const name = $("#sap-name").value.trim();
+    if (!name) {
+      st.textContent = "请填写连接名称（如：开发）";
+      st.style.color = "var(--error)";
+      return;
+    }
+    const sapPayload = {
+      action: "save",
+      connection: {
+        origId: sapEditingId || undefined,
+        name,
         host: $("#sap-host").value.trim(),
-        port: $("#sap-port").value.trim(),
-        protocol: $("#sap-protocol").value,
+        port: $("#sap-port").value.trim() || "44300",
+        protocol: $("#sap-protocol").value || "https",
         user: $("#sap-user").value.trim(),
-        client: $("#sap-client").value.trim(),
-      };
-      const pwd = $("#sap-password").value;
-      if (pwd) sapPayload.password = pwd;
+        client: $("#sap-client").value.trim() || "100",
+      },
+    };
+    const pwd = $("#sap-password").value;
+    if (pwd) sapPayload.connection.password = pwd;
+    try {
       const r = await fetch("/api/sap-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -680,41 +846,10 @@
       });
       const j = await r.json();
       if (j.success) {
-        st.textContent = "已保存，Ping 测试中…";
-        st.style.color = "";
-        loadSapConfig();
-        // 立即清旧状态：避免显示上一次连接的成功结果误导
-        const stEl0 = $("#sap-state");
-        if (stEl0) stEl0.innerHTML = '<span class="dot"></span> 正在检测新连接…';
-        App.refreshSapStatus();
-        // Ping 加超时控制（15s，避免 SAP 不可达时长时间挂起）
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 15000);
-        try {
-          const pr = await fetch("/api/sap-status", { signal: controller.signal });
-          const pj = await pr.json();
-          const stEl = $("#sap-state");
-          if (pj.success && pj.data) {
-            st.textContent = "已保存 · Ping 成功";
-            st.style.color = "var(--success)";
-            const cat = pj.data.clientCategoryLabel ? ` · 客户端类别 ${pj.data.clientCategoryLabel}${pj.data.clientCategory ? `(${pj.data.clientCategory})` : ""}` : "";
-            stEl.innerHTML = `<span class="dot ok"></span> 已连接：${pj.data.sid || "SAP"}（用户 ${pj.data.user || ""}${cat}）`;
-          } else {
-            st.textContent = "已保存 · Ping 失败";
-            st.style.color = "var(--error)";
-            stEl.innerHTML = `<span class="dot err"></span> Ping 失败：${pj.error || "连接失败"}`;
-          }
-        } catch (e) {
-          const isTimeout = e.name === "AbortError";
-          st.textContent = isTimeout ? "已保存 · Ping 超时" : "已保存 · Ping 失败";
-          st.style.color = "var(--error)";
-          $("#sap-state").innerHTML = isTimeout
-            ? '<span class="dot err"></span> Ping 超时：SAP 在 15 秒内无响应（请检查地址/端口/网络）'
-            : '<span class="dot err"></span> Ping 失败：' + (e?.message || "请求异常");
-        } finally {
-          clearTimeout(timer);
-        }
-        setTimeout(() => { st.textContent = ""; }, 3000);
+        st.textContent = "";
+        await loadSapConfig();
+        const ok = await pingActive("已保存");
+        if (ok) hideConnForm();   // 测试通过才收起表单；失败则保留供修改
       } else {
         st.textContent = "保存失败：" + (j.error || r.status);
         st.style.color = "var(--error)";

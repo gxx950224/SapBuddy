@@ -1288,6 +1288,40 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .mcp-empty-tools { font-size: 12px; color: var(--text-faint); padding: 8px 0; }
 
 /* ============================
+   SAP 多连接设置面板
+   ============================ */
+.conn-list { display: flex; flex-direction: column; gap: 8px; }
+.conn-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+.conn-info { flex: 1; min-width: 0; }
+.conn-name { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.conn-host { font-size: 11.5px; color: var(--text-faint); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-active {
+  font-size: 10.5px; font-weight: 600; line-height: 1;
+  padding: 3px 7px; border-radius: 999px;
+  color: #14532d; background: #bbf7d0;
+}
+.conn-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.btn-mini {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 4px 9px; font-size: 11.5px; font-weight: 500; line-height: 1;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  color: var(--accent); background: transparent;
+  cursor: pointer; transition: background 0.12s ease, border-color 0.12s ease;
+}
+.btn-mini:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+.btn-mini.danger { color: #f87171; }
+.btn-mini.danger:hover {
+  background: rgba(239, 68, 68, 0.10); border-color: rgba(239, 68, 68, 0.35);
+}
+.conn-form { margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg-elevated); }
+.conn-form h5 { margin: 0 0 12px; font-size: 13px; font-weight: 600; color: var(--text); }
+
+/* ============================
    设置面板通用编辑器样式
    ============================ */
 .code-editor {

@@ -625,8 +625,9 @@ const server = http.createServer(async (req, res) => {
         (async () => {
           try {
             const { getClient, getClientCategory, withConnMutex } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "adtManager.js")).href)
-            const { getConfig } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
-            const conn = getConfig().connections[0]
+            const { getConfig, activeConnectionId } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "config.js")).href)
+            let conn
+            try { conn = getConfig().connections.find((c) => c.id === activeConnectionId()) } catch {}
             if (!conn) return sendOnce(() => json(res, 200, { success: false, error: "未配置 SAP 连接" }))
             // 与工具调用共用同一连接：加互斥锁，避免状态检测与正在执行的工具踩踏共享客户端
             await withConnMutex(conn.id, async () => {
@@ -942,34 +943,86 @@ const ids = models.map((m) => m.id)
     if (p === "/api/sap-config" && req.method === "GET") {
       try {
         const conf = JSON.parse(fs.readFileSync(connFile, "utf8"))
-        const c = conf.connections?.[0] ?? {}
-        const u = new URL(c.url ?? "https://localhost:44300")
-        return json(res, 200, {
-          success: true,
-          data: {
-            host: u.hostname, port: u.port || "44300", protocol: u.protocol.replace(":", ""),
-            user: c.username, client: c.client, readOnly: conf.security?.readOnly ?? true,
-          },
+        const conns = conf.connections ?? []
+        const activeIdx = conns.findIndex((c) => c.active === true)
+        const list = conns.map((c, i) => {
+          const u = new URL(c.url ?? "https://localhost:44300")
+          return {
+            id: c.id,
+            name: c.name || c.id,
+            host: u.hostname,
+            port: u.port || "44300",
+            protocol: u.protocol.replace(":", ""),
+            user: c.username,
+            client: c.client,
+            active: activeIdx === i || (activeIdx < 0 && i === 0),
+            hasPassword: !!c.password,
+          }
         })
+        return json(res, 200, { success: true, data: { connections: list, readOnly: conf.security?.readOnly ?? true } })
       } catch {
-        return json(res, 200, { success: true, data: { host: "", port: "44300", protocol: "https", user: "", client: "100", readOnly: true } })
+        return json(res, 200, { success: true, data: { connections: [], readOnly: true } })
       }
     }
     if (p === "/api/sap-config" && req.method === "POST") {
       const b = await readBody(req)
       try {
         const existing = fs.existsSync(connFile) ? JSON.parse(fs.readFileSync(connFile, "utf8")) : { connections: [], security: {} }
-        const port = b.port || "44300"
-        existing.connections = [{
-          id: "dev",
-          url: `${b.protocol || "https"}://${b.host}:${port}`,
-          client: b.client || "100",
-          username: b.user || "",
-          password: b.password ?? existing.connections?.[0]?.password ?? "",
-          language: "ZH",
-          authMethod: "basic",
-          ssl: { allowSelfSigned: true },
-        }]
+        const conns = existing.connections ?? []
+        // 保存连接（新增/编辑）：origId 空=新增，非空=编辑该连接
+        const saveConn = (c) => {
+          const name = String(c.name ?? "").trim()
+          const host = String(c.host ?? "").trim()
+          if (!host) throw new Error("主机地址不能为空")
+          if (!name) throw new Error("连接名称不能为空")
+          const port = c.port || "44300"
+          const url = `${c.protocol || "https"}://${host}:${port}`
+          const newId = name.toLowerCase()
+          const origId = String(c.origId ?? "").trim().toLowerCase()
+          let idx = origId ? conns.findIndex((x) => x.id.toLowerCase() === origId) : -1
+          if (idx < 0 && !origId) idx = conns.findIndex((x) => x.id.toLowerCase() === newId) // 同名幂等
+          if (idx < 0) {
+            if (conns.some((x) => x.id.toLowerCase() === newId)) throw new Error(`已存在名为「${name}」的连接`)
+            conns.push({
+              id: newId, name, url,
+              client: c.client || "100",
+              username: c.user ?? "",
+              password: c.password ?? "",
+              language: "ZH", authMethod: "basic", ssl: { allowSelfSigned: true },
+            })
+          } else {
+            const base = conns[idx]
+            conns[idx] = {
+              ...base,
+              id: newId, name, url,
+              client: c.client || base.client || "100",
+              username: c.user ?? base.username ?? "",
+              password: c.password ?? base.password ?? "",
+              language: base.language ?? "ZH", authMethod: base.authMethod ?? "basic",
+              ssl: base.ssl ?? { allowSelfSigned: true },
+            }
+          }
+        }
+        const action = b.action || (b.host ? "save" : "")
+        if (action === "save") {
+          saveConn(b.connection ?? b)
+          if (conns.length === 1) conns[0].active = true // 只有一条时自动作为当前
+        } else if (action === "setActive") {
+          const id = String(b.id ?? "").trim().toLowerCase()
+          if (!conns.some((x) => x.id.toLowerCase() === id)) return json(res, 400, { error: "连接不存在" })
+          conns.forEach((x) => { x.active = x.id.toLowerCase() === id })
+        } else if (action === "delete") {
+          const id = String(b.id ?? "").trim().toLowerCase()
+          const idx = conns.findIndex((x) => x.id.toLowerCase() === id)
+          if (idx < 0) return json(res, 400, { error: "连接不存在" })
+          if (conns.length <= 1) return json(res, 400, { error: "至少保留一个连接" })
+          const wasActive = conns[idx].active === true
+          conns.splice(idx, 1)
+          if (wasActive) conns.forEach((x, i) => { x.active = i === 0 })
+        } else {
+          return json(res, 400, { error: "未知操作" })
+        }
+        existing.connections = conns
         existing.security = { ...(existing.security ?? {}), readOnly: !!b.readOnly }
         fs.writeFileSync(connFile, JSON.stringify(existing, null, 2))
         // 重置配置缓存 + ADT 连接池，使新配置立即生效

@@ -12,6 +12,10 @@ import { homedir } from "node:os"
 export interface ConnectionConfig {
   /** 连接 ID，工具调用时用 connectionId 指定，如 "dev" */
   id: string
+  /** 显示名称（如"开发"/"测试"/"正式"），未配置时回退用 id */
+  name?: string
+  /** 是否为当前启用（默认）连接：工具省略 connectionId 时用它；无标记则用第一个 */
+  active?: boolean
   /** SAP 系统地址，如 https://sap-dev.example.com:443 */
   url: string
   /** SAP 客户端，如 100 */
@@ -150,4 +154,12 @@ export function getConfig(): ServerConfig {
 export function reloadConfig(): ServerConfig {
   cached = loadConfig()
   return cached
+}
+
+/** 当前启用（默认）连接 ID：显式 active=true 的连接；没有则用第一个。无连接时抛错。 */
+export function activeConnectionId(): string {
+  const conns = getConfig().connections
+  if (conns.length === 0) throw new Error("未配置任何 SAP 连接")
+  const active = conns.find((c) => c.active === true)
+  return active ? active.id : conns[0].id
 }

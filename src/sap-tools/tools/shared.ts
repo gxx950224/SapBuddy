@@ -52,13 +52,12 @@ export function toToolError(err: unknown): string {
   return `工具执行失败: ${message}\n\n可能的原因：\n- 连接 ID 错误（先用 get_connected_systems 查看可用连接）\n- SAP 账号无权限或密码过期\n- 对象不存在或名称拼写错误（可先用 search_abap_objects 确认）`
 }
 
-/** 校验 connectionId 或取默认（第一个连接） */
+/** 校验 connectionId 或取默认（当前启用连接，无标记则第一个） */
 export async function resolveConnectionId(connectionId?: string): Promise<string> {
   if (connectionId) return connectionId.toLowerCase()
-  const { getConfig } = await import("../config.js")
-  const first = getConfig().connections[0]
-  if (!first) throw new Error("没有配置任何 SAP 连接")
-  return first.id
+  const { getConfig, activeConnectionId } = await import("../config.js")
+  if (getConfig().connections.length === 0) throw new Error("没有配置任何 SAP 连接")
+  return activeConnectionId()
 }
 
 /** 按名称+类型搜索对象，返回第一条结果的完整信息（含 URI）

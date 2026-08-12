@@ -238,43 +238,60 @@
         <div class="settings-panel" data-panel="sap">
           <div class="settings-section">
             <h4>SAP 连接配置</h4>
-            <label class="settings-field">
-              <span>主机地址</span>
-              <input id="sap-host" type="text" placeholder="10.x.x.x 或 sap.example.com" />
-            </label>
-            <label class="settings-field">
-              <span>端口</span>
-              <input id="sap-port" type="text" placeholder="44300" />
-              <span class="field-hint">默认 44300（HTTPS）</span>
-            </label>
-            <label class="settings-field">
-              <span>协议</span>
-              <select id="sap-protocol">
-                <option value="https">HTTPS</option>
-                <option value="http">HTTP</option>
-              </select>
-            </label>
-            <label class="settings-field">
-              <span>用户名</span>
-              <input id="sap-user" type="text" placeholder="DEVELOPER" />
-            </label>
-            <label class="settings-field key-field">
-              <span>密码</span>
-              <div class="key-input-wrap">
-                <input id="sap-password" type="password" placeholder="未配置，请输入 SAP 密码" />
-                <button type="button" id="sap-password-toggle" class="btn-icon" title="显示/隐藏密码">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
-                </button>
+            <p class="settings-desc">可配置多个 SAP 连接（如 开发 / 测试 / 正式），当前使用的标为「使用中」。点「设为当前」即切换，之后 AI 默认连这个系统。</p>
+            <div id="sap-conn-list" class="conn-list">
+              <div class="empty-hint">加载中…</div>
+            </div>
+            <div class="settings-actions" style="margin-top:10px">
+              <button id="sap-add" class="btn-sm">＋ 添加连接</button>
+              <span id="sap-list-status" class="settings-status"></span>
+            </div>
+            <div id="sap-conn-form" class="conn-form" style="display:none">
+              <h5 id="sap-conn-form-title">添加连接</h5>
+              <label class="settings-field">
+                <span>名称</span>
+                <input id="sap-name" type="text" placeholder="如：开发 / 测试 / 正式" />
+                <span class="field-hint">给这个连接起个名字，好认</span>
+              </label>
+              <label class="settings-field">
+                <span>主机地址</span>
+                <input id="sap-host" type="text" placeholder="10.x.x.x 或 sap.example.com" />
+              </label>
+              <label class="settings-field">
+                <span>端口</span>
+                <input id="sap-port" type="text" placeholder="44300" />
+                <span class="field-hint">默认 44300（HTTPS）</span>
+              </label>
+              <label class="settings-field">
+                <span>协议</span>
+                <select id="sap-protocol">
+                  <option value="https">HTTPS</option>
+                  <option value="http">HTTP</option>
+                </select>
+              </label>
+              <label class="settings-field">
+                <span>用户名</span>
+                <input id="sap-user" type="text" placeholder="DEVELOPER" />
+              </label>
+              <label class="settings-field key-field">
+                <span>密码</span>
+                <div class="key-input-wrap">
+                  <input id="sap-password" type="password" placeholder="输入 SAP 密码" />
+                  <button type="button" id="sap-password-toggle" class="btn-icon" title="显示/隐藏密码">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
+                  </button>
+                </div>
+              </label>
+              <label class="settings-field">
+                <span>Client</span>
+                <input id="sap-client" type="text" placeholder="100" />
+                <span class="field-hint">SAP 客户端编号，默认 100</span>
+              </label>
+              <div class="settings-actions">
+                <button id="sap-save" class="btn-sm btn-primary">保存</button>
+                <button id="sap-cancel" class="btn-sm" style="display:none">取消</button>
+                <span id="sap-status" class="settings-status"></span>
               </div>
-            </label>
-            <label class="settings-field">
-              <span>Client</span>
-              <input id="sap-client" type="text" placeholder="100" />
-              <span class="field-hint">SAP 客户端编号，默认 100</span>
-            </label>
-            <div class="settings-actions">
-              <button id="sap-save" class="btn-sm btn-primary">保存</button>
-              <span id="sap-status" class="settings-status"></span>
             </div>
           </div>
           <div class="settings-section">

@@ -1,6 +1,6 @@
 /** 工具：列出可用 SAP 连接（相当于 abap_fs 的 get_connected_systems） */
 import { z } from "zod"
-import { getConfig } from "../config.js"
+import { getConfig, activeConnectionId } from "../config.js"
 import { getClientCategory, CLIENT_CATEGORY_LABELS, withAllConnMutex, clearConnectionDirty } from "../adtManager.js"
 
 export const connectedSystemsTool = {
@@ -17,6 +17,7 @@ export const connectedSystemsTool = {
         return "未配置任何 SAP 连接。请在 connections.json 中配置后再使用。"
       }
       const lines: string[] = []
+      const activeId = activeConnectionId()
       for (const c of config.connections) {
         const auth = c.authMethod === "oauth" ? "OAuth2" : "Basic"
         // 客户端类别 + 写操作守卫状态（T000.CCCATEGORY）
@@ -27,7 +28,10 @@ export const connectedSystemsTool = {
           const allow = (c.security?.developmentCategories ?? ["C"]).map((x) => x.toUpperCase())
           guard = allow.includes(cat) ? `写操作: 允许（${label}）` : `写操作: 拦截（${label}）`
         } catch (e) { console.error(`[sapbuddy] 客户端类别查询失败（${c.id}）: ${e instanceof Error ? e.message.slice(0, 120) : e}`) /* 类别查询失败，默认拦截 */ }
-        lines.push(`- ${c.id.padEnd(12)} ${c.url}  Client: ${c.client}  Auth: ${auth}  ${guard}${c.description ? `  (${c.description})` : ""}`)
+        const isActive = c.id === activeId
+        const label = c.name || c.id
+        const idPart = c.id !== label ? ` [${c.id}]` : ""
+        lines.push(`- ${label}${isActive ? "（当前使用）" : ""}${idPart} ${c.url}  Client: ${c.client}  Auth: ${auth}  ${guard}${c.description ? `  (${c.description})` : ""}`)
       }
       // 连接确认成功 → 清除"连接已变更"强制标记，放行其他工具
       clearConnectionDirty()
