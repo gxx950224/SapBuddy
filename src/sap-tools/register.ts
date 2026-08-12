@@ -23,6 +23,8 @@ import { appendAudit } from "./auditLog.js"
 // 所有写工具执行前必须获得用户确认：TUI 弹窗（CLI）或 Web 确认浮层（block 后重放）。
 // 批准后有一个时间窗口，让 AI 一轮内连续完成多个写操作（create→replace→activate）无需逐次确认。
 let writeApprovalUntil = 0
+/** 用户提前确认（尚无待批准对象）时：放行接下来第一个写操作作为锚点，并把它的对象绑定为本次批准范围 */
+let approveNextWrite = false
 const WRITE_TOOL_NAMES = new Set(
   tools.filter((t) => t.write).map((t) => t.name),
 )
@@ -34,7 +36,12 @@ export function setWriteApprovalWindow(ms = 60_000, objects?: string[]): void {
   // 批准对象：显式传入优先；否则用最近一次被拦截的写操作涉及的对象。窗口只对它们放行
   if (objects && objects.length > 0) approvedObjects = objects
   else if (pendingWriteObjects.length > 0) approvedObjects = [...pendingWriteObjects]
-  else approvedObjects = []
+  else {
+    approvedObjects = []
+    // 用户提前确认（AI 还没尝试过写操作，待批准对象为空）→ 放行下一个写操作作为锚点，
+    // 避免"确认开了窗口但什么都没放行"导致写操作一直拦截
+    approveNextWrite = true
+  }
   pendingWriteObjects = []
   // 新需求开始 → 共享传输请求重置，让本需求的对象用新请求（同需求内复用）
   resetActiveRequests()
@@ -46,6 +53,7 @@ export function clearWriteApproval(): void {
   writeApprovalUntil = 0
   approvedObjects = []
   pendingWriteObjects = []
+  approveNextWrite = false
   // 需求取消/拒绝 → 共享请求一并清掉，避免残留影响下次
   resetActiveRequests()
 }
@@ -403,7 +411,12 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     // 无对象名的写操作（如建传输请求）窗口内放行；窗口内冒出新对象 → 重新确认
     if (isWriteApproved()) {
       const objs = extractObjectNames(input)
-      if (objs.length === 0 || objs.some((o) => approvedObjects.includes(o))) {
+      if (objs.length === 0 || approveNextWrite || objs.some((o) => approvedObjects.includes(o))) {
+        // 提前确认的锚点：把本次写操作的对象绑定为批准范围，之后窗口内只放行同类对象
+        if (approveNextWrite && objs.length > 0) {
+          approvedObjects = [...objs]
+          approveNextWrite = false
+        }
         appendAudit({ event: "approved", tool: name, objects: objs.length ? objs : extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined })
         return
       }
