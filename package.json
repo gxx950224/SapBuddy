@@ -63,6 +63,7 @@
     "test/",
     "defaults/",
     "README.md",
+    "README.en.md",
     "LICENSE",
     "CREDITS.md",
     "AGENTS.md",
