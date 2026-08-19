@@ -217,7 +217,9 @@
             </label>
             <label class="settings-field">
               <span>模型名称</span>
-              <input id="llm-model" type="text" placeholder="输入模型名称，如 deepseek-v4-flash" />
+              <select id="llm-model">
+                <!-- 选项随提供商切换动态填充 -->
+              </select>
             </label>
             <label class="settings-field key-field">
               <span>API Key</span>
@@ -233,6 +235,34 @@
               <input id="llm-context-tokens" type="number" min="10000" max="1000000" step="10000" placeholder="200000" />
               <span class="field-hint">Token 上限（默认 200K），超出时自动压缩历史对话</span>
             </label>
+            <div class="llm-conn-btns" style="display:flex;gap:8px;margin-top:10px">
+              <button type="button" id="llm-add-conn" class="btn-sm">＋ 添加连接</button>
+              <button type="button" id="llm-edit-conn" class="btn-sm">✏️ 编辑连接</button>
+            </div>
+            <div id="llm-conn-form" class="conn-form" style="display:none">
+              <h5 id="llm-conn-form-title">新增大模型连接（OpenAI 兼容接口）</h5>
+              <label class="settings-field">
+                <span>提供商名称</span>
+                <input id="llm-new-name" type="text" placeholder="如：my-gpt / 本地模型" />
+              </label>
+              <label class="settings-field">
+                <span>API 地址</span>
+                <input id="llm-new-baseurl" type="text" placeholder="https://xxx/v1（OpenAI 兼容接口地址）" />
+              </label>
+              <label class="settings-field key-field">
+                <span>API Key</span>
+                <input id="llm-new-key" type="password" placeholder="该提供商的 API Key（编辑时留空保持不变）" />
+              </label>
+              <div class="settings-field">
+                <span>模型名称</span>
+                <div id="llm-new-models"></div>
+                <button type="button" id="llm-new-model-add" class="btn-mini" style="margin-top:6px">＋ 添加模型</button>
+              </div>
+              <div class="llm-conn-actions" style="display:flex;gap:8px;margin-top:12px">
+                <button type="button" id="llm-conn-save" class="btn-sm btn-primary">保存连接</button>
+                <button type="button" id="llm-conn-cancel" class="btn-sm">取消</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="settings-panel" data-panel="sap">

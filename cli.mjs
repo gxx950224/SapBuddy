@@ -131,6 +131,11 @@ async function cmdDoctor() {
 
 // ===== 单次提问 =====
 async function cmdPrompt(text, jsonMode) {
+  // 后台预热 MCP 服务器，agent 创建读缓存不阻塞首次响应
+  try {
+    const { warmMcpServers } = await import("./src/sap-tools/mcp-register.mjs")
+    warmMcpServers()
+  } catch { /* 预热失败不阻塞 */ }
   const { session } = await createAgent()
   let out = ""
   const unsub = session.subscribe((event) => {

@@ -54,8 +54,10 @@ export function saveMcpServers(servers) {
   } catch { /* 全局不可写时忽略（项目配置已保存） */ }
 }
 
-/** 一次 JSON-RPC 请求（兼容 JSON 与 SSE 响应） */
-function rpcRequest(urlStr, server, method, params, id) {
+/** 一次 JSON-RPC 请求（兼容 JSON 与 SSE 响应）
+ *  timeoutMs：建立连接 + 等首个响应头的超时。连不上的服务器（内网 SAP 离线等）快速失败，
+ *  避免阻塞 agent 初始化 / 对话。收到响应头后取消计时，不误杀慢的数据流。 */
+function rpcRequest(urlStr, server, method, params, id, timeoutMs = 5000) {
   return new Promise((resolve, reject) => {
     let u
     try { u = new URL(urlStr) } catch { reject(new Error(`无效的 URL: ${urlStr}`)); return }
@@ -77,6 +79,7 @@ function rpcRequest(urlStr, server, method, params, id) {
         rejectUnauthorized: server.tls?.rejectUnauthorized === true,
       },
       (res) => {
+        req.setTimeout(0) // 已收到响应头，连接阶段结束，取消计时
         let data = ""
         res.setEncoding("utf8")
         res.on("data", (c) => { data += c })
@@ -102,6 +105,7 @@ function rpcRequest(urlStr, server, method, params, id) {
       }
     )
     req.on("error", (e) => reject(new Error(`连接失败: ${e.message}`)))
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`连接超时（${timeoutMs}ms）`)))
     req.write(body)
     req.end()
   })

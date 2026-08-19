@@ -136,6 +136,14 @@ async function rebuildAgent(sessionFile) {
   try { return await rebuildPromise } finally { rebuildPromise = null }
 }
 
+// 大模型配置变更 → 重建当前会话 agent（保留会话历史，改用新配置的模型）。
+// agent 未创建时跳过（下次创建自然用新配置）；重建失败不影响保存成功。
+function maybeRebuildAgent(oldProvider, oldModel, newProvider, newModel) {
+  if (oldProvider === newProvider && oldModel === newModel) return
+  if (!session?.sessionFile) return
+  rebuildAgent(session.sessionFile).catch(() => {})
+}
+
 function attachStreaming(s) {
   s.subscribe((event) => {
     if (event.type === "message_end" && event.message?.role === "assistant") {
@@ -501,7 +509,14 @@ const server = http.createServer(async (req, res) => {
     // 会话状态（status.js 契约）
     if (p === "/api/state" && req.method === "GET") {
       const a = agent
-      const model = a?.session?.model
+      let model = a?.session?.model
+      // agent 未创建/正在重建时回退显示设置里的模型，让底部状态实时反映当前配置
+      if (!model) {
+        try {
+          const cfg = JSON.parse(fs.readFileSync(path.join(USER_PI, "settings.json"), "utf8"))
+          model = { provider: cfg.defaultProvider ?? "deepseek", id: cfg.defaultModel ?? "deepseek-v4-flash" }
+        } catch {}
+      }
       // ready：服务在线即就绪（agent 懒创建，首次对话才建；连接一次成功即绿灯常驻）
       return json(res, 200, {
         success: true,
@@ -754,6 +769,20 @@ const server = http.createServer(async (req, res) => {
           const provider = cfg.defaultProvider ?? "deepseek"
           apiKey = auth[provider]?.key ?? ""
         } catch {}
+        // 全部提供商（内置 + 自定义）及各自的模型列表，供前端下拉
+        let providers = []
+        try {
+          const models = JSON.parse(fs.readFileSync(path.join(USER_PI, "models.json"), "utf8"))
+          let auth2 = {}
+          try { auth2 = JSON.parse(fs.readFileSync(path.join(USER_PI, "auth.json"), "utf8")) } catch {}
+          providers = Object.entries(models.providers || {}).map(([name, c]) => ({
+            name,
+            baseUrl: c?.baseUrl ?? "",
+            hasKey: Boolean(auth2[name]?.key && auth2[name].key !== "请输入你的API_KEY"),
+            key: auth2[name]?.key ?? "",
+            models: (c?.models || []).map((m) => (typeof m === "object" && m ? m.id : m)).filter(Boolean),
+          }))
+        } catch {}
         return json(res, 200, {
           success: true,
           data: {
@@ -762,6 +791,7 @@ const server = http.createServer(async (req, res) => {
             apiKey,
             contextTokens: cfg.contextTokens ?? 200000,
             thinkingLevel: cfg.defaultThinkingLevel ?? "off",
+            providers,
           },
         })
       } catch { return json(res, 200, { success: true, data: {} }) }
@@ -770,6 +800,80 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req)
       try {
         const cur = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
+        // ── 编辑已有大模型连接（可改名 / 改地址 / 改模型 / 改 Key）──
+        if (body.editProvider) {
+          const oldName = String(body.editProvider).trim()
+          const modelsFile = path.join(USER_PI, "models.json")
+          const modelsCfg = fs.existsSync(modelsFile) ? JSON.parse(fs.readFileSync(modelsFile, "utf8")) : {}
+          if (!modelsCfg.providers) modelsCfg.providers = {}
+          const oldCfg = modelsCfg.providers[oldName]
+          if (!oldCfg) return json(res, 400, { error: `提供商「${oldName}」不存在` })
+          const name = String(body.providerName ?? oldName).trim()
+          const baseUrl = String(body.baseUrl ?? oldCfg.baseUrl ?? "").trim()
+          const rawModels = Array.isArray(body.models)
+            ? body.models
+            : (oldCfg.models || []).map((m) => (typeof m === "object" && m ? m.id : m))
+          const models = rawModels.map((m) => {
+            if (m && typeof m === "object") return String(m.id ?? "").trim()
+            return String(m ?? "").trim()
+          }).filter(Boolean)
+          if (!name || /\s/.test(name)) return json(res, 400, { error: "提供商名称不能为空且不能含空格" })
+          if (!baseUrl) return json(res, 400, { error: "请填写 API 地址" })
+          if (models.length === 0) return json(res, 400, { error: "至少填写一个模型名称" })
+          if (name !== oldName && modelsCfg.providers[name]) return json(res, 400, { error: `提供商「${name}」已存在` })
+          // 写配置：改名时删旧建新，否则原地覆盖
+          if (name !== oldName) delete modelsCfg.providers[oldName]
+          modelsCfg.providers[name] = { baseUrl, api: "openai-completions", models: models.map((id) => ({ id })) }
+          fs.writeFileSync(modelsFile, JSON.stringify(modelsCfg, null, 2))
+          // Key：非空则更新；改名时把旧 key 迁到新名
+          const key = String(body.apiKey ?? "").trim()
+          const authFile = path.join(USER_PI, "auth.json")
+          const auth = fs.existsSync(authFile) ? JSON.parse(fs.readFileSync(authFile, "utf8")) : {}
+          if (name !== oldName && auth[oldName]) {
+            auth[name] = auth[oldName]
+            delete auth[oldName]
+          }
+          if (key) auth[name] = { type: "api_key", key }
+          fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
+          // 编辑的正是当前默认提供商 → 同步默认值（改名或模型列表变化时）
+          const next2 = { ...cur }
+          if (cur.defaultProvider === oldName) {
+            next2.defaultProvider = name
+            next2.defaultModel = models.includes(cur.defaultModel) ? cur.defaultModel : models[0]
+          }
+          fs.writeFileSync(settingsFile, JSON.stringify(next2, null, 2))
+          maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, next2.defaultProvider, next2.defaultModel)
+          return json(res, 200, { success: true, provider: name, model: next2.defaultModel ?? models[0] })
+        }
+        // ── 新增自定义大模型连接 ──
+        if (body.providerName) {
+          const name = String(body.providerName).trim()
+          const baseUrl = String(body.baseUrl ?? "").trim()
+          const models = (Array.isArray(body.models) ? body.models : []).map((m) => {
+            if (m && typeof m === "object") return String(m.id ?? "").trim()
+            return String(m ?? "").trim()
+          }).filter(Boolean)
+          if (!name || /\s/.test(name)) return json(res, 400, { error: "提供商名称不能为空且不能含空格" })
+          if (!baseUrl) return json(res, 400, { error: "请填写 API 地址" })
+          if (models.length === 0) return json(res, 400, { error: "至少填写一个模型名称" })
+          const modelsFile = path.join(USER_PI, "models.json")
+          const modelsCfg = fs.existsSync(modelsFile) ? JSON.parse(fs.readFileSync(modelsFile, "utf8")) : {}
+          if (!modelsCfg.providers) modelsCfg.providers = {}
+          if (modelsCfg.providers[name]) return json(res, 400, { error: `提供商「${name}」已存在` })
+          modelsCfg.providers[name] = { baseUrl, api: "openai-completions", models: models.map((id) => ({ id })) }
+          fs.writeFileSync(modelsFile, JSON.stringify(modelsCfg, null, 2))
+          const key = String(body.apiKey ?? "").trim()
+          if (key) {
+            const authFile = path.join(USER_PI, "auth.json")
+            const auth = fs.existsSync(authFile) ? JSON.parse(fs.readFileSync(authFile, "utf8")) : {}
+            auth[name] = { type: "api_key", key }
+            fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
+          }
+          const next2 = { ...cur, defaultProvider: name, defaultModel: models[0] }
+          fs.writeFileSync(settingsFile, JSON.stringify(next2, null, 2))
+          maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, name, models[0])
+          return json(res, 200, { success: true, provider: name, model: models[0] })
+        }
         const next = { ...cur }
         if (body.provider) next.defaultProvider = body.provider
         if (body.model) next.defaultModel = body.model
@@ -782,6 +886,7 @@ const server = http.createServer(async (req, res) => {
           auth[next.defaultProvider ?? "deepseek"] = { type: "api_key", key: body.apiKey }
           fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
         }
+        maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, next.defaultProvider, next.defaultModel)
         return json(res, 200, { success: true })
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
@@ -888,7 +993,11 @@ const ids = models.map((m) => m.id)
             .map(([n, s]) => testServer(n, s))
         )
         mcpStatusCache = status
-        // 配置变化 → 重建 agent（MCP 工具动态注册生效）
+        // 配置变化 → 清预热缓存并重新预热 + 重建 agent（MCP 工具动态注册生效）
+        try {
+          const mr = await import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
+          mr.resetMcpCache?.()
+        } catch {}
         try { await rebuildAgent(session?.sessionFile) } catch {}
         return json(res, 200, { success: true, config: servers, status })
       }
@@ -1345,6 +1454,10 @@ server.listen(PORT, HOST, () => {
       cleanEmptySessions()
     })
     .catch(() => cleanEmptySessions())
+  // 后台预热 MCP 服务器：启动即连接（连不上的 5s 内失败），agent 创建时读缓存，主对话零等待
+  import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
+    .then((m) => m.warmMcpServers?.())
+    .catch(() => {})
   // 上次一键更新的结果：失败则记入 lastUpdateError（「检查更新」界面会提示），并打印到控制台
   try {
     const rf = path.join(USER_PI, "update-result.json")

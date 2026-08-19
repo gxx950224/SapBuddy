@@ -34,45 +34,195 @@
     return { ...DEFAULT_SETTINGS };
   }
 
-  // ── 填充提供商下拉框 ──
-  function populateProviderSelect() {
+  // ── 提供商 / 模型下拉框 ──
+  let providerList = []; // [{ name, baseUrl, models: [id] }]，来自后端 models.json
+
+  function providerLabel(name) {
+    return DOMESTIC_PROVIDERS[name]?.label || name;
+  }
+
+  // 填充提供商下拉框（内置厂商用中文标签，自定义显示原名）
+  function populateProviderSelect(providers) {
+    providerList = Array.isArray(providers) ? providers : providerList;
     const sel = $("#llm-provider");
     sel.innerHTML = "";
-    for (const [key, p] of Object.entries(DOMESTIC_PROVIDERS)) {
+    for (const p of providerList) {
       const opt = document.createElement("option");
-      opt.value = key;
-      opt.textContent = p.label;
+      opt.value = p.name;
+      opt.textContent = providerLabel(p.name);
       sel.appendChild(opt);
     }
+    // 兜底：后端暂无数据时用内置清单
+    if (!sel.options.length) {
+      for (const [key, p] of Object.entries(DOMESTIC_PROVIDERS)) {
+        const opt = document.createElement("option");
+        opt.value = key;
+        opt.textContent = p.label;
+        sel.appendChild(opt);
+        providerList.push({ name: key, models: [p.defaultModel] });
+      }
+    }
   }
-  populateProviderSelect();
+
+  // 填充模型下拉框：当前提供商下的模型；当前值不在列表时自动追加一项
+  function populateModelSelect(provider, currentModel) {
+    const sel = $("#llm-model");
+    sel.innerHTML = "";
+    const p = providerList.find((x) => x.name === provider);
+    const ids = p?.models ? [...p.models] : [];
+    if (currentModel && !ids.includes(currentModel)) ids.push(currentModel);
+    for (const id of ids) {
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = id;
+      sel.appendChild(opt);
+    }
+    if (currentModel) sel.value = currentModel;
+  }
+
+  // 切换提供商 → 刷新模型下拉 + 同步该提供商的 Key
+  $("#llm-provider").addEventListener("change", () => {
+    populateModelSelect($("#llm-provider").value, "");
+    const p = providerList.find((x) => x.name === $("#llm-provider").value);
+    const keyInput = $("#llm-key");
+    if (p && p.hasKey && p.key) {
+      keyInput.value = p.key;
+      keyInput.placeholder = "";
+    } else {
+      keyInput.value = "";
+      keyInput.placeholder = "未配置，请输入 API Key";
+    }
+  });
 
   // ── 获取表单值 ──
   function getSettingsFormValues() {
     return {
       provider: $("#llm-provider").value,
-      model: $("#llm-model").value.trim(),
+      model: $("#llm-model").value,
       apiKey: $("#llm-key").value,
       contextTokens: parseInt($("#llm-context-tokens").value, 10) || 200000,
     };
   }
 
+  // 当前提供商不在列表时，把当前值作为一项加进去（兼容旧配置）
   function ensureProviderOption(provider) {
     if (!provider) return;
     const sel = $("#llm-provider");
     if (![...sel.options].some((o) => o.value === provider)) {
       const opt = document.createElement("option");
       opt.value = provider;
-      opt.textContent = provider;
+      opt.textContent = providerLabel(provider);
       sel.appendChild(opt);
     }
   }
 
+  // ── 新增连接：模型名称行 ──
+  function addModelRow(value) {
+    const wrap = $("#llm-new-models");
+    const row = document.createElement("div");
+    row.className = "llm-model-row";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "模型名称，如 gpt-4o";
+    if (value) input.value = value;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn-icon";
+    del.title = "删除";
+    del.textContent = "×";
+    del.addEventListener("click", () => row.remove());
+    row.appendChild(input);
+    row.appendChild(del);
+    wrap.appendChild(row);
+    return input;
+  }
+  let editingProvider = null; // 编辑中的提供商名（null = 新增模式）
+  function resetLlmForm() {
+    $("#llm-new-name").value = "";
+    $("#llm-new-baseurl").value = "";
+    $("#llm-new-key").value = "";
+    $("#llm-new-key").placeholder = "该提供商的 API Key";
+    $("#llm-new-models").innerHTML = "";
+    editingProvider = null;
+  }
+  function showLlmForm() {
+    $("#llm-conn-form").style.display = "block";
+    $("#llm-add-conn").style.display = "none";
+    $("#llm-edit-conn").style.display = "none";
+  }
+  function openLlmConnForm() {
+    resetLlmForm();
+    $("#llm-conn-form-title").textContent = "新增大模型连接（OpenAI 兼容接口）";
+    $("#llm-conn-save").textContent = "保存连接";
+    showLlmForm();
+    addModelRow();
+  }
+  function openLlmEditForm() {
+    const provider = $("#llm-provider").value;
+    const p = providerList.find((x) => x.name === provider);
+    if (!p) { App.showToast("请先在提供商下拉框选择要编辑的连接"); return; }
+    resetLlmForm();
+    editingProvider = provider;
+    $("#llm-conn-form-title").textContent = "编辑大模型连接（OpenAI 兼容接口）";
+    $("#llm-conn-save").textContent = "保存修改";
+    $("#llm-new-name").value = p.name;
+    $("#llm-new-baseurl").value = p.baseUrl || "";
+    $("#llm-new-key").placeholder = p.hasKey ? "已配置 Key（留空保持不变）" : "未配置 Key，可填写";
+    const models = p.models && p.models.length ? p.models : [""];
+    models.forEach((m) => addModelRow(m));
+    showLlmForm();
+  }
+  function hideLlmConnForm() {
+    resetLlmForm();
+    $("#llm-conn-form").style.display = "none";
+    $("#llm-add-conn").style.display = "";
+    $("#llm-edit-conn").style.display = "";
+  }
+  $("#llm-add-conn").addEventListener("click", openLlmConnForm);
+  $("#llm-edit-conn").addEventListener("click", openLlmEditForm);
+  $("#llm-conn-cancel").addEventListener("click", hideLlmConnForm);
+  $("#llm-new-model-add").addEventListener("click", () => addModelRow());
+  $("#llm-conn-save").addEventListener("click", async () => {
+    const name = $("#llm-new-name").value.trim();
+    const baseUrl = $("#llm-new-baseurl").value.trim();
+    const apiKey = $("#llm-new-key").value.trim();
+    const models = [...document.querySelectorAll("#llm-new-models input")].map((i) => i.value.trim()).filter(Boolean);
+    if (!name) { App.showToast("请填写提供商名称"); return; }
+    if (!baseUrl) { App.showToast("请填写 API 地址"); return; }
+    if (!models.length) { App.showToast("请至少填写一个模型名称"); return; }
+    const saveBtn = $("#llm-conn-save");
+    saveBtn.disabled = true;
+    try {
+      const payload = editingProvider
+        ? { editProvider: editingProvider, providerName: name, baseUrl, apiKey, models }
+        : { providerName: name, baseUrl, apiKey, models };
+      const r = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (j.success) {
+        App.showToast(editingProvider ? "修改已保存" : "连接已添加，已切换为当前提供商");
+        hideLlmConnForm();
+        applySettingsToForm(await fetchSettings());
+        App.refreshState();
+      } else {
+        App.showToast("保存失败：" + (j.error || "未知错误"), true);
+      }
+    } catch (e) {
+      App.showToast("保存失败：" + e.message, true);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
   function applySettingsToForm(settings) {
     const s = settings || DEFAULT_SETTINGS;
+    populateProviderSelect(s.providers);
     ensureProviderOption(s.provider);
     $("#llm-provider").value = s.provider || "deepseek";
-    $("#llm-model").value = s.model || "";
+    populateModelSelect($("#llm-provider").value, s.model || "");
     const keyInput = $("#llm-key");
     const keyToggle = $("#llm-key-toggle");
     if (s.apiKey) {
