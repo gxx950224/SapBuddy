@@ -236,8 +236,8 @@ async function cmdChat() {
     "--append-system-prompt", promptFile("SYSTEM.md"),
     "--append-system-prompt", promptFile("Memory.md"),
   ]
-  // API Key（从 .SapBuddy/auth.json 读取，避免手工配置）
-  const apiKey = Object.values(auth).find((v) => v?.type === "api_key" && v.key)?.key
+  // API Key（从 .SapBuddy/auth.json 读取，按当前 provider 取对应 key，避免把别的 provider 的 key 混用）
+  const apiKey = auth[settings.defaultProvider ?? ""]?.key ?? Object.values(auth).find((v) => v?.type === "api_key" && v.key)?.key
   if (apiKey && apiKey !== "请输入你的API_KEY") args.push("--api-key", apiKey)
   // 思考级别
   const tl = settings.defaultThinkingLevel

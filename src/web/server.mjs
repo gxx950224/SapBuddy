@@ -751,8 +751,8 @@ const server = http.createServer(async (req, res) => {
         let apiKey = ""
         try {
           const auth = JSON.parse(fs.readFileSync(path.join(USER_PI, "auth.json"), "utf8"))
-          const k = Object.values(auth).find((v) => v?.type === "api_key" && v.key)
-          apiKey = k?.key ?? ""
+          const provider = cfg.defaultProvider ?? "deepseek"
+          apiKey = auth[provider]?.key ?? ""
         } catch {}
         return json(res, 200, {
           success: true,
