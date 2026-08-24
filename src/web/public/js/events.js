@@ -262,7 +262,22 @@
           break;
         }
         if (ev.message?.stopReason === "error" || ev.message?.errorMessage === "terminated") {
-          App.onGenerationInterrupted();
+          // 出错时清掉这次失败消息产生的空气泡（用错误提示代替空泡）
+          if (state.currentAssistantEl) {
+            const empty =
+              state.currentAssistantEl.children.length === 0 &&
+              !state.currentAssistantEl.classList.contains("typing");
+            if (empty) {
+              const bubble = state.currentAssistantEl.closest(".msg");
+              if (bubble) bubble.remove();
+            }
+          }
+          // 区分"模型明确拒绝"（如图片不支持，给精准提示）与"中途中断"（保留继续生成入口）
+          if (ev.message?.errorMessage === "terminated") {
+            App.onGenerationInterrupted();
+          } else {
+            App.onGenerationError(ev.message?.errorMessage);
+          }
         }
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
         // 输出全部返回后自动收起思考面板（工具执行时自动展开过）

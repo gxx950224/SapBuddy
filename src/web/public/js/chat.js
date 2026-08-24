@@ -45,25 +45,28 @@
   };
 
   // ── 发送消息 ──
-  App.sendMessage = async function() {
-    const raw = inputEl.value.trim();
+  // textOverride 可选：「继续生成」按钮等场景传入待发送文字（而非从输入框读取）
+  App.sendMessage = async function(textOverride) {
+    const raw = (textOverride != null ? String(textOverride).trim() : inputEl.value.trim());
     const atts = state.attachments || [];
-    if ((!raw && !atts.length) || state.streaming) return;
+    const imgs = state.images || [];
+    if ((!raw && !atts.length && !imgs.length) || state.streaming) return;
 
-    // 气泡显示：用户文本 + 附件名（简洁）
+    // 气泡显示：用户文本 + 附件名；图片直接以缩略图渲染（不再拼图片名，与历史回显一致）
     let displayText = raw;
     if (atts.length) displayText = (displayText ? displayText + "\n" : "") + atts.map((a) => a.name).join("\n");
 
-    // 发给 AI：完整文本 + 隐藏的文件路径引用（AI 用 read 读取）
+    // 发给 AI：完整文本 + 隐藏的文件路径引用（AI 用 read 读取）+ 图片（视觉输入）
     let sendText = raw;
     if (atts.length) {
       const ref = atts.map((a) => "- " + a.name + " → " + a.path).join("\n");
       sendText = (sendText ? sendText + "\n\n" : "") + "【用户附带的文件（已保存到本地，请用 read 工具读取内容）】\n" + ref;
     }
 
-    App.addUserBubble(displayText);
-    inputEl.value = "";
+    App.addUserBubble(displayText, imgs);
+    if (textOverride == null) inputEl.value = "";
     App.clearAttachments();
+    App.clearImages();
     autoGrow();
     App.setStreaming(true);
     App.resetAutoScroll(); // 每次提问都恢复到底自动跟随
@@ -76,7 +79,7 @@
       const r = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: sendText }),
+        body: JSON.stringify({ text: sendText, images: imgs.map((i) => ({ mimeType: i.mimeType, data: i.data })) }),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));

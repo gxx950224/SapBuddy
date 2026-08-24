@@ -108,11 +108,19 @@
     return (prefix ? prefix + "\n" : "") + attach;
   }
 
-  App.addUserBubble = function(text) {
+  App.addUserBubble = function(text, images) {
     const el = document.createElement("div");
     el.className = "msg user";
     el.innerHTML = '<div class="msg-content"><div class="meta">你</div><div class="body"></div></div>';
-    el.querySelector(".body").textContent = simplifyAttachmentText(text);
+    const body = el.querySelector(".body");
+    if (text) body.textContent = simplifyAttachmentText(text);
+    for (const img of images || []) {
+      const im = document.createElement("img");
+      im.className = "msg-img";
+      im.alt = "图片";
+      im.src = "data:" + img.mimeType + ";base64," + img.data;
+      body.appendChild(im);
+    }
     messagesEl.appendChild(el);
     App.scrollToBottom(true);
   };
@@ -447,6 +455,32 @@
     if (el) el.remove();
   };
 
+  // ── 生成错误提示（模型接口明确拒绝，如图片不支持、参数错误） ──
+  // 与"生成中断"区分：这类错误是模型明确拒绝，不需要"继续生成"按钮，
+  // 而是把底层报错翻译成人话提示用户（如"这个模型不支持图片输入"）。
+  App.friendlyErrorMessage = function(raw) {
+    const s = String(raw || "");
+    if (/do not support image|not support image|does not support image|image_url|unsupported image|image input/i.test(s)) {
+      return "⚠ 当前模型不支持图片输入，发图片会失败。请到「设置-大模型」换成支持图片的模型，或改发纯文字。";
+    }
+    if (s === "terminated") {
+      return "⚠ 本次生成被模型接口中断（深度思考耗时过长或接口超时），AI 已写入部分内容。可点击下方按钮让其接着写：";
+    }
+    if (!s.trim()) return "⚠ 生成出错，请重试。";
+    return "⚠ 生成出错：" + s;
+  };
+  App.onGenerationError = function(errorMessage) {
+    for (const sel of [".interruption-note", ".generation-error"]) {
+      const old = messagesEl.querySelector(sel);
+      if (old) old.remove();
+    }
+    const el = document.createElement("div");
+    el.className = "msg system-note generation-error";
+    el.textContent = App.friendlyErrorMessage(errorMessage);
+    messagesEl.appendChild(el);
+    App.scrollToBottom();
+  };
+
   // ── 生成中断提示 + 继续按钮 ──
   // 当 assistant 消息被 SDK 标 terminated（模型接口超时/中断）时，
   // 会话会遗留一条不完整的半截消息，前端若无入口就会表现为"卡住"。
@@ -499,9 +533,11 @@
     for (const msg of messages) {
       if (msg.role === "user") {
         lastWasAssistant = false;
-        const text = (msg.content || []).map((c) => c.text || "").join("");
-        if (text) {
-          App.addUserBubble(text);
+        const blocks = msg.content || [];
+        const text = blocks.map((c) => (c.type === "text" ? c.text || "" : "")).join("");
+        const images = blocks.filter((c) => c.type === "image" && c.data && c.mimeType);
+        if (text || images.length) {
+          App.addUserBubble(text, images);
           state.currentAssistantEl = null;
           state.currentTextDiv = null;
           state.pendingTexts = [];
@@ -537,7 +573,8 @@
     const _last = messages[messages.length - 1];
     if (_last && _last.role === "assistant" &&
         (_last.stopReason === "error" || _last.errorMessage === "terminated")) {
-      App.onGenerationInterrupted();
+      if (_last.errorMessage === "terminated") App.onGenerationInterrupted();
+      else App.onGenerationError(_last.errorMessage);
     }
     // 合并同轮多段 assistant 文本为一段 markdown（历史渲染也不刷屏）
     if (state.currentAssistantEl && state.pendingTexts.length > 0) {

@@ -697,6 +697,18 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   padding: 6px 0; margin: 0 auto; max-width: 1000px; animation: none;
 }
 
+/* 生成错误提示（模型明确拒绝，如图片不支持、参数错误） */
+.msg.system-note.generation-error {
+  color: var(--danger, #e5484d);
+  background: color-mix(in srgb, var(--danger, #e5484d) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger, #e5484d) 30%, transparent);
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin: 6px auto;
+  max-width: 1000px;
+  text-align: left;
+}
+
 /* 等待模型响应（提问后、首字输出前的空窗提示） */
 .msg.waiting-note {
   display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -1926,6 +1938,102 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   padding: 0 2px;
 }
 .attach-remove:hover { color: var(--error, #e5484d); }
+
+/* ── 图片缩略图 chips（发图视觉输入） ── */
+#images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 0;
+}
+.img-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--bg-hover, #26263a);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 3px;
+}
+.img-chip img {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 6px;
+  display: block;
+  cursor: zoom-in;
+}
+.img-chip .attach-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  line-height: 16px;
+  text-align: center;
+  border-radius: 50%;
+  background: var(--bg-elevated, #2b2b45);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+}
+/* 气泡/历史里的图片缩略图（双击放大） */
+.msg-img {
+  display: block;
+  max-width: 320px;
+  max-height: 240px;
+  border-radius: 8px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  cursor: zoom-in;
+}
+
+/* ── 图片放大查看器（双击缩略图弹出） ── */
+.image-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.78);
+}
+.image-viewer.open {
+  display: flex;
+}
+.image-viewer .viewer-backdrop {
+  position: absolute;
+  inset: 0;
+}
+.image-viewer .viewer-img {
+  max-width: 92vw;
+  max-height: 92vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
+  position: relative;
+  z-index: 1;
+  cursor: zoom-out;
+}
+.image-viewer .viewer-close {
+  position: absolute;
+  top: 16px;
+  right: 22px;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  border: none;
+  cursor: pointer;
+}
+.image-viewer .viewer-close:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
 
 /* ── DeepSeek 风格：深度思考卡片 + 内联工具链 ── */
 .agent-think {

@@ -328,17 +328,29 @@ const server = http.createServer(async (req, res) => {
 
     // 聊天
     if (p === "/api/chat" && req.method === "POST") {
-      const { text } = await readBody(req)
-      if (!text?.trim()) return json(res, 400, { error: "text 不能为空" })
+      const { text, images } = await readBody(req)
+      // 图片消息允许无文本（纯发截图）
+      const imgs = Array.isArray(images)
+        ? images.filter((i) => i && typeof i.data === "string" && typeof i.mimeType === "string" && i.data.length <= 14 * 1024 * 1024)
+        : []
+      if (!text?.trim() && imgs.length === 0) return json(res, 400, { error: "text 不能为空" })
       if (busy) return json(res, 409, { error: "上一轮仍在处理中" })
       busy = true
       json(res, 200, { ok: true, ts: Date.now() })
       try {
         const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
         // 授权窗口：确认词/拒绝词统一处理（与扩展层 before_agent_start 同规则）
-        r.handleUserMessage?.(text.trim())
+        if (text?.trim()) r.handleUserMessage?.(text.trim())
         const a = await ensureAgent()
-        await a.session.prompt(text.trim())
+        // 不自动切换模型：尊重用户手动选择的模型。发图时若当前模型不支持看图，
+        // pi 会把图片降级占位（模型回复会体现看不到图），用户可在设置里主动换支持图片的模型。
+        if (imgs.length > 0) {
+          await a.session.prompt(text?.trim() ?? "", {
+            images: imgs.map((i) => ({ type: "image", data: i.data, mimeType: i.mimeType })),
+          })
+        } else {
+          await a.session.prompt(text.trim())
+        }
       } catch (e) {
         const msg = String(e?.message || e)
         // 停止后旧操作仍在收尾（网络异常最长 120s）时发消息会命中 SDK 并发保护，翻译成大白话
@@ -813,17 +825,23 @@ const server = http.createServer(async (req, res) => {
           const rawModels = Array.isArray(body.models)
             ? body.models
             : (oldCfg.models || []).map((m) => (typeof m === "object" && m ? m.id : m))
-          const models = rawModels.map((m) => {
+          const modelIds = rawModels.map((m) => {
             if (m && typeof m === "object") return String(m.id ?? "").trim()
             return String(m ?? "").trim()
           }).filter(Boolean)
           if (!name || /\s/.test(name)) return json(res, 400, { error: "提供商名称不能为空且不能含空格" })
           if (!baseUrl) return json(res, 400, { error: "请填写 API 地址" })
-          if (models.length === 0) return json(res, 400, { error: "至少填写一个模型名称" })
+          if (modelIds.length === 0) return json(res, 400, { error: "至少填写一个模型名称" })
           if (name !== oldName && modelsCfg.providers[name]) return json(res, 400, { error: `提供商「${name}」已存在` })
+          // 每个模型对象：保留已有字段（name/reasoning/contextWindow/maxTokens）并默认支持图片
+          const oldModels = (oldCfg.models || []).filter((m) => m && typeof m === "object")
+          const models = modelIds.map((id) => {
+            const existing = oldModels.find((om) => om.id === id)
+            return { ...(existing || {}), id, input: ["text", "image"] }
+          })
           // 写配置：改名时删旧建新，否则原地覆盖
           if (name !== oldName) delete modelsCfg.providers[oldName]
-          modelsCfg.providers[name] = { baseUrl, api: "openai-completions", models: models.map((id) => ({ id })) }
+          modelsCfg.providers[name] = { baseUrl, api: "openai-completions", models }
           fs.writeFileSync(modelsFile, JSON.stringify(modelsCfg, null, 2))
           // Key：非空则更新；改名时把旧 key 迁到新名
           const key = String(body.apiKey ?? "").trim()
@@ -839,28 +857,30 @@ const server = http.createServer(async (req, res) => {
           const next2 = { ...cur }
           if (cur.defaultProvider === oldName) {
             next2.defaultProvider = name
-            next2.defaultModel = models.includes(cur.defaultModel) ? cur.defaultModel : models[0]
+            next2.defaultModel = modelIds.includes(cur.defaultModel) ? cur.defaultModel : modelIds[0]
           }
           fs.writeFileSync(settingsFile, JSON.stringify(next2, null, 2))
           maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, next2.defaultProvider, next2.defaultModel)
-          return json(res, 200, { success: true, provider: name, model: next2.defaultModel ?? models[0] })
+          return json(res, 200, { success: true, provider: name, model: next2.defaultModel ?? modelIds[0] })
         }
         // ── 新增自定义大模型连接 ──
         if (body.providerName) {
           const name = String(body.providerName).trim()
           const baseUrl = String(body.baseUrl ?? "").trim()
-          const models = (Array.isArray(body.models) ? body.models : []).map((m) => {
+          const modelIds = (Array.isArray(body.models) ? body.models : []).map((m) => {
             if (m && typeof m === "object") return String(m.id ?? "").trim()
             return String(m ?? "").trim()
           }).filter(Boolean)
           if (!name || /\s/.test(name)) return json(res, 400, { error: "提供商名称不能为空且不能含空格" })
           if (!baseUrl) return json(res, 400, { error: "请填写 API 地址" })
-          if (models.length === 0) return json(res, 400, { error: "至少填写一个模型名称" })
+          if (modelIds.length === 0) return json(res, 400, { error: "至少填写一个模型名称" })
           const modelsFile = path.join(USER_PI, "models.json")
           const modelsCfg = fs.existsSync(modelsFile) ? JSON.parse(fs.readFileSync(modelsFile, "utf8")) : {}
           if (!modelsCfg.providers) modelsCfg.providers = {}
           if (modelsCfg.providers[name]) return json(res, 400, { error: `提供商「${name}」已存在` })
-          modelsCfg.providers[name] = { baseUrl, api: "openai-completions", models: models.map((id) => ({ id })) }
+          // 新增模型默认支持图片（input:["text","image"]）
+          const models = modelIds.map((id) => ({ id, input: ["text", "image"] }))
+          modelsCfg.providers[name] = { baseUrl, api: "openai-completions", models }
           fs.writeFileSync(modelsFile, JSON.stringify(modelsCfg, null, 2))
           const key = String(body.apiKey ?? "").trim()
           if (key) {
@@ -869,10 +889,10 @@ const server = http.createServer(async (req, res) => {
             auth[name] = { type: "api_key", key }
             fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
           }
-          const next2 = { ...cur, defaultProvider: name, defaultModel: models[0] }
+          const next2 = { ...cur, defaultProvider: name, defaultModel: modelIds[0] }
           fs.writeFileSync(settingsFile, JSON.stringify(next2, null, 2))
-          maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, name, models[0])
-          return json(res, 200, { success: true, provider: name, model: models[0] })
+          maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, name, modelIds[0])
+          return json(res, 200, { success: true, provider: name, model: modelIds[0] })
         }
         const next = { ...cur }
         if (body.provider) next.defaultProvider = body.provider

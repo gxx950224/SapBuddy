@@ -146,6 +146,29 @@ export function ensureRuntimeFiles() {
         if (fs.existsSync(src)) { fs.copyFileSync(src, dst); break }
       }
     }
+    // 多模态模型能力补全：openai-completions 通道只有模型声明 input 含 "image" 才会真正把图片发给模型，
+    // 否则 pi 会在发送前把图片降级成占位符（模型仍显示"看不到图"）。
+    // 统一策略：所有模型默认允许发图（input=["text","image"]），模型若不支持图片由 API 层报错（用户可见）。
+    // 只补 input，不改 reasoning/thinkingLevelMap/contextWindow/maxTokens，避免给其它模型误设属性。
+    try {
+      const mf = path.join(CONFIG_DIR, "models.json")
+      if (fs.existsSync(mf)) {
+        const mj = JSON.parse(fs.readFileSync(mf, "utf8"))
+        let changed = false
+        for (const prov of Object.values(mj?.providers ?? {})) {
+          for (const m of prov?.models ?? []) {
+            if (!(Array.isArray(m.input) && m.input.includes("image"))) {
+              m.input = ["text", "image"]
+              changed = true
+            }
+          }
+        }
+        if (changed) {
+          fs.writeFileSync(mf, JSON.stringify(mj, null, 2))
+          console.log("[sapbuddy] 已为全部模型补全多模态 input 能力")
+        }
+      }
+    } catch { /* 补全失败不影响运行 */ }
     if (!fs.existsSync(path.join(CONFIG_DIR, "connections.json"))) {
       for (const src of [path.join(LEGACY_PI, "connections.json"), path.join(process.cwd(), "connections.json"), path.join(ROOT, "config", "connections.example.json")]) {
         if (fs.existsSync(src)) { fs.copyFileSync(src, path.join(CONFIG_DIR, "connections.json")); break }
@@ -289,5 +312,5 @@ export async function createAgent(opts = {}) {
     sessionManager,
     settingsManager: SettingsManager.inMemory(),
   })
-  return { session, settings }
+  return { session, settings, modelRuntime }
 }

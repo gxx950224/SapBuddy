@@ -5,19 +5,39 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "qwen-plus"
+          "id": "qwen-plus",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "qwen-max"
+          "id": "qwen-max",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "qwen-max-latest"
+          "id": "qwen-max-latest",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "qwen2.5-coder-32b-instruct"
+          "id": "qwen2.5-coder-32b-instruct",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "qwen3-coder-plus"
+          "id": "qwen3-coder-plus",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -26,13 +46,25 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "moonshot-v1-8k"
+          "id": "moonshot-v1-8k",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "moonshot-v1-32k"
+          "id": "moonshot-v1-32k",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "kimi-k2"
+          "id": "kimi-k2",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -41,16 +73,32 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "glm-4-plus"
+          "id": "glm-4-plus",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "glm-4-flash"
+          "id": "glm-4-flash",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "glm-4-air"
+          "id": "glm-4-air",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "glm-4.5"
+          "id": "glm-4.5",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -59,13 +107,25 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "doubao-seed-1.6"
+          "id": "doubao-seed-1.6",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "doubao-seed-1.6-250615"
+          "id": "doubao-seed-1.6-250615",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "doubao-pro-32k"
+          "id": "doubao-pro-32k",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -74,13 +134,25 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "MiniMax-M2.7"
+          "id": "MiniMax-M2.7",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "abab6.5s-chat"
+          "id": "abab6.5s-chat",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "MiniMax-Text-01"
+          "id": "MiniMax-Text-01",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -89,13 +161,25 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "hunyuan-turbo"
+          "id": "hunyuan-turbo",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "hunyuan-pro"
+          "id": "hunyuan-pro",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "hunyuan-standard"
+          "id": "hunyuan-standard",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -104,16 +188,32 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "ernie-4.5"
+          "id": "ernie-4.5",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "ernie-4.0-8k"
+          "id": "ernie-4.0-8k",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "ernie-speed-128k"
+          "id": "ernie-speed-128k",
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
-          "id": "ernie-3.5-8k"
+          "id": "ernie-3.5-8k",
+          "input": [
+            "text",
+            "image"
+          ]
         }
       ]
     },
@@ -133,15 +233,37 @@
             "max": "max"
           },
           "contextWindow": 1000000,
-          "maxTokens": 16384
+          "maxTokens": 16384,
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
           "id": "deepseek-chat",
           "contextWindow": 1000000,
-          "maxTokens": 16384
+          "maxTokens": 16384,
+          "input": [
+            "text",
+            "image"
+          ]
         },
         {
           "id": "deepseek-reasoner",
+          "contextWindow": 1000000,
+          "maxTokens": 16384,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "deepseek-v4-flash-vision-exp",
+          "name": "DeepSeek V4 Flash Vision",
+          "input": [
+            "text",
+            "image"
+          ],
           "contextWindow": 1000000,
           "maxTokens": 16384
         }
