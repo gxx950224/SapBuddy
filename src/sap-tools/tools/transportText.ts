@@ -181,10 +181,10 @@ export const textElementsTool = {
   write: true,
   title: "Manage Text Elements",
   description:
-    "读取对象的文本元素（text elements）：标题/文本符号（symbols）、选择文本（selections）、表头（headings）。" +
-    "本工具用于**读取/核对**现有文本元素（action='read'）。" +
-    "**写入文本元素（标题/符号/选择文本，含中英文）一律用 translate_text_pool（mode='set'）**——它自动处理选择文本前导空格、标题空键等格式，本工具不再负责写入。" +
-    "⚠️ 保留 action='update' 仅作历史兼容，不建议使用；直接写中文会被代码级拦截（会把中文写进主语言位置导致文本池语言不一致）。" +
+    "读取与写入对象的文本元素（text elements）：标题/文本符号（symbols）、选择文本（selections）、表头（headings）。" +
+    "**新增/修改文本元素用 action='update'**（写入自动把程序对象 R3TR PROG（含文本池）挂载进传输请求，传 transportNumber 或沿用对象现有请求——这是把文本池随程序对象带进请求的正确方式）。" +
+    "写入使用 ADT 通道、自动处理合并（新条目覆盖/新增、旧条目保留）与激活。写中文需先经用户确认（传 allowChinese=true）。" +
+    "仅当需要**翻译**（写非主语言的翻译文本）时才改用 translate_text_pool；translate_text_pool 直接写数据库、不自己挂载对象。" +
     "读取规则：symbols 的 id 为 3 字符（源码 TEXT-001 对应 id='001'）；selections 的 id 为参数名（如 P_COMP）；headings 的 id 如 listHeader/columnHeader_1。",
   inputSchema: z.object({
     action: z.enum(["read", "update"]).describe("read=读取文本元素; update=修改（需 readOnly=false）"),
@@ -196,6 +196,10 @@ export const textElementsTool = {
       .optional()
       .describe("update 时必填：要写入的文本元素列表"),
     transportNumber: z.string().optional().describe("传输请求号（如 DEVK900001）。写文本元素时指定请求号；省略则用对象现有请求"),
+    allowChinese: z
+      .boolean()
+      .optional()
+      .describe("确认写入中文文本元素。默认禁止；用户明确要求写中文时传 true。会把中文写入对象语言位置，可能影响文本池语言一致性"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: {
@@ -205,6 +209,7 @@ export const textElementsTool = {
     category?: string
     elements?: Array<{ id: string; text: string }>
     transportNumber?: string
+    allowChinese?: boolean
     connectionId?: string
   }): Promise<string> {
     try {
@@ -247,19 +252,19 @@ export const textElementsTool = {
       if (!args.elements || args.elements.length === 0) {
         return "update 需要提供 elements 列表，如 [{id:'001', text:'场景'}]（id 为 3 字符符号键）。"
       }
-      // ⛔ 代码级强制：文本元素写入的是对象主语言文本。直接写中文会把中文写进主语言位置，
-      // 导致文本池语言不一致（维护时提示"显示不一致"、出现 I 前缀重复符号）。
-      // 正确流程：① manage_text_elements 写英文主语言 → ② translate_text_pool(mode=set, targetLanguage='1') 写中文翻译。
+      // ⚠️ 文本元素写入的是对象语言位置的文本。写中文可能把中文写进主语言位置，导致文本池语言不一致
+      // （维护时提示"显示不一致"、出现 I 前缀重复符号）。不再代码级强拦，改为提示用户确认是否调整：
+      // 用户明确要求写中文 → 传 allowChinese=true；要求改英文 → 把 elements 里中文换成英文。
       const cn = args.elements.find((e) => /[一-鿿]/.test(e.text))
-      if (cn) {
+      if (cn && !args.allowChinese) {
+        const cnList = args.elements.filter((e) => /[一-鿿]/.test(e.text)).map((e) => `  ${e.id}: ${e.text}`).join("\n")
         return (
-          `⛔ 文本元素主语言禁止直接写中文（代码级强制，未写入）：${cn.id} = ${cn.text}\n` +
-          `manage_text_elements 写的是对象主语言文本（通常英文），直接写中文会导致文本池语言不一致（显示不一致/重复符号）。\n` +
-          `正确流程：\n` +
-          `  ① 用 manage_text_elements（本工具）先写英文主语言文本：elements=[{id:'${cn.id}', text:'<英文>'}]\n` +
-          `  ② 再用 translate_text_pool（mode='set', targetLanguage='1'）写中文翻译：texts=[{key:'${cn.id}', text:'${cn.text}'}]\n` +
-          `  ③ 传输请求号：用 transportNumber 参数指定（如 manage_text_elements/translate_text_pool 都传）。\n` +
-          `若对象主语言确实为中文（罕见），请用 translate_text_pool(targetLanguage='1') 直接写入。`
+          `⚠️ 检测到文本元素含中文（未写入）：\n${cnList}\n` +
+          `manage_text_elements 写入的是对象语言位置的文本。若对象主语言不是中文，把中文写进主语言位置会导致文本池语言不一致（显示不一致/重复符号）。\n` +
+          `请选择：\n` +
+          `  ① 继续写中文 → 以 allowChinese=true 重新调用本工具（适用于对象主语言确为中文，或你确认要这么写）。\n` +
+          `  ② 调整成英文 → 把 elements 里中文换成英文后重新调用。\n` +
+          `  ③ 若是翻译（写非主语言的中文译文）→ 改用 translate_text_pool（mode='set', targetLanguage='1'）写入；请先用本工具写主语言文本元素以把对象挂载进传输请求。`
         )
       }
       // symbols 必须带 @MaxLength（SAP 校验，缺失报 DS512 文本池不一致）

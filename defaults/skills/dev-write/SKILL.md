@@ -19,9 +19,9 @@ disable: false
 
 - 代码内不允许出现硬编码中文文案（提示/错误/说明文字）。
 - 面向用户的提示/错误 → **消息类**（`MESSAGE e001(zmsg) WITH ...`；`MESSAGE ... INTO DATA(lv_msg)` 供 BAPIRET2 等返回）。
-- 选择屏幕标签/块标题/ALV 列文本 → **文本元素**（`TEXT-001`、Selection Text）。
+- 选择屏幕标签/块标题/ALV 列文本 → **文本元素**（`TEXT-001`、Selection Text）。**新增/修改文本元素用 `manage_text_elements`**（写入自动把程序对象 `R3TR PROG`（含文本池）挂载进传输请求）；翻译成其它语言用 `translate_text_pool`（文本池随程序对象 `R3TR PROG` 传输，写前请确认程序已在可修改请求里）。
 - 找不到合适消息类/文本元素时，创建 Z 消息类（`create_object_programmatically` MSAG/N）或维护文本元素。
-- 技术性注释可用中文（注释非运行时文案），但用户可见文案必须走消息类/文本元素。
+- 技术性注释可用中文（注释非运行时文案），但用户可见文案必须走消息类/文本元素（此"禁硬编码中文"指**代码里**的文案，非文本元素的中文翻译）。
 
 ## 编码规范（默认：SAP 官方 Clean ABAP）
 

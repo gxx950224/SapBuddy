@@ -171,11 +171,14 @@
 ```json
 // 读
 { "action": "read", "objectName": "ZAIR004", "objectType": "PROG" }
-// 写（自动合并现有，不会覆盖旧条目）
+// 写（自动合并现有，不会覆盖旧条目；写入自动把程序对象 R3TR PROG（含文本池）挂载进传输请求）
 { "action": "update", "objectName": "ZAIR004", "objectType": "PROG", "category": "symbols",
-  "elements": [ { "id": "001", "text": "场景选择" } ] }
+  "elements": [ { "id": "001", "text": "场景选择" } ],
+  "transportNumber": "DEVK900001" }
 ```
 > `category`：symbols（TEXT-xxx）/ selections（选择文本，id=参数名）/ headings；symbols 的 id 用 3 字符 `'001'`；对象必须是主程序（PROG/P）。
+> **新增/修改文本元素用本工具（update）**——写入自动把程序对象 `R3TR PROG <程序名>`（含文本池）挂载进传输请求（传 `transportNumber` 或沿用对象现有请求），文本池随程序对象一起传输。**写中文需用户确认**：默认检测到中文会返回"继续写中文/调整成英文"提示，确认后传 `allowChinese=true` 写入（会把中文写入对象语言位置，可能影响文本池语言一致性）。
+> **翻译成其它语言用 `translate_text_pool`**（写非主语言翻译）；`translate_text_pool` 直接写 `TEXTPOOL` 表、不自动挂载对象，写前请确认程序对象 `R3TR PROG` 已在可修改请求里（`manage_text_elements` 写入会把它挂进去），或传 `transportNumber` 让工具检测。
 
 ---
 
