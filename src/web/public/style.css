@@ -465,6 +465,163 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .session-item.current .session-del { color: var(--error); }
 .session-item.current .session-del:hover { background: rgba(239, 68, 68, 0.12); }
 
+/* ── 会话排序栏 ── */
+.session-sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0 8px;
+  font-size: 11.5px;
+}
+.session-sort-label {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+.session-sort-btn {
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.session-sort-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.session-sort-btn.active {
+  background: var(--bg-elevated);
+  color: var(--accent);
+  border-color: var(--border);
+  font-weight: 500;
+}
+
+/* ── 固定按钮 ── */
+.session-pin {
+  flex-shrink: 0; width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer; padding: 0;
+  color: var(--text-faint); border-radius: var(--radius-sm);
+  opacity: 0; transition: opacity var(--ease), background var(--ease), color var(--ease);
+}
+.session-item:hover .session-pin { opacity: 1; }
+.session-pin:hover { color: var(--warning, #f59e0b); background: var(--bg-hover); }
+.session-pin.active {
+  opacity: 1;
+  color: var(--warning, #f59e0b);
+}
+.session-item.pinned .session-title {
+  color: var(--text);
+}
+
+/* ── 会话时间分组（可折叠）── */
+.session-group {
+  margin-bottom: 4px;
+}
+.session-group > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  padding: 12px 10px 4px;
+  letter-spacing: 0.3px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.session-group > summary::-webkit-details-marker {
+  display: none;
+}
+.session-group .group-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--text-faint);
+}
+.session-group[open] .group-chevron {
+  transform: rotate(90deg);
+}
+.session-group > summary:hover {
+  color: var(--text-dim);
+}
+.session-group > summary:hover .group-chevron {
+  color: var(--text-dim);
+}
+
+/* ── 正在执行的会话图标（旋转动画，显示在标题后）── */
+.session-running-icon {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--accent);
+  vertical-align: -1px;
+  flex-shrink: 0;
+}
+.session-running-icon svg {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── 更多操作按钮（...）── */
+.session-more {
+  flex-shrink: 0; width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: transparent; cursor: pointer; padding: 0;
+  color: var(--text-faint); border-radius: var(--radius-sm);
+  opacity: 0; transition: opacity var(--ease), background var(--ease), color var(--ease);
+}
+.session-item:hover .session-more { opacity: 1; }
+.session-more:hover { color: var(--text); background: var(--bg-hover); }
+.session-more.has-pinned { color: var(--warning, #f59e0b); }
+
+/* ── 会话更多操作下拉菜单 ── */
+.session-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 140px;
+  background: var(--bg-surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  animation: menuFadeIn 0.15s ease;
+}
+@keyframes menuFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.session-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  transition: background var(--ease);
+  user-select: none;
+}
+.session-menu-item:hover {
+  background: var(--bg-hover);
+}
+.session-menu-item.danger {
+  color: var(--error);
+}
+.session-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+.session-menu-item svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
 .empty-hint { font-size: 12px; color: var(--text-faint); padding: 8px 4px; }
 
 /* 深度思考开关 */
@@ -607,14 +764,48 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 #chat {
   display: flex; flex-direction: column;
   min-width: 0; min-height: 0;
-  background: var(--bg-app);
+  background: #ffffff;
   transition: background var(--ease);
+  position: relative;
 }
 #messages {
   flex: 1;
   overflow-y: auto;
   padding: 24px 0 8px;
   display: flex; flex-direction: column; gap: 28px;
+}
+
+/* ── 回到底部按钮（用户上滚后显示）── */
+.scroll-bottom-btn {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-surface, #fff);
+  color: var(--text-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease, background var(--ease), color var(--ease);
+  z-index: 10;
+}
+.scroll-bottom-btn.show {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+.scroll-bottom-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
 }
 
 /* ============================
@@ -679,6 +870,69 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .msg.user .body a { color: var(--accent); text-decoration: underline; }
 /* 用户消息不需要"你"标签（DeepSeek 风格纯净气泡） */
 .msg.user .meta { display: none; }
+
+/* ── 消息操作按钮（hover 显示）── */
+.msg-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.msg:hover .msg-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+.msg-action-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-faint);
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.msg-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ── 消息内联编辑框 ── */
+.msg-edit-wrap {
+  margin-top: 8px;
+  animation: fadeIn 0.15s ease;
+}
+.msg-edit-textarea {
+  width: 100%;
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  line-height: 1.6;
+  font-family: inherit;
+  resize: vertical;
+  background: var(--bg-surface);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+.msg-edit-textarea:focus {
+  border-color: var(--accent);
+}
+.msg-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
 
 /* Agent 消息 - 无气泡 */
 .msg.agent .body {
@@ -910,6 +1164,331 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .tool-card.expanded .tool-body { display: block !important; }
 .tool-code { margin: 0; padding: 0; background: transparent; border: none; white-space: pre; color: var(--text); }
 .tool-code code { font-family: var(--font-mono); font-size: 11px; line-height: 1.4; }
+
+/* ============================
+   内联思考/叙述文本（豆包风格：灰色小字，与工具调用穿插）
+   ============================ */
+
+/* 思考折叠块：每段思考独立可折叠，默认收起 */
+.inline-think-wrap {
+  margin: 2px 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.inline-think-wrap[open] {
+  background: var(--bg-elevated);
+}
+.inline-think-summary {
+  font-size: 12px;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 5px 8px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+}
+.inline-think-summary::-webkit-details-marker { display: none; }
+.inline-think-summary .think-icon {
+  display: none; /* 旧 emoji 图标已替换为 SVG chevron */
+}
+.inline-think-summary .think-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: transform 0.2s ease;
+}
+.inline-think-wrap[open] .think-chevron {
+  transform: rotate(90deg);
+}
+.inline-think-summary:hover .think-chevron {
+  color: var(--text-dim);
+}
+.inline-think-summary .think-label {
+  font-weight: 500;
+}
+.inline-think-summary .think-count {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.inline-think-body {
+  padding: 2px 12px 10px 28px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  font-style: italic;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 叙述文本（过程语句，灰色小字） */
+.inline-narration {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--text-dim);
+  margin: 2px 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 最终回复文本 */
+.reply-text {
+  margin: 6px 0;
+  font-size: 14.5px;
+  line-height: 1.75;
+  color: var(--text);
+}
+
+/* ============================
+   工具调用条目（豆包工作风格：极简直通行式，无框，可展开）
+   ============================ */
+.tool-invoke-item {
+  margin: 1px 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.tool-invoke-item:hover {
+  background: var(--bg-elevated);
+}
+
+.invoke-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* 左侧状态列 */
+.invoke-status {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+.invoke-status.running { color: var(--accent); }
+.invoke-status.done { color: var(--success); }
+.invoke-status.failed { color: var(--error); }
+.invoke-status.interrupted { color: var(--text-faint); }
+.invoke-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: invoke-spin 0.7s linear infinite;
+}
+@keyframes invoke-spin { to { transform: rotate(360deg); } }
+
+.invoke-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+}
+.invoke-args {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+.invoke-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.invoke-duration {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+.invoke-caret {
+  font-size: 9px;
+  color: var(--text-faint);
+  transition: transform var(--ease);
+  width: 10px;
+  text-align: center;
+}
+.invoke-caret::before { content: "▾"; }
+.tool-invoke-item.expanded .invoke-caret { transform: rotate(180deg); }
+
+/* ── 展开详情区（固定高度 + 内部滚动，避免 max-height 大值过渡卡顿）── */
+.invoke-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.18s ease-out;
+  padding: 0 6px;
+  contain: layout;
+}
+.tool-invoke-item.expanded .invoke-detail {
+  max-height: 520px;
+  padding: 4px 6px 8px;
+}
+.invoke-section {
+  padding: 6px 0;
+}
+.invoke-section + .invoke-section {
+  padding-top: 2px;
+}
+.invoke-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+  letter-spacing: 0.3px;
+}
+.invoke-input,
+.invoke-result {
+  margin: 0;
+  padding: 10px 12px;
+  background: #f8f9fb;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow: auto;
+  color: var(--text);
+  contain: layout;
+}
+.invoke-input { color: var(--text); }
+/* 详情区内的 markdown 内容：确保文字清晰 */
+.invoke-result p,
+.invoke-result li,
+.invoke-result span,
+.invoke-result div {
+  color: var(--text) !important;
+}
+.invoke-result a {
+  color: var(--accent) !important;
+  text-decoration: underline;
+}
+.invoke-result code {
+  background: var(--bg-hover);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--text) !important;
+}
+.invoke-result pre {
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  overflow-x: auto;
+}
+.invoke-result pre code {
+  background: none;
+  padding: 0;
+  color: var(--code-block-fg) !important;
+}
+.invoke-output { position: relative; }
+.invoke-pending {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+  padding: 8px 0;
+}
+.invoke-pending.interrupted { color: var(--text-faint); }
+
+/* ── 错误友好提示 ── */
+.invoke-error-friendly {
+  padding: 4px 0;
+}
+.error-friendly-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  margin-bottom: 8px;
+}
+.error-icon { font-size: 15px; flex-shrink: 0; }
+.error-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.error-friendly-tips {
+  padding: 0 10px 8px;
+}
+.error-tip {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-dim);
+  margin-bottom: 3px;
+}
+.error-detail-wrap {
+  margin: 4px 10px 8px;
+}
+.error-detail-summary {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 4px 0;
+  list-style: none;
+  user-select: none;
+}
+.error-detail-summary::-webkit-details-marker { display: none; }
+.error-detail-summary::before {
+  content: "▸ ";
+  font-size: 10px;
+}
+.error-detail-wrap[open] .error-detail-summary::before { content: "▾ "; }
+.error-raw {
+  margin-top: 6px;
+  max-height: 200px;
+  overflow: auto;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: var(--bg-app);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+}
+.error-actions {
+  padding: 0 10px 4px;
+}
+.error-copy-btn {
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all var(--ease);
+}
+.error-copy-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* ── Skill 调用条目（绿色系）── */
+.tool-invoke-item.skill-item:hover {
+  background: rgba(34, 197, 94, 0.06);
+}
+.tool-invoke-item.skill-item .invoke-name {
+  color: var(--success);
+}
 
 .spinner {
   display: inline-block; width: 10px; height: 10px;
@@ -2057,16 +2636,14 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   letter-spacing: 0.2px;
 }
 .agent-think summary::-webkit-details-marker { display: none; }
-/* 右侧展开箭头：▸ 指向右，展开时旋转 90° 朝下 */
-.agent-think summary::before {
-  content: ""; width: 0; height: 0;
-  margin-left: auto; flex-shrink: 0;
-  border-left: 5px solid var(--text-faint);
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
+/* 左侧折叠箭头：SVG chevron，展开时旋转 90° */
+.agent-think .think-chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
   transition: transform 0.2s ease;
 }
-.agent-think[open] summary::before { transform: rotate(90deg); }
+.agent-think[open] .think-chevron { transform: rotate(90deg); }
+.agent-think summary:hover .think-chevron { color: var(--text-dim); }
 .agent-think[open] summary { border-bottom: 1px solid var(--border); }
 .agent-think-body {
   padding: 2px 14px 12px;
@@ -2077,6 +2654,139 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 }
 .agent-think-body .agent-tools { margin-top: 6px; }
 .agent-think-body .agent-tools .tool-card { margin-bottom: 2px; }
+
+/* ── 多选删除对话框 ── */
+.delete-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.15s ease;
+}
+.delete-dialog {
+  background: var(--bg-app);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 560px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.2s ease;
+}
+.delete-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.delete-dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.delete-dialog-cancel {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.delete-dialog-cancel:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.delete-dialog-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.delete-dialog-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.delete-dialog-item:hover {
+  background: var(--bg-elevated);
+}
+.delete-dialog-item.selected {
+  background: var(--bg-elevated);
+  border-color: var(--accent-dim);
+}
+.delete-dialog-checkbox {
+  margin-top: 3px;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.delete-dialog-item-content {
+  flex: 1;
+  min-width: 0;
+}
+.delete-dialog-user {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.delete-dialog-agent {
+  font-size: 12px;
+  color: var(--text-dim);
+  word-break: break-word;
+  line-height: 1.5;
+}
+.delete-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+}
+.delete-dialog-count {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.delete-dialog-confirm {
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.delete-dialog-confirm:hover:not(:disabled) {
+  background: #dc2626;
+}
+.delete-dialog-confirm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 
 /* 工具调用链（助手消息内，回复文本前） */
 .agent-tools {

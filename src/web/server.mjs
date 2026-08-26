@@ -638,6 +638,79 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { success: true, data: { path: file, gen: Date.now() } })
     }
 
+    // 截断会话：保留前 N 条用户消息，删除其后所有内容（用于编辑重发/重新生成）
+    if (p === "/api/session/truncate" && req.method === "POST") {
+      const { path: file, keepUserCount } = await readBody(req)
+      if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许操作会话文件" })
+      const keep = Math.max(0, parseInt(keepUserCount) || 0)
+      try {
+        const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean)
+        let userCount = 0
+        const keepLines = []
+        for (const l of lines) {
+          let e
+          try { e = JSON.parse(l) } catch { keepLines.push(l); continue }
+          const m = e.message
+          if (m && m.role === "user") {
+            // 有文本内容的用户消息才计数（与 countVisibleMessages 口径一致）
+            let text = ""
+            if (Array.isArray(m.content)) text = m.content.map((c) => c.text || "").join("")
+            else if (typeof m.content === "string") text = m.content
+            if (text) {
+              if (userCount >= keep) break
+              userCount++
+            }
+          }
+          keepLines.push(l)
+        }
+        fs.writeFileSync(file, keepLines.length ? keepLines.join("\n") + "\n" : "")
+        // 重建 agent（历史已变）
+        rebuildAgent(file).catch((err) => console.error("[truncate] agent 重建失败", err.message))
+        return json(res, 200, { success: true, keptLines: keepLines.length, keptUsers: userCount })
+      } catch (e) {
+        return json(res, 500, { error: e.message })
+      }
+    }
+
+    // 删除指定对话对（用户消息 + 其后的AI回复/工具调用，直到下一条用户消息）
+    if (p === "/api/session/delete-messages" && req.method === "POST") {
+      const { path: file, userIndices } = await readBody(req)
+      if (!file || !fs.existsSync(file)) return json(res, 400, { error: "会话文件不存在" })
+      if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许操作会话文件" })
+      const toDelete = new Set((userIndices || []).map((i) => parseInt(i)).filter((i) => !isNaN(i) && i >= 0))
+      if (toDelete.size === 0) return json(res, 400, { error: "未指定要删除的对话" })
+      try {
+        const lines = fs.readFileSync(file, "utf8").split("\n").filter(Boolean)
+        let userCount = 0
+        let deleting = false
+        const keepLines = []
+        for (const l of lines) {
+          let e
+          try { e = JSON.parse(l) } catch { keepLines.push(l); continue }
+          const m = e.message
+          if (m && m.role === "user") {
+            // 有文本内容的用户消息才计数（与 countVisibleMessages 口径一致）
+            let text = ""
+            if (Array.isArray(m.content)) text = m.content.map((c) => c.text || "").join("")
+            else if (typeof m.content === "string") text = m.content
+            if (text) {
+              // 新的用户消息：判断是否要删除这个对话对
+              deleting = toDelete.has(userCount)
+              userCount++
+            }
+          }
+          if (!deleting) keepLines.push(l)
+        }
+        fs.writeFileSync(file, keepLines.length ? keepLines.join("\n") + "\n" : "")
+        // 重建 agent（历史已变）
+        rebuildAgent(file).catch((err) => console.error("[delete-messages] agent 重建失败", err.message))
+        return json(res, 200, { success: true, deletedPairs: toDelete.size, keptLines: keepLines.length })
+      } catch (e) {
+        return json(res, 500, { error: e.message })
+      }
+    }
+
     // ── SAP 状态（真实检测）──
     if (p === "/api/sap-status" && req.method === "GET") {
       // 服务端 15s 超时：避免 ADT 120s 挂死导致状态检测卡住

@@ -23,6 +23,8 @@
     // 兜底：发送失败/中止/结束时清掉"等待模型响应"提示，防止卡住
     if (!on) App.hideWaiting();
     App.refreshStateQuick(on);
+    // 流式状态变化时刷新会话列表（更新"正在执行"图标）
+    if (App.refreshSessions) App.refreshSessions(true);
     // 流式结束：用保存的原始 markdown 全文重渲染（textContent 会丢掉 md 标记）
     if (!on && prev) {
       const lastDiv = state.pendingTexts?.[state.pendingTexts.length - 1];
@@ -46,7 +48,9 @@
 
   // ── 发送消息 ──
   // textOverride 可选：「继续生成」按钮等场景传入待发送文字（而非从输入框读取）
-  App.sendMessage = async function(textOverride) {
+  // opts.skipUserBubble：编辑重发场景，不创建新的用户气泡（复用已更新的旧消息）
+  App.sendMessage = async function(textOverride, opts) {
+    const skipUserBubble = !!(opts && opts.skipUserBubble);
     const raw = (textOverride != null ? String(textOverride).trim() : inputEl.value.trim());
     const atts = state.attachments || [];
     const imgs = state.images || [];
@@ -63,7 +67,9 @@
       sendText = (sendText ? sendText + "\n\n" : "") + "【用户附带的文件（已保存到本地，请用 read 工具读取内容）】\n" + ref;
     }
 
-    App.addUserBubble(displayText, imgs);
+    if (!skipUserBubble) {
+      App.addUserBubble(displayText, imgs);
+    }
     if (textOverride == null) inputEl.value = "";
     App.clearAttachments();
     App.clearImages();
@@ -170,6 +176,7 @@
 
   // ── 切换对话 ──
   App.switchChat = async function(path) {
+    // 生成中禁止切换会话
     if (state.streaming) {
       App.addSystemNote("生成中，请先停止再切换对话");
       return;

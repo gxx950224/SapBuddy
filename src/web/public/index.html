@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -10,13 +10,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=__V__">
 <link rel="stylesheet" href="vendor/highlight/github-dark.min.css?v=__V__">
-<!-- 防闪烁：在首帧前应用已保存的主题 -->
+<!-- 仅支持浅色主题：强制 data-theme="light" -->
 <script>
   (function () {
-    try {
-      var t = localStorage.getItem("abap-studio-theme");
-      if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
-    } catch (e) {}
+    document.documentElement.setAttribute("data-theme", "light");
+    try { localStorage.removeItem("abap-studio-theme"); } catch (e) {}
   })();
 </script>
 </head>
@@ -38,12 +36,6 @@
     </div>
 
     <div class="topbar-right">
-      <button id="theme-toggle" class="icon-btn" title="切换浅色 / 深色主题">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="4"></circle>
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-        </svg>
-      </button>
       <button id="right-toggle" class="icon-btn" title="折叠/展开 OUTPUT"></button>
     </div>
   </header>

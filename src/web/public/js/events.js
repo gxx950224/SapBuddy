@@ -188,6 +188,7 @@
           body._curMsgIntermediate = false;
           body._curMsgNarrationMoved = false;   // 叙述是否已判定进思考流（每消息重置）
           body._curNarrationEntry = null;       // 叙述文本节点（每消息重置）
+          body._inlineBlocks = {};               // 内联文本块（每消息重置，按 key 匹配）
           body.classList.add("typing");
         }
         break;
@@ -200,10 +201,8 @@
         break;
 
       case "message_end":
-        // 中间消息（内容含工具调用）兜底：残留的叙述文本挪进思考流
-        if (ev.message?.content?.some((p) => p.type === "toolCall")) {
-          App.moveMsgNarrationToThink();
-        }
+        // 消息结束收尾：折叠思考块 + 最终回复完整 markdown 渲染
+        App.finalizeAssistantBubble();
         if (state.currentAssistantEl) {
           state.currentAssistantEl.classList.remove("typing");
           const bubble = state.currentAssistantEl.closest(".msg");

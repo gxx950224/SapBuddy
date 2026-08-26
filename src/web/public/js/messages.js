@@ -10,9 +10,20 @@
 
   const messagesEl = $("#messages");
 
-  // ── 智能滚动 ──
+  // ── 智能滚动 + 回到底部按钮 ──
   let autoScroll = true;
   let scrollRaf = 0;
+
+  // 回到底部按钮（类似豆包工作，用户上滚后显示）
+  const scrollBottomBtn = document.createElement("button");
+  scrollBottomBtn.className = "scroll-bottom-btn";
+  scrollBottomBtn.title = "回到底部";
+  scrollBottomBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>';
+  scrollBottomBtn.addEventListener("click", () => {
+    App.scrollToBottom(true);
+  });
+  const chatEl = $("#chat");
+  if (chatEl) chatEl.appendChild(scrollBottomBtn);
 
   function isNearBottom() {
     // 阈值收紧：几乎贴底才自动跟随，用户稍微上滚就退出，避免流式输出时被反复拉回
@@ -21,6 +32,10 @@
 
   messagesEl.addEventListener("scroll", () => {
     autoScroll = isNearBottom();
+    // 回到底部按钮：不在底部时显示，在底部时隐藏
+    if (scrollBottomBtn) {
+      scrollBottomBtn.classList.toggle("show", !autoScroll);
+    }
     if (!autoScroll && scrollRaf) {
       // 用户上滚离开底部：取消待执行的强制到底，防止下一帧把滚动拉回底
       cancelAnimationFrame(scrollRaf);
@@ -111,7 +126,22 @@
   App.addUserBubble = function(text, images) {
     const el = document.createElement("div");
     el.className = "msg user";
-    el.innerHTML = '<div class="msg-content"><div class="meta">你</div><div class="body"></div></div>';
+    el.innerHTML =
+      '<div class="msg-content">' +
+        '<div class="meta">你</div>' +
+        '<div class="body"></div>' +
+        '<div class="msg-actions">' +
+          '<button class="msg-action-btn" data-action="copy" title="复制">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+          '</button>' +
+          '<button class="msg-action-btn" data-action="edit" title="编辑并重发">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
+          '</button>' +
+          '<button class="msg-action-btn" data-action="delete" title="删除">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>' +
+          '</button>' +
+        '</div>' +
+      '</div>';
     const body = el.querySelector(".body");
     if (text) body.textContent = simplifyAttachmentText(text);
     for (const img of images || []) {
@@ -132,11 +162,25 @@
     el.className = "msg agent";
     el.innerHTML =
       '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><circle cx="18.5" cy="18.5" r="1.3" fill="white" stroke="none"/></svg></div>' +
-      '<div class="msg-content"><div class="meta">SapBuddy</div><div class="body md"></div></div>';
+      '<div class="msg-content">' +
+        '<div class="meta">SapBuddy</div>' +
+        '<div class="body md"></div>' +
+        '<div class="msg-actions">' +
+          '<button class="msg-action-btn" data-action="copy" title="复制">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+          '</button>' +
+          '<button class="msg-action-btn" data-action="regenerate" title="重新生成">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>' +
+          '</button>' +
+          '<button class="msg-action-btn" data-action="delete" title="删除">' +
+            '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>' +
+          '</button>' +
+        '</div>' +
+      '</div>';
     messagesEl.appendChild(el);
     state.currentAssistantEl = el.querySelector(".body");
-    state.currentAssistantEl._thinkWrap = null;   // 思考折叠区（Claude 风格）
-    state.currentAssistantEl._toolsWrap = null;   // 工具调用链
+    state.currentAssistantEl._thinkWrap = null;
+    state.currentAssistantEl._toolsWrap = null;
     return state.currentAssistantEl;
   };
 
@@ -145,7 +189,7 @@
     if (container._thinkWrap) return container._thinkWrap;
     const det = document.createElement("details");
     det.className = "agent-think";
-    det.innerHTML = "<summary>思考过程</summary><div class='agent-think-body'></div>";
+    det.innerHTML = '<summary><svg class="think-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg><span class="think-label">思考过程</span></summary><div class="agent-think-body"></div>';
     det.open = false;
     container.prepend(det);
     container._thinkWrap = det;
@@ -166,10 +210,14 @@
   }
 
   function updateThinkSummary(det) {
-    const tools = det.querySelectorAll(".tool-card").length;
+    // 工具已独立到分组容器，思考面板只显示思考字数
+    const text = containerText(det);
+    const chars = countChars(text);
     let label = "思考过程";
-    if (tools) label += " · " + tools + " 个工具";
-    det.querySelector("summary").textContent = label;
+    if (chars > 0) label += " · " + chars + " 字";
+    const labelEl = det.querySelector(".think-label");
+    if (labelEl) labelEl.textContent = label;
+    else det.querySelector("summary").textContent = label;
   }
   function containerText(det) {
     let t = "";
@@ -177,40 +225,10 @@
     return t;
   }
 
-  // 当前消息的工具卡统一放入一个 wrap，紧跟当前消息的思考/叙述文本之后（按到达顺序）
+  // 工具调用条目直接内联到 assistant bubble body（豆包风格：与文本按原始顺序穿插，无分组容器）
   function ensureMsgToolsWrap(container) {
-    if (container._curToolsWrap) return container._curToolsWrap;
-    const wrap = document.createElement("div");
-    wrap.className = "agent-tools";
-    if (container._thinkFlow) container._thinkFlow.appendChild(wrap);
-    else ensureToolsWrap(container).appendChild(wrap);
-    container._curToolsWrap = wrap;
-    return wrap;
-  }
-
-  // 工具调用链：优先嵌入思考块内（Claude 风格），无思考时独立显示
-  function ensureToolsWrap(container) {
-    if (container._toolsWrap) return container._toolsWrap;
-    let wrap = null
-    // 有思考块 → 嵌入其 body（思考文本之后）
-    if (container._thinkWrap) {
-      const thinkBody = container._thinkWrap.querySelector(".agent-think-body");
-      if (thinkBody) {
-        wrap = document.createElement("div");
-        wrap.className = "agent-tools";
-        thinkBody.appendChild(wrap);
-        container._toolsWrap = wrap;
-        return wrap;
-      }
-    }
-    // 无思考块 → 独立工具区（消息内，文本前）
-    wrap = document.createElement("div");
-    wrap.className = "agent-tools";
-    const think = container._thinkWrap;
-    if (think && think.nextSibling) container.insertBefore(wrap, think.nextSibling);
-    else container.appendChild(wrap);
-    container._toolsWrap = wrap;
-    return wrap;
+    container._curToolsWrap = container;
+    return container;
   }
 
   App.addToolCallToAgent = function(id, name, args) {
@@ -218,13 +236,7 @@
     if (!container) return;
     if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
     const card = App.createToolCard(id, name, args);
-    if (!card.isConnected) ensureMsgToolsWrap(container).appendChild(card);
-    // 有工具时展开思考块（实时可见执行状态）
-    if (container._thinkWrap) {
-      container._thinkWrap.open = true;
-      updateThinkSummary(container._thinkWrap);
-      scrollThinkBody(container._thinkWrap.querySelector(".agent-think-body"));
-    }
+    if (!card.isConnected) container.appendChild(card);
     App.scrollToBottom();
   };
 
@@ -232,6 +244,22 @@
   App.collapseThinkPanels = function() {
     const c = state.currentAssistantEl;
     if (c && c._thinkWrap) c._thinkWrap.open = false;
+  };
+
+  /** 消息结束收尾：折叠所有内联思考块 + 最终回复完整 markdown 渲染 */
+  App.finalizeAssistantBubble = function() {
+    const c = state.currentAssistantEl;
+    if (!c) return;
+    // 折叠所有思考块
+    c.querySelectorAll(".inline-think-wrap").forEach((det) => { det.open = false; });
+    // 对最终回复文本进行完整 markdown 渲染（流式中只追加了纯文本增量）
+    c.querySelectorAll(".reply-text").forEach((div) => {
+      const fullText = div._fullText;
+      if (fullText) {
+        div.innerHTML = "";
+        App.mountMarkdown(div, fullText, { highlight: true });
+      }
+    });
   };
 
   // ── 思考内容（内联到助手消息）──
@@ -325,69 +353,116 @@
     return div._cursor;
   }
 
-  // ── 渲染 assistant 内容（流式输出时增量更新，避免全量 markdown 重绘） ──
+  // ── 内联文本块管理器（豆包风格穿插：思考/叙述/回复按序插入同一容器） ──
+  // 每条消息重置 _inlineBlocks，按 key（类型+序号）匹配已渲染块，增量更新不闪烁
+  function ensureInlineBlock(container, key, className) {
+    if (!container._inlineBlocks) container._inlineBlocks = {};
+    let entry = container._inlineBlocks[key];
+    if (!entry) {
+      const div = document.createElement("div");
+      div.className = className;
+      container.appendChild(div);
+      entry = { el: div, renderedLen: 0 };
+      container._inlineBlocks[key] = entry;
+    }
+    return entry;
+  }
+
+  // 内联思考块：可折叠 details，流式中默认展开，流结束后自动折叠
+  function ensureInlineThinkBlock(container, key) {
+    if (!container._inlineBlocks) container._inlineBlocks = {};
+    let entry = container._inlineBlocks[key];
+    if (!entry) {
+      const det = document.createElement("details");
+      det.className = "inline-think-wrap";
+      det.open = state.streaming ? true : false; // 流式中展开，历史渲染收起
+      det.innerHTML = '<summary class="inline-think-summary"><svg class="think-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg><span class="think-label">思考过程</span><span class="think-count"></span></summary><div class="inline-think-body"></div>';
+      container.appendChild(det);
+      const body = det.querySelector(".inline-think-body");
+      entry = { el: det, body: body, renderedLen: 0 };
+      container._inlineBlocks[key] = entry;
+    }
+    return entry;
+  }
+
+  // 最终回复 markdown 渲染（复用流式增量逻辑）
+  function renderReplyMarkdown(entry, text) {
+    const div = entry.el;
+    div._fullText = text;
+    if (!state.streaming) {
+      App.mountMarkdown(div, text, { highlight: true });
+      entry.renderedLen = text.length;
+    } else if (entry.renderedLen === 0) {
+      App.mountMarkdown(div, text);
+      entry.renderedLen = text.length;
+      ensureStreamCursor(div);
+    } else if (text.length > entry.renderedLen) {
+      ensureStreamCursor(div);
+      div.insertBefore(document.createTextNode(text.slice(entry.renderedLen)), div._cursor);
+      entry.renderedLen = text.length;
+    } else if (text.length < entry.renderedLen) {
+      entry.renderedLen = 0;
+    }
+  }
+
+  // ── 渲染 assistant 内容（豆包风格：thinking/text/toolCall 按原始顺序内联穿插） ──
   App.renderAssistantContent = function(container, contentParts) {
     const bubbleEl = container.closest(".msg");
     const parts = typeof contentParts === "string" ? [{ type: "text", text: contentParts }] : (contentParts || []);
-    // thinking 与 toolCall 按原始顺序穿插（工具卡跟随对应思考文本），text 统一最后渲染
     const hasTools = parts.some((p) => p.type === "toolCall");
-    const textParts = [];
-    let thinkIdx = 0;
-    const isInter = container._curMsgIntermediate === true;
+
+    // 按 content 数组原始顺序遍历：思考→叙述→工具→思考→工具→最终回复
+    let partIdx = 0;
     for (const part of parts) {
-      if (part.type === "text" && part.text) textParts.push(part);
-      else if (part.type === "thinking" && part.thinking) App.addThinking(part.thinking, thinkIdx++, bubbleEl);
-      else if (part.type === "toolCall") {
-        // 工具卡幂等创建（createToolCard 按 id 复用），不在这里移动叙述文本
+      if (part.type === "thinking" && part.thinking) {
+        // 思考文本：可折叠块，默认收起
+        const entry = ensureInlineThinkBlock(container, "think-" + partIdx);
+        if (part.thinking.length !== entry.renderedLen) {
+          entry.body.textContent = part.thinking;
+          entry.renderedLen = part.thinking.length;
+          // 更新字数
+          const countEl = entry.el.querySelector(".think-count");
+          if (countEl) countEl.textContent = "· " + countChars(part.thinking) + " 字";
+        }
+      } else if (part.type === "text" && part.text) {
+        // 用统一 key，hasTools 变化时自动切换类型并清理旧内容，避免重复显示
+        const key = "text-" + partIdx;
+        if (hasTools) {
+          // 有工具调用时，text 是过程叙述：内联灰色小字纯文本
+          const entry = ensureInlineBlock(container, key, "inline-narration");
+          // 若之前渲染为最终回复，切换类名并清空
+          if (entry.el.classList.contains("reply-text")) {
+            entry.el.className = "inline-narration";
+            entry.el.innerHTML = "";
+            entry.renderedLen = 0;
+          }
+          if (part.text.length !== entry.renderedLen) {
+            entry.el.textContent = part.text;
+            entry.renderedLen = part.text.length;
+          }
+        } else {
+          // 无工具调用时，text 是最终回复：正常 markdown
+          const entry = ensureInlineBlock(container, key, "reply-text md");
+          // 若之前渲染为叙述文本，切换类名并清空
+          if (entry.el.classList.contains("inline-narration")) {
+            entry.el.className = "reply-text md";
+            entry.el.innerHTML = "";
+            entry.renderedLen = 0;
+          }
+          renderReplyMarkdown(entry, part.text);
+        }
+      } else if (part.type === "toolCall") {
+        // 工具调用：轻量行式（无卡片边框），直接内联
         const card = App.createToolCard(part.id, part.name, part.arguments);
-        if (!card.isConnected) ensureMsgToolsWrap(container).appendChild(card);
+        if (!card.isConnected) container.appendChild(card);
         const summary = App.summarizeArgs(part.arguments);
-        if (summary) card.querySelector(".tool-args").textContent = summary;
+        if (summary) {
+          const argsEl = card.querySelector(".invoke-args");
+          if (argsEl) argsEl.textContent = summary;
+        }
       }
+      partIdx++;
     }
-    // 有工具调用（或历史中间消息、或已判定过叙述移动）→ 文本是思考叙述，直接进思考流，
-    // 不再占回复区。appendThinkText 按 renderedLen 去重：message_update 重复推送同一段
-    // 叙述时只保留一份，不会反复复制。
-    const narrationMode = hasTools || isInter || container._curMsgNarrationMoved === true;
-    for (const part of textParts) {
-      if (narrationMode) {
-        appendThinkText(container, part.text);
-        continue;
-      }
-      if (!state.currentTextDiv) {
-        state.currentTextDiv = document.createElement("div");
-        container.appendChild(state.currentTextDiv);
-        state.pendingTexts.push(state.currentTextDiv);
-        state.currentTextDiv._renderedLen = 0;
-        if (container._curMsgTexts) container._curMsgTexts.push(state.currentTextDiv);
-      }
-      const div = state.currentTextDiv;
-      // 保存完整原始 markdown 文本（流结束后用全文做一次完整渲染）
-      div._fullText = part.text;
-      if (!state.streaming) {
-        // 非流式：直接全量渲染
-        App.mountMarkdown(div, part.text, { highlight: true });
-        div._renderedLen = part.text.length;
-      } else if (div._renderedLen === 0) {
-        // 流式首段：markdown 渲染，保证代码块等初始格式正确（不高亮，避免流式中破坏结构）
-        App.mountMarkdown(div, part.text);
-        div._renderedLen = part.text.length;
-        ensureStreamCursor(div);
-      } else if (part.text.length > div._renderedLen) {
-        // 流式增长：只追加增量纯文本（轻量），避免全量重绘
-        ensureStreamCursor(div);
-        div.insertBefore(document.createTextNode(part.text.slice(div._renderedLen)), div._cursor);
-        div._renderedLen = part.text.length;
-      } else if (part.text.length < div._renderedLen) {
-        // 文本变短（模型改写）：重置偏移，下一轮从首段重渲，避免切片错位；
-        // 不在这里直接重渲，防止流式中反复全量 innerHTML 让滚动高度振荡
-        div._renderedLen = 0;
-      }
-      // 流式中文本持平：不动作，等流结束统一渲染（div._fullText 已更新）
-    }
-    // 兜底：万一先前某轮 update 时还没看到工具调用、叙述误进了回复区，这里统一挪进思考流
-    // （appendThinkText 去重，不会产生副本）
-    if (hasTools) App.moveMsgNarrationToThink();
     updateBubbleVisibility(container);
     App.scrollToBottom();
   };
@@ -561,6 +636,7 @@
         body._curMsgIntermediate = Array.isArray(msg.content) && msg.content.some((p) => p.type === "toolCall");
         body._curMsgNarrationMoved = false; // 叙述是否已判定进思考流（每消息重置）
         body._curNarrationEntry = null;     // 叙述文本节点（每消息重置）
+        body._inlineBlocks = {};             // 内联文本块（每消息重置，按 key 匹配）
         App.renderAssistantContent(body, msg.content);
       } else if (msg.role === "toolResult") {
         App.finishToolCard(msg.toolCallId, msg.content, msg.isError);
@@ -585,4 +661,328 @@
     state.pendingTexts = [];
     state.currentThinkSeg = null;
   };
+
+  // ── 消息操作：复制 / 重新生成 / 删除 / 编辑重发 ──
+  function getMsgText(msgEl) {
+    const body = msgEl.querySelector(".body");
+    if (!body) return "";
+    // 优先取最终回复文本（.reply-text），否则取整个 body 的文本
+    const reply = body.querySelector(".reply-text");
+    if (reply) return reply.textContent || "";
+    return body.textContent || "";
+  }
+
+  function findUserMsgForAgent(agentEl) {
+    // 找到这条 AI 回复对应的用户消息（前面最近的 .msg.user）
+    let prev = agentEl.previousElementSibling;
+    while (prev) {
+      if (prev.classList.contains("msg") && prev.classList.contains("user")) return prev;
+      prev = prev.previousElementSibling;
+    }
+    return null;
+  }
+
+  function findAgentMsgForUser(userEl) {
+    // 找到这条用户消息对应的 AI 回复（后面最近的 .msg.agent）
+    let next = userEl.nextElementSibling;
+    while (next) {
+      if (next.classList.contains("msg") && next.classList.contains("agent")) return next;
+      next = next.nextElementSibling;
+    }
+    return null;
+  }
+
+  // 复制消息文本
+  function copyMsgText(msgEl, btn) {
+    const text = getMsgText(msgEl);
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = "✓";
+      btn.title = "已复制";
+      setTimeout(() => { btn.textContent = orig; btn.title = "复制"; }, 1500);
+    }).catch(() => {
+      // 降级：用 textarea + execCommand
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch { /* 忽略 */ }
+      document.body.removeChild(ta);
+    });
+  }
+
+  // 删除消息（用户消息+对应 AI 回复，或单独 AI 回复）
+  function deleteMsg(msgEl) {
+    const isUser = msgEl.classList.contains("user");
+    const isAgent = msgEl.classList.contains("agent");
+    let toRemove = [msgEl];
+    if (isUser) {
+      const agent = findAgentMsgForUser(msgEl);
+      if (agent) toRemove.push(agent);
+    }
+    toRemove.forEach((el) => {
+      el.style.transition = "opacity 0.2s, max-height 0.2s";
+      el.style.opacity = "0";
+      el.style.maxHeight = el.offsetHeight + "px";
+      requestAnimationFrame(() => { el.style.maxHeight = "0"; });
+      setTimeout(() => { el.remove(); }, 220);
+    });
+    // 提示用户：前端删除，刷新后从历史重新加载
+    setTimeout(() => {
+      App.addSystemNote("已从当前视图删除该消息（刷新页面后会从历史记录重新加载）。");
+    }, 250);
+  }
+
+  // 截断会话：从会话历史（后端 jsonl）和 DOM 中删除指定用户消息及其后所有内容
+  async function truncateFromUserMsg(userEl) {
+    // 计算当前用户消息在可见用户消息中的索引
+    const allUserMsgs = Array.from(document.querySelectorAll('.msg.user'));
+    const idx = allUserMsgs.indexOf(userEl);
+    if (idx < 0) return false;
+    // 调用后端截断 API
+    const sessionPath = state.currentPath;
+    if (!sessionPath) return false;
+    try {
+      const r = await fetch("/api/session/truncate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: sessionPath, keepUserCount: idx }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j.success) {
+        App.addSystemNote("截断会话失败：" + (j.error || r.status));
+        return false;
+      }
+    } catch (e) {
+      App.addSystemNote("截断会话失败（网络异常）：" + e.message);
+      return false;
+    }
+    // 从 DOM 中删除从该用户消息开始的所有后续元素
+    let el = userEl;
+    while (el) {
+      const next = el.nextElementSibling;
+      el.remove();
+      el = next;
+    }
+    return true;
+  }
+
+  // 重新生成 AI 回复
+  async function regenerateMsg(agentEl) {
+    if (state.streaming) {
+      App.addSystemNote("当前正在生成中，请先停止或等待完成。");
+      return;
+    }
+    const userEl = findUserMsgForAgent(agentEl);
+    if (!userEl) {
+      App.addSystemNote("未找到对应的用户消息，无法重新生成。");
+      return;
+    }
+    const userText = getMsgText(userEl);
+    if (!userText) {
+      App.addSystemNote("用户消息为空，无法重新生成。");
+      return;
+    }
+    // 截断会话：删除该用户提问及其后的 AI 回复（从历史和 DOM 中）
+    const ok = await truncateFromUserMsg(userEl);
+    if (!ok) return;
+    // 重新发送用户消息（会创建新的用户气泡 + AI 回复）
+    App.sendMessage(userText);
+  }
+
+  // 编辑并重发用户消息
+  function editAndResend(userEl) {
+    if (state.streaming) {
+      App.addSystemNote("当前正在生成中，请先停止或等待完成。");
+      return;
+    }
+    const currentText = getMsgText(userEl);
+    // 用内联编辑框替代 prompt
+    const body = userEl.querySelector(".body");
+    if (!body) return;
+    const origDisplay = body.style.display;
+    body.style.display = "none";
+    const editWrap = document.createElement("div");
+    editWrap.className = "msg-edit-wrap";
+    editWrap.innerHTML =
+      '<textarea class="msg-edit-textarea" rows="3"></textarea>' +
+      '<div class="msg-edit-actions">' +
+        '<button class="btn-sm btn-primary msg-edit-send">发送</button>' +
+        '<button class="btn-sm msg-edit-cancel">取消</button>' +
+      '</div>';
+    const ta = editWrap.querySelector(".msg-edit-textarea");
+    ta.value = currentText;
+    body.parentNode.insertBefore(editWrap, body.nextSibling);
+    setTimeout(() => { ta.focus(); ta.select(); }, 50);
+
+    const finish = async (send) => {
+      const newText = ta.value.trim();
+      editWrap.remove();
+      body.style.display = origDisplay;
+      if (!send || !newText) return;
+      // 截断会话：删除该用户提问及其后的 AI 回复（从历史和 DOM 中）
+      const ok = await truncateFromUserMsg(userEl);
+      if (!ok) return;
+      // 发送编辑后的新消息（会创建新的用户气泡 + AI 回复）
+      App.sendMessage(newText);
+    };
+    editWrap.querySelector(".msg-edit-send").addEventListener("click", () => finish(true));
+    editWrap.querySelector(".msg-edit-cancel").addEventListener("click", () => finish(false));
+    ta.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); finish(true); }
+      if (e.key === "Escape") { e.preventDefault(); finish(false); }
+    });
+  }
+
+  // ── 多选删除对话框 ──
+  // 获取所有对话对（用户消息 + 其后的AI回复，直到下一条用户消息）
+  function getConversationPairs() {
+    const pairs = [];
+    let current = null;
+    messagesEl.querySelectorAll(".msg").forEach((el) => {
+      if (el.classList.contains("user")) {
+        if (current) pairs.push(current);
+        const text = el.querySelector(".body")?.textContent || "(空)";
+        current = { userEl: el, userText: text, agentEls: [], agentText: "" };
+      } else if (el.classList.contains("agent") && current) {
+        current.agentEls.push(el);
+        const text = el.querySelector(".body")?.textContent || "";
+        if (!current.agentText && text) current.agentText = text;
+      }
+    });
+    if (current) pairs.push(current);
+    return pairs;
+  }
+
+  // 计算消息属于第几个对话对（0-based）
+  function getPairIndexForMsg(msgEl) {
+    const pairs = getConversationPairs();
+    for (let i = 0; i < pairs.length; i++) {
+      if (pairs[i].userEl === msgEl || pairs[i].agentEls.includes(msgEl)) return i;
+    }
+    return -1;
+  }
+
+  // 展示多选删除对话框
+  function showDeleteDialog(msgEl) {
+    const pairs = getConversationPairs();
+    if (pairs.length === 0) return;
+    const defaultIdx = getPairIndexForMsg(msgEl);
+    const selected = new Set(defaultIdx >= 0 ? [defaultIdx] : []);
+
+    // 创建遮罩层
+    const overlay = document.createElement("div");
+    overlay.className = "delete-dialog-overlay";
+    overlay.innerHTML =
+      '<div class="delete-dialog">' +
+        '<div class="delete-dialog-header">' +
+          '<span class="delete-dialog-title">选择对话</span>' +
+          '<button class="delete-dialog-cancel" title="取消">取消</button>' +
+        '</div>' +
+        '<div class="delete-dialog-list"></div>' +
+        '<div class="delete-dialog-footer">' +
+          '<span class="delete-dialog-count">已选 0 项</span>' +
+          '<button class="delete-dialog-confirm btn-danger" disabled>删除</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    const listEl = overlay.querySelector(".delete-dialog-list");
+    const countEl = overlay.querySelector(".delete-dialog-count");
+    const confirmBtn = overlay.querySelector(".delete-dialog-confirm");
+
+    // 渲染对话对列表
+    function renderList() {
+      listEl.innerHTML = "";
+      pairs.forEach((pair, idx) => {
+        const item = document.createElement("label");
+        item.className = "delete-dialog-item" + (selected.has(idx) ? " selected" : "");
+        const userPreview = pair.userText.length > 50 ? pair.userText.slice(0, 50) + "…" : pair.userText;
+        const agentPreview = pair.agentText.length > 80 ? pair.agentText.slice(0, 80) + "…" : pair.agentText;
+        item.innerHTML =
+          '<input type="checkbox" class="delete-dialog-checkbox" ' + (selected.has(idx) ? "checked" : "") + ' data-idx="' + idx + '">' +
+          '<div class="delete-dialog-item-content">' +
+            '<div class="delete-dialog-user">' + userPreview + '</div>' +
+            (agentPreview ? '<div class="delete-dialog-agent">' + agentPreview + '</div>' : '') +
+          '</div>';
+        item.addEventListener("click", (e) => {
+          if (e.target.tagName !== "INPUT") {
+            const cb = item.querySelector(".delete-dialog-checkbox");
+            cb.checked = !cb.checked;
+          }
+          const idx = parseInt(item.querySelector(".delete-dialog-checkbox").dataset.idx);
+          if (selected.has(idx)) selected.delete(idx);
+          else selected.add(idx);
+          updateUI();
+        });
+        listEl.appendChild(item);
+      });
+    }
+
+    function updateUI() {
+      countEl.textContent = "已选 " + selected.size + " 项";
+      confirmBtn.disabled = selected.size === 0;
+      listEl.querySelectorAll(".delete-dialog-item").forEach((item, i) => {
+        item.classList.toggle("selected", selected.has(i));
+      });
+    }
+
+    renderList();
+    updateUI();
+
+    // 取消按钮
+    overlay.querySelector(".delete-dialog-cancel").addEventListener("click", () => overlay.remove());
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+    // 确认删除
+    confirmBtn.addEventListener("click", async () => {
+      if (selected.size === 0) return;
+      const sessionPath = state.currentPath;
+      if (!sessionPath) { overlay.remove(); return; }
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "删除中…";
+      try {
+        const r = await fetch("/api/session/delete-messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: sessionPath, userIndices: Array.from(selected) }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.success) {
+          App.addSystemNote("删除失败：" + (j.error || r.status));
+          confirmBtn.disabled = false;
+          confirmBtn.textContent = "删除";
+          return;
+        }
+        overlay.remove();
+        // 重新加载会话历史
+        App.clearChat();
+        App.loadHistory(sessionPath);
+        App.addSystemNote("已删除 " + selected.size + " 组对话");
+      } catch (e) {
+        App.addSystemNote("删除失败：" + (e?.message || e));
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "删除";
+      }
+    });
+  }
+
+  // 事件委托：消息操作按钮
+  messagesEl.addEventListener("click", (e) => {
+    const btn = e.target.closest(".msg-action-btn");
+    if (!btn) return;
+    e.stopPropagation();
+    const msgEl = btn.closest(".msg");
+    if (!msgEl) return;
+    const action = btn.dataset.action;
+    switch (action) {
+      case "copy": copyMsgText(msgEl, btn); break;
+      case "delete": showDeleteDialog(msgEl); break;
+      case "regenerate": regenerateMsg(msgEl); break;
+      case "edit": editAndResend(msgEl); break;
+    }
+  });
 })();
