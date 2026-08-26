@@ -95,7 +95,7 @@
     try {
       const ok = await showConfirm({
         title: "删除对话",
-        message: "确定要删除这条对话吗？删除后将移至回收站，可在回收站中恢复。",
+        message: "确定要删除这条对话吗？删除后无法恢复。",
         confirmText: "删除",
         danger: true,
       });
@@ -268,7 +268,7 @@
           // 正在执行的会话：标题后加旋转图标
           const isCurrent = norm(s.path) === norm(curPath);
           const isRunning = isCurrent && state.streaming;
-          let titleHtml = (pinned ? "📌 " : "") + (s.name || s.firstMessage || "(空对话)");
+          let titleHtml = (pinned ? "📌 " : "") + escapeHtml(s.name || s.firstMessage || "(空对话)");
           if (isRunning) {
             titleHtml += '<span class="session-running-icon" title="正在执行"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>';
           }

@@ -184,6 +184,15 @@ function isWithinDir(target, dir) {
   return t === d || t.startsWith(d + path.sep)
 }
 
+/** 用户消息是否"可见"（前端口径：有文本或带图片块）。用于截断/删除时与前端计数对齐，避免图片消息被漏算 */
+function userMsgVisible(m) {
+  if (!m || m.role !== "user") return false
+  const blocks = Array.isArray(m.content) ? m.content : []
+  const text = blocks.map((c) => (c.type === "text" ? c.text || "" : "")).join("")
+  const hasImage = blocks.some((c) => c.type === "image" && c.data && c.mimeType)
+  return !!(text || hasImage)
+}
+
 /** 可选访问令牌：connections.json 的 security.apiKey（配置后所有 POST /api/* 需 Bearer/x-api-key） */
 function loadApiKey() {
   try {
@@ -257,7 +266,7 @@ function readSessionMessages(file) {
 // 统计会话中"用户实际看到"的消息条数（与前端 renderMessageList 口径一致）：
 // 元数据行（session/model_change/thinking_level_change）与 toolResult 不计气泡；
 // 连续多条 assistant 消息合并成一个气泡只算 1 条；空内容 assistant 消息跳过；
-// 空文本 user 消息也跳过但不影响后续 assistant 连续段合并。
+// 无文本且无图片块的 user 消息也跳过但不影响后续 assistant 连续段合并。
 function countVisibleMessages(lines) {
   let count = 0
   let prevAssistant = false
@@ -268,10 +277,7 @@ function countVisibleMessages(lines) {
     if (!m || !m.role) continue
     if (m.role === "user") {
       prevAssistant = false
-      let text = ""
-      if (Array.isArray(m.content)) text = m.content.map((c) => c.text || "").join("")
-      else if (typeof m.content === "string") text = m.content
-      if (text) count++
+      if (userMsgVisible(m)) count++
     } else if (m.role === "assistant") {
       const empty = !m.content || (Array.isArray(m.content) && m.content.length === 0)
       if (empty) continue
@@ -556,7 +562,7 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/history" && req.method === "GET") {
       const file = url.searchParams.get("path") || session?.sessionFile
       if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许读取会话文件" })
-      return json(res, 200, { success: true, data: { messages: readSessionMessages(file) } })
+      return json(res, 200, { success: true, data: { path: file, messages: readSessionMessages(file) } })
     }
 
     // 新建会话（真正创建新会话文件 + 重建 agent，避免数据叠加）
@@ -652,15 +658,10 @@ const server = http.createServer(async (req, res) => {
           let e
           try { e = JSON.parse(l) } catch { keepLines.push(l); continue }
           const m = e.message
-          if (m && m.role === "user") {
-            // 有文本内容的用户消息才计数（与 countVisibleMessages 口径一致）
-            let text = ""
-            if (Array.isArray(m.content)) text = m.content.map((c) => c.text || "").join("")
-            else if (typeof m.content === "string") text = m.content
-            if (text) {
-              if (userCount >= keep) break
-              userCount++
-            }
+          if (userMsgVisible(m)) {
+            // 与前端计数口径一致：有文本或图片块的用户消息才计数
+            if (userCount >= keep) break
+            userCount++
           }
           keepLines.push(l)
         }
@@ -689,16 +690,10 @@ const server = http.createServer(async (req, res) => {
           let e
           try { e = JSON.parse(l) } catch { keepLines.push(l); continue }
           const m = e.message
-          if (m && m.role === "user") {
-            // 有文本内容的用户消息才计数（与 countVisibleMessages 口径一致）
-            let text = ""
-            if (Array.isArray(m.content)) text = m.content.map((c) => c.text || "").join("")
-            else if (typeof m.content === "string") text = m.content
-            if (text) {
-              // 新的用户消息：判断是否要删除这个对话对
-              deleting = toDelete.has(userCount)
-              userCount++
-            }
+          if (userMsgVisible(m)) {
+            // 与前端计数口径一致：有文本或图片块的用户消息才计数
+            deleting = toDelete.has(userCount)
+            userCount++
           }
           if (!deleting) keepLines.push(l)
         }

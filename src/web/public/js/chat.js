@@ -49,11 +49,15 @@
   // ── 发送消息 ──
   // textOverride 可选：「继续生成」按钮等场景传入待发送文字（而非从输入框读取）
   // opts.skipUserBubble：编辑重发场景，不创建新的用户气泡（复用已更新的旧消息）
+  // opts.images：编辑重发/重新生成场景，传入原消息的图片数据（格式：[{mimeType, data}]）
+  // opts.attachments：编辑重发/重新生成场景，传入原消息的附件数据（格式：[{name, path}]）
   App.sendMessage = async function(textOverride, opts) {
     const skipUserBubble = !!(opts && opts.skipUserBubble);
+    const overrideImages = opts && opts.images ? opts.images : null;
+    const overrideAttachments = opts && opts.attachments ? opts.attachments : null;
     const raw = (textOverride != null ? String(textOverride).trim() : inputEl.value.trim());
-    const atts = state.attachments || [];
-    const imgs = state.images || [];
+    const atts = overrideAttachments || (state.attachments || []);
+    const imgs = overrideImages || (state.images || []);
     if ((!raw && !atts.length && !imgs.length) || state.streaming) return;
 
     // 气泡显示：用户文本 + 附件名；图片直接以缩略图渲染（不再拼图片名，与历史回显一致）
@@ -68,7 +72,7 @@
     }
 
     if (!skipUserBubble) {
-      App.addUserBubble(displayText, imgs);
+      App.addUserBubble(displayText, imgs, atts);
     }
     if (textOverride == null) inputEl.value = "";
     App.clearAttachments();
@@ -136,6 +140,9 @@
       const r = await fetch(url);
       const j = await r.json();
       if (!j.success) return;
+      // 设置当前会话路径（优先用传入的 path，否则用后端返回的 path）
+      const sessionPath = path || j.data?.path;
+      if (sessionPath) state.currentPath = sessionPath;
       App.renderMessageList(j.data.messages || []);
     } catch (e) {
       App.addSystemNote("加载历史失败：" + (e?.message || "未知错误"));

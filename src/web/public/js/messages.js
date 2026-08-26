@@ -123,9 +123,28 @@
     return (prefix ? prefix + "\n" : "") + attach;
   }
 
-  App.addUserBubble = function(text, images) {
+  // 从完整文本中解析附件信息（格式：【用户附带的文件...】\n- name → path）
+  function parseAttachmentsFromText(text) {
+    if (!text || !text.includes("【用户附带的文件")) return [];
+    const idx = text.indexOf("【用户附带的文件");
+    const body = text.slice(idx);
+    const atts = [];
+    body.split("\n").forEach((l) => {
+      const trimmed = l.trim();
+      if (trimmed.startsWith("- ")) {
+        const parts = trimmed.replace(/^- /, "").split(" → ");
+        if (parts.length >= 2 && parts[0] && parts[1]) {
+          atts.push({ name: parts[0].trim(), path: parts.slice(1).join(" → ").trim() });
+        }
+      }
+    });
+    return atts;
+  }
+
+  App.addUserBubble = function(text, images, attachments) {
     const el = document.createElement("div");
     el.className = "msg user";
+    el._attachments = attachments || []; // 存储附件数据，供编辑重发/重新生成使用
     el.innerHTML =
       '<div class="msg-content">' +
         '<div class="meta">你</div>' +
@@ -611,8 +630,9 @@
         const blocks = msg.content || [];
         const text = blocks.map((c) => (c.type === "text" ? c.text || "" : "")).join("");
         const images = blocks.filter((c) => c.type === "image" && c.data && c.mimeType);
+        const attachments = parseAttachmentsFromText(text);
         if (text || images.length) {
-          App.addUserBubble(text, images);
+          App.addUserBubble(text, images, attachments);
           state.currentAssistantEl = null;
           state.currentTextDiv = null;
           state.pendingTexts = [];
@@ -670,6 +690,33 @@
     const reply = body.querySelector(".reply-text");
     if (reply) return reply.textContent || "";
     return body.textContent || "";
+  }
+
+  // 从用户消息中提取图片数据（格式：[{mimeType, data}]）
+  function getMsgImages(msgEl) {
+    const body = msgEl.querySelector(".body");
+    if (!body) return [];
+    const imgs = body.querySelectorAll("img.msg-img");
+    const result = [];
+    imgs.forEach((img) => {
+      const src = img.src || "";
+      const match = src.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        result.push({ mimeType: match[1], data: match[2] });
+      }
+    });
+    return result;
+  }
+
+  // 从用户消息中提取附件数据（格式：[{name, path}]）
+  function getMsgAttachments(msgEl) {
+    // 优先从 DOM 存储的附件数据读取
+    if (msgEl._attachments && msgEl._attachments.length > 0) {
+      return msgEl._attachments;
+    }
+    // 降级：从文本中解析附件信息
+    const text = getMsgText(msgEl);
+    return parseAttachmentsFromText(text);
   }
 
   function findUserMsgForAgent(agentEl) {
@@ -782,7 +829,9 @@
       return;
     }
     const userText = getMsgText(userEl);
-    if (!userText) {
+    const userImages = getMsgImages(userEl);
+    const userAttachments = getMsgAttachments(userEl);
+    if (!userText && userImages.length === 0 && userAttachments.length === 0) {
       App.addSystemNote("用户消息为空，无法重新生成。");
       return;
     }
@@ -790,7 +839,7 @@
     const ok = await truncateFromUserMsg(userEl);
     if (!ok) return;
     // 重新发送用户消息（会创建新的用户气泡 + AI 回复）
-    App.sendMessage(userText);
+    App.sendMessage(userText, { images: userImages, attachments: userAttachments });
   }
 
   // 编辑并重发用户消息
@@ -800,6 +849,8 @@
       return;
     }
     const currentText = getMsgText(userEl);
+    const currentImages = getMsgImages(userEl);
+    const currentAttachments = getMsgAttachments(userEl);
     // 用内联编辑框替代 prompt
     const body = userEl.querySelector(".body");
     if (!body) return;
@@ -807,8 +858,32 @@
     body.style.display = "none";
     const editWrap = document.createElement("div");
     editWrap.className = "msg-edit-wrap";
+    // 图片预览区域（如果有图片）
+    let imgPreviewHtml = "";
+    if (currentImages.length > 0) {
+      imgPreviewHtml = '<div class="msg-edit-images">';
+      currentImages.forEach((img, idx) => {
+        imgPreviewHtml += '<img src="data:' + img.mimeType + ';base64,' + img.data + '" class="msg-edit-img" data-idx="' + idx + '" alt="图片预览">';
+      });
+      imgPreviewHtml += '</div>';
+    }
+    // 附件预览区域（如果有附件）
+    let attachPreviewHtml = "";
+    if (currentAttachments.length > 0) {
+      attachPreviewHtml = '<div class="msg-edit-attachments">';
+      currentAttachments.forEach((att, idx) => {
+        attachPreviewHtml += '<div class="msg-edit-attachment" data-idx="' + idx + '">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+          '<span class="msg-edit-attachment-name">' + att.name + '</span>' +
+          '</div>';
+      });
+      attachPreviewHtml += '</div>';
+    }
+    const hasMedia = currentImages.length > 0 || currentAttachments.length > 0;
     editWrap.innerHTML =
-      '<textarea class="msg-edit-textarea" rows="3"></textarea>' +
+      imgPreviewHtml +
+      attachPreviewHtml +
+      '<textarea class="msg-edit-textarea" rows="3" placeholder="' + (hasMedia ? '添加文字说明（可选）…' : '输入消息…') + '"></textarea>' +
       '<div class="msg-edit-actions">' +
         '<button class="btn-sm btn-primary msg-edit-send">发送</button>' +
         '<button class="btn-sm msg-edit-cancel">取消</button>' +
@@ -822,12 +897,13 @@
       const newText = ta.value.trim();
       editWrap.remove();
       body.style.display = origDisplay;
-      if (!send || !newText) return;
+      // 允许纯图片/纯附件消息：文本为空但有图片或附件时也可以发送
+      if (!send || (!newText && currentImages.length === 0 && currentAttachments.length === 0)) return;
       // 截断会话：删除该用户提问及其后的 AI 回复（从历史和 DOM 中）
       const ok = await truncateFromUserMsg(userEl);
       if (!ok) return;
       // 发送编辑后的新消息（会创建新的用户气泡 + AI 回复）
-      App.sendMessage(newText);
+      App.sendMessage(newText, { images: currentImages, attachments: currentAttachments });
     };
     editWrap.querySelector(".msg-edit-send").addEventListener("click", () => finish(true));
     editWrap.querySelector(".msg-edit-cancel").addEventListener("click", () => finish(false));
@@ -905,8 +981,8 @@
         item.innerHTML =
           '<input type="checkbox" class="delete-dialog-checkbox" ' + (selected.has(idx) ? "checked" : "") + ' data-idx="' + idx + '">' +
           '<div class="delete-dialog-item-content">' +
-            '<div class="delete-dialog-user">' + userPreview + '</div>' +
-            (agentPreview ? '<div class="delete-dialog-agent">' + agentPreview + '</div>' : '') +
+            '<div class="delete-dialog-user">' + App.escapeHtml(userPreview) + '</div>' +
+            (agentPreview ? '<div class="delete-dialog-agent">' + App.escapeHtml(agentPreview) + '</div>' : '') +
           '</div>';
         item.addEventListener("click", (e) => {
           if (e.target.tagName !== "INPUT") {
