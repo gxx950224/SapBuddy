@@ -72,7 +72,7 @@
     }
 
     if (!skipUserBubble) {
-      App.addUserBubble(displayText, imgs, atts);
+      App.addUserBubble(displayText, imgs, atts, Date.now());
     }
     if (textOverride == null) inputEl.value = "";
     App.clearAttachments();

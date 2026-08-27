@@ -283,6 +283,21 @@
         App.collapseThinkPanels();
         App.resetAutoScroll(); // 输出结束：恢复"到底自动跟随"，防止中途上滚残留把视图留在半路
         App.consolidateAssistantReplies();
+        // 设置AI消息底部的时间和tokens
+        const agentMsgEl = state.currentAssistantEl?.closest(".msg.agent");
+        if (agentMsgEl) {
+          const timeEl = agentMsgEl.querySelector(".msg-time");
+          if (timeEl && !timeEl.textContent) {
+            timeEl.textContent = App.formatMessageTime(Date.now());
+          }
+          if (usage) {
+            const totalTokens = usage.totalTokens || usage.total_tokens || ((usage.input || 0) + (usage.output || 0));
+            if (totalTokens) {
+              const tokensEl = agentMsgEl.querySelector(".msg-tokens");
+              if (tokensEl) tokensEl.textContent = "消耗 " + App.formatTokens(totalTokens);
+            }
+          }
+        }
         if (usage) {
           const elapsedStr = elapsed
             ? `${Math.floor(elapsed / 60000)}分${Math.round((elapsed % 60000) / 1000)}秒`

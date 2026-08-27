@@ -250,15 +250,35 @@
     };
   }
 
+  // ── 耗时格式化：毫秒 → 时/分/秒/毫秒友好显示 ──
+  function formatDuration(ms) {
+    if (ms < 0) ms = 0;
+    if (ms < 1000) return ms + "ms";
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const millis = ms % 1000;
+    if (hours > 0) {
+      return hours + "h " + minutes + "m " + seconds + "s";
+    }
+    if (minutes > 0) {
+      return minutes + "m " + seconds + "s";
+    }
+    // 小于1分钟，显示秒（保留1位小数）+ 毫秒（如果有）
+    const secs = (ms / 1000).toFixed(1);
+    return secs + "s";
+  }
+
   // ── 完成工具调用条目 ──
-  App.finishToolCard = function(id, resultContent, isError) {
+  App.finishToolCard = function(id, resultContent, isError, duration) {
     const item = state.toolCards.get(id);
     if (!item) return;
 
-    // 耗时
-    const duration = Date.now() - (item._startTime || Date.now());
+    // 耗时：优先用传入的 duration（历史会话），否则实时计算
+    const dur = duration != null ? duration : (Date.now() - (item._startTime || Date.now()));
     const durEl = item.querySelector(".invoke-duration");
-    if (durEl) durEl.textContent = duration + "ms";
+    if (durEl) durEl.textContent = formatDuration(dur);
 
     // 状态
     const status = item.querySelector(".invoke-status");

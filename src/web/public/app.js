@@ -103,15 +103,21 @@
     if (e.key === "Escape") App.closeImageViewer();
   });
 
-  // ── 上传文件（AI 可读取）──
-  const attachBtn = document.getElementById("attach-btn");
+  // ── 上传文件或图片（合并按钮：左下角 + 号）──
+  const uploadPlusBtn = document.getElementById("upload-plus-btn");
   const fileInput = document.getElementById("file-input");
-  if (attachBtn && fileInput) {
-    attachBtn.addEventListener("click", () => fileInput.click());
+  if (uploadPlusBtn && fileInput) {
+    uploadPlusBtn.addEventListener("click", () => fileInput.click());
     fileInput.addEventListener("change", async () => {
       const files = Array.from(fileInput.files || []);
       fileInput.value = "";
-      for (const f of files) await App.attachFile(f);
+      for (const f of files) {
+        if (f.type.startsWith("image/")) {
+          await App.addImage(f);
+        } else {
+          await App.attachFile(f);
+        }
+      }
     });
   }
 
@@ -166,16 +172,6 @@
 
   // ── 图片（视觉输入：AI 可看图）──
   App.state.images = App.state.images || [];
-  const imgBtn = document.getElementById("img-btn");
-  const imgInput = document.getElementById("img-input");
-  if (imgBtn && imgInput) {
-    imgBtn.addEventListener("click", () => imgInput.click());
-    imgInput.addEventListener("change", async () => {
-      const files = Array.from(imgInput.files || []);
-      imgInput.value = "";
-      for (const f of files) await App.addImage(f);
-    });
-  }
   // 粘贴截图（Ctrl+V / 右键粘贴）
   const chatInput = document.getElementById("input");
   if (chatInput) {

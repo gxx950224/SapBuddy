@@ -161,22 +161,12 @@
     ctxTooltipTimer = setTimeout(hideCtxTooltip, 150);
   });
 
-  // ── 思考等级开关（off / high 两态；deepseek-v4-flash 不支持 medium，故以 off 作轻量默认档）──
+  // ── 推理强度（off / high 两态；放在模型下拉菜单中）──
   let currentThinkLevel = "off";
 
   function updateThinkUI(level) {
     currentThinkLevel = level;
-    const btn = $("#think-btn");
-    if (btn) {
-      btn.dataset.level = level;
-      if (level === "high") {
-        btn.title = "思考等级：高（深度思考）";
-        btn.style.color = "#818cf8";
-      } else {
-        btn.title = "思考等级：关（轻量模式）";
-        btn.style.color = "#737373";
-      }
-    }
+    updateModelButton(); // 更新模型按钮上的推理强度显示
   }
 
   App.syncThinkLevel = function(stateData) {
@@ -185,25 +175,165 @@
     }
   };
 
-  $("#think-btn").addEventListener("click", async (e) => {
-    e.stopPropagation();
-    const next = currentThinkLevel === "high" ? "off" : "high";
-    const label = next === "high" ? "高（深度思考）" : "关（轻量）";
+  async function setThinkLevel(level) {
     try {
       const r = await fetch("/api/thinking-level", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ level: next }),
+        body: JSON.stringify({ level: level }),
       });
       const j = await r.json();
       if (j.success) {
-        updateThinkUI(next);
-        App.addSystemNote("思考等级已切换为：" + label);
-      } else {
-        App.addSystemNote("切换失败：" + (j.error || r.status));
+        updateThinkUI(level);
       }
     } catch (err) {
-      App.addSystemNote("切换失败：" + err.message);
+      console.error("切换推理强度失败:", err);
     }
-  });
+  }
+
+  // ── 模型选择下拉 ──
+  let modelSettings = null;
+  let currentModel = "";
+  let currentProvider = "";
+
+  async function loadModelSettings() {
+    try {
+      const r = await fetch("/api/settings");
+      const j = await r.json();
+      if (j.success && j.data) {
+        modelSettings = j.data;
+        currentProvider = j.data.provider || "deepseek";
+        currentModel = j.data.model || "";
+        if (j.data.thinkingLevel) currentThinkLevel = j.data.thinkingLevel;
+        updateModelButton();
+      }
+    } catch (e) {
+      console.error("加载模型配置失败:", e);
+    }
+  }
+
+  function updateModelButton() {
+    const btn = $("#model-select-btn");
+    if (!btn) return;
+    const nameEl = btn.querySelector(".model-name");
+    if (nameEl) {
+      const thinkLabel = currentThinkLevel === "high" ? " · 高" : "";
+      nameEl.textContent = (currentModel || currentProvider) + thinkLabel;
+    }
+  }
+
+  function renderModelDropdown() {
+    const dropdown = $("#model-dropdown");
+    if (!dropdown || !modelSettings) return;
+    dropdown.innerHTML = "";
+
+    // ── 推理强度选项 ──
+    const thinkGroup = document.createElement("div");
+    const thinkTitle = document.createElement("div");
+    thinkTitle.className = "dropdown-group-title";
+    thinkTitle.textContent = "推理强度";
+    thinkGroup.appendChild(thinkTitle);
+
+    const thinkItem = document.createElement("div");
+    thinkItem.className = "dropdown-item dropdown-submenu-trigger";
+    thinkItem.innerHTML = `<span>推理强度</span><span class="think-current">${currentThinkLevel === "high" ? "高" : "关"}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+    thinkGroup.appendChild(thinkItem);
+
+    // 推理强度子菜单
+    const thinkSubmenu = document.createElement("div");
+    thinkSubmenu.className = "dropdown-submenu";
+    thinkSubmenu.hidden = true;
+    ["off", "high"].forEach((level) => {
+      const subItem = document.createElement("div");
+      subItem.className = "dropdown-item";
+      const label = level === "high" ? "高（深度思考）" : "关（轻量模式）";
+      if (currentThinkLevel === level) {
+        subItem.classList.add("selected");
+        subItem.innerHTML = `<span>${label}</span><span class="check">✓</span>`;
+      } else {
+        subItem.textContent = label;
+      }
+      subItem.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        await setThinkLevel(level);
+        dropdown.hidden = true;
+      });
+      thinkSubmenu.appendChild(subItem);
+    });
+    thinkGroup.appendChild(thinkSubmenu);
+
+    thinkItem.addEventListener("click", (e) => {
+      e.stopPropagation();
+      thinkSubmenu.hidden = !thinkSubmenu.hidden;
+    });
+
+    dropdown.appendChild(thinkGroup);
+
+    // 分隔线
+    const divider = document.createElement("div");
+    divider.style.cssText = "height:1px;background:var(--border);margin:6px 4px;";
+    dropdown.appendChild(divider);
+
+    // ── 模型列表（仅显示已配置 API key 的提供商）──
+    const providers = modelSettings.providers || [];
+    for (const p of providers) {
+      if (!p.hasKey) continue; // 跳过未配置 API key 的提供商
+      if (!p.models || p.models.length === 0) continue;
+      const groupTitle = document.createElement("div");
+      groupTitle.className = "dropdown-group-title";
+      groupTitle.textContent = p.name;
+      dropdown.appendChild(groupTitle);
+      for (const modelId of p.models) {
+        const item = document.createElement("div");
+        item.className = "dropdown-item";
+        if (p.name === currentProvider && modelId === currentModel) {
+          item.classList.add("selected");
+          item.innerHTML = `<span>${modelId}</span><span class="check">✓</span>`;
+        } else {
+          item.textContent = modelId;
+        }
+        item.addEventListener("click", async () => {
+          dropdown.hidden = true;
+          try {
+            const r = await fetch("/api/settings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ provider: p.name, model: modelId }),
+            });
+            const j = await r.json();
+            if (j.success) {
+              currentProvider = p.name;
+              currentModel = modelId;
+              updateModelButton();
+            }
+          } catch (err) {
+            console.error("切换模型失败:", err);
+          }
+        });
+        dropdown.appendChild(item);
+      }
+    }
+  }
+
+  const modelSelectBtn = $("#model-select-btn");
+  const modelDropdown = $("#model-dropdown");
+  if (modelSelectBtn && modelDropdown) {
+    modelSelectBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (modelDropdown.hidden) {
+        renderModelDropdown();
+        modelDropdown.hidden = false;
+      } else {
+        modelDropdown.hidden = true;
+      }
+    });
+    document.addEventListener("click", (e) => {
+      if (!modelDropdown.hidden && !e.target.closest(".model-selector")) {
+        modelDropdown.hidden = true;
+      }
+    });
+  }
+
+  // 页面加载时获取模型配置
+  loadModelSettings();
 })();

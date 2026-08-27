@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -21,30 +21,17 @@
 <body>
 <div id="app">
 
-  <!-- ========== 顶栏 ========== -->
-  <header id="topbar">
-    <div class="topbar-left">
-      <button id="left-toggle" class="icon-btn" title="折叠/展开对话管理"></button>
-      <div class="logo">
-        <img src="logo.svg" width="22" height="22" alt="SapBuddy">
-        <span class="logo-text">SapBuddy</span>
-      </div>
-    </div>
-
-    <div class="topbar-center">
-      <span id="topbar-title">新对话</span>
-    </div>
-
-    <div class="topbar-right">
-      <button id="right-toggle" class="icon-btn" title="折叠/展开 OUTPUT"></button>
-    </div>
-  </header>
-
   <!-- ========== 主区域（三栏） ========== -->
   <div id="main">
 
     <!-- 左栏：对话管理 -->
     <aside id="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <img src="logo.svg" width="22" height="22" alt="SapBuddy">
+          <span class="logo-text">SapBuddy</span>
+        </div>
+      </div>
       <div class="sidebar-top">
         <div class="search-box">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c.03.04.062.078.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1.007 1.007 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0z"/></svg>
@@ -81,35 +68,51 @@
 
     <!-- 中栏：对话 -->
     <section id="chat">
+      <div class="chat-header">
+        <button id="left-toggle" class="panel-toggle-btn" title="折叠/展开对话管理">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><polyline points="14 10 11 12 14 14"/></svg>
+        </button>
+        <div class="chat-header-center">
+          <span id="topbar-title" class="chat-title" title="点击复制会话文件名">新对话</span>
+          <span id="sap-status-header" class="sap-status-header">
+            <span class="dot" id="sap-dot-header"></span>
+            <span id="sap-text-header">SAP 检测中…</span>
+          </span>
+        </div>
+        <button id="right-toggle" class="panel-toggle-btn" title="折叠/展开产物">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/><polyline points="10 10 13 12 10 14"/></svg>
+        </button>
+      </div>
       <div id="messages"></div>
 
       <div id="input-area">
         <div id="input-card">
-          <div id="input-toolbar">
-            <button class="toolbar-btn" id="attach-btn" title="上传文件（代码/文档，AI 可读取）">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V4a2 2 0 0 0-4 0v7a.5.5 0 0 0 1 0V4a1 1 0 0 1 2 0v7a3 3 0 0 1-6 0V5a2.5 2.5 0 0 1 5 0v6a.5.5 0 0 0 1 0V5a4 4 0 0 0-4-4Z"/></svg>
-              上传文件
-            </button>
-            <input type="file" id="file-input" multiple hidden accept=".abap,.txt,.md,.js,.mjs,.ts,.json,.xml,.html,.css,.csv,.sql,.yml,.yaml,.cfg,.ini,.log,.docx,.xlsx,.pptx" />
-            <button class="toolbar-btn" id="img-btn" title="发送图片（截图/照片，AI 可看图）">
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M2 2h12v12H2V2zm1.5 1.5v9h9v-9h-9zm2 2h1v1h-1v-1zm2.5 2.5h1v1h-1v-1zm-2.5 2.5h1v1h-1v-1zm4 1h1v1h-1v-1z"/></svg>
-              图片
-            </button>
-            <input type="file" id="img-input" multiple hidden accept="image/png,image/jpeg,image/gif,image/webp,image/bmp" />
-            <span class="toolbar-spacer"></span>
-            <span class="toolbar-hint">Enter 发送 · Shift+Enter 换行 · 可直接粘贴截图</span>
-          </div>
           <div id="attachments"></div>
           <div id="images"></div>
           <div id="input-wrap">
-            <textarea id="input" rows="2" placeholder="输入你的需求，或点击「上传文件」附上代码/文档…（可粘贴截图让 AI 看图）"></textarea>
-            <button id="think-btn" class="btn-think" title="思考等级：关（轻量模式）" data-level="off">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547Z"/></svg>
-              </button>
-            <button id="compress-btn" class="btn-compress" title="压缩上下文">
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M4 0h8v2H4V0ZM4 4h8v2H4V4ZM2 8h12v2H2V8ZM2 12h12v2H2v-2Z"/></svg>
-            </button>
-            <button id="send-btn">发送</button>
+            <textarea id="input" rows="2" placeholder="输入你的需求，或点击左下角 + 上传文件/图片…（可粘贴截图让 AI 看图）"></textarea>
+            <input type="file" id="file-input" multiple hidden accept=".abap,.txt,.md,.js,.mjs,.ts,.json,.xml,.html,.css,.csv,.sql,.yml,.yaml,.cfg,.ini,.log,.docx,.xlsx,.pptx,image/png,image/jpeg,image/gif,image/webp,image/bmp" />
+            <div id="input-bottom-bar">
+              <div class="input-bottom-left">
+                <button id="upload-plus-btn" class="icon-btn" title="上传文件或图片">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                </button>
+                <button id="compress-btn" class="icon-btn" title="压缩上下文">
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 0h8v2H4V0ZM4 4h8v2H4V4ZM2 8h12v2H2V8ZM2 12h12v2H2v-2Z"/></svg>
+                </button>
+              </div>
+              <div class="input-bottom-right">
+                <div class="model-selector">
+                  <button id="model-select-btn" class="selector-btn" title="选择模型">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 2v10l7 7"/></svg>
+                    <span class="model-name">加载中…</span>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div id="model-dropdown" class="selector-dropdown" hidden></div>
+                </div>
+                <button id="send-btn">发送</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -130,27 +133,6 @@
 
   </div>
 
-  <!-- ========== 底部状态栏 ========== -->
-  <footer id="statusbar">
-    <div class="statusbar-left">
-      <span class="status-item">
-        <span class="dot" id="sap-dot-bottom"></span>
-        <span id="sap-text-bottom">SAP 检测中…</span>
-      </span>
-      <span class="status-divider"></span>
-      <span class="status-item">
-        <span class="dot" id="agent-dot-bottom"></span>
-        <span id="agent-text-bottom">Agent</span>
-      </span>
-      <span class="status-divider"></span>
-      <span class="status-item session-id" id="chat-session-id" title="点击复制会话 ID">-</span>
-    </div>
-    <div class="statusbar-right">
-      <span class="status-item">模型: <span id="st-model">-</span></span>
-      <span class="status-divider"></span>
-      <span class="status-item">状态: <span id="st-streaming">空闲</span></span>
-    </div>
-  </footer>
 </div>
 
 <!-- 文件预览弹层 -->

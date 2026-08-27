@@ -18,7 +18,8 @@
 
   // ── 快速刷新流式状态 ──
   App.refreshStateQuick = function(streaming) {
-    $("#st-streaming").textContent = streaming ? "生成中…" : "空闲";
+    const el = $("#st-streaming");
+    if (el) el.textContent = streaming ? "生成中…" : "空闲";
   };
 
   // ── 完整刷新状态面板 ──
@@ -34,13 +35,15 @@
       state.rebuilding = !!d.rebuilding;
       state.configStatus = d.configStatus || "ok";
       state.messageCount = d.messageCount || 0;
-      $("#st-model").textContent = d.model || "-";
+      const modelEl = $("#st-model");
+      if (modelEl) modelEl.textContent = d.model || "-";
       // 客户端流式态以事件为准：只有显式终态事件（agent_end / agent_abort / error / 用户点停止）才结束流式。
       // /api/state 的 isStreaming 是服务端 busy 的近似值，在 SDK 自动重试（willRetry）等中间窗口会被提前复位为
       // false；15s 心跳轮询若用它把"正在输出"翻转成"发送"，按钮会在输出中变回发送。这里只允许用它从
       // 非流式→流式（页面加载/重连后恢复"停止"），不允许用它把正在进行的流式中断。
       if (d.isStreaming && !state.streaming) App.setStreaming(true);
-      $("#st-streaming").textContent = state.streaming ? "生成中…" : "空闲";
+      const streamingEl = $("#st-streaming");
+      if (streamingEl) streamingEl.textContent = state.streaming ? "生成中…" : "空闲";
       const sidEl = $("#chat-session-id");
       if (sidEl) {
         sidEl.textContent = d.sessionLabel || d.sessionId || "-";
@@ -65,8 +68,8 @@
 
   // ── SAP 连接状态 ──
   App.refreshSapStatus = async function() {
-    const dot = $("#sap-dot-bottom");
-    const text = $("#sap-text-bottom");
+    const dot = $("#sap-dot-header");
+    const text = $("#sap-text-header");
     if (text) text.textContent = "SAP 检测中…";
     if (dot) dot.className = "dot";
 
@@ -89,7 +92,7 @@
       }
     } catch (e) {
       if (dot) dot.className = "dot err";
-      const textEl = $("#sap-text-bottom");
+      const textEl = $("#sap-text-header");
       if (e.name === "AbortError") {
         if (textEl) textEl.textContent = "SAP 检测超时";
       } else {

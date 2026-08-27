@@ -141,7 +141,42 @@
     return atts;
   }
 
-  App.addUserBubble = function(text, images, attachments) {
+  // ── 消息时间格式化：毫秒时间戳 → 今天/昨天/日期 + 时分 ──
+  App.formatMessageTime = function(ts) {
+    if (!ts) return "";
+    const date = new Date(ts);
+    const now = new Date();
+    const hh = String(date.getHours()).padStart(2, "0");
+    const mm = String(date.getMinutes()).padStart(2, "0");
+    const timeStr = hh + ":" + mm;
+    // 今天
+    if (date.toDateString() === now.toDateString()) {
+      return "今天 " + timeStr;
+    }
+    // 昨天
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return "昨天 " + timeStr;
+    }
+    // 今年
+    if (date.getFullYear() === now.getFullYear()) {
+      return (date.getMonth() + 1) + "月" + date.getDate() + "日 " + timeStr;
+    }
+    // 其他年份
+    return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0") + "-" + String(date.getDate()).padStart(2, "0") + " " + timeStr;
+  };
+  // 兼容局部调用
+  function formatMessageTime(ts) { return App.formatMessageTime(ts); }
+
+  // ── Tokens 格式化：大数字用 k 表示 ──
+  function formatTokens(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(2) + "M";
+    if (n >= 1000) return (n / 1000).toFixed(2) + "k";
+    return String(n);
+  }
+
+  App.addUserBubble = function(text, images, attachments, timestamp) {
     const el = document.createElement("div");
     el.className = "msg user";
     el._attachments = attachments || []; // 存储附件数据，供编辑重发/重新生成使用
@@ -149,7 +184,9 @@
       '<div class="msg-content">' +
         '<div class="meta">你</div>' +
         '<div class="body"></div>' +
-        '<div class="msg-actions">' +
+        '<div class="msg-footer">' +
+          '<span class="msg-time"></span>' +
+          '<div class="msg-actions">' +
           '<button class="msg-action-btn" data-action="copy" title="复制">' +
             '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
           '</button>' +
@@ -159,6 +196,7 @@
           '<button class="msg-action-btn" data-action="delete" title="删除">' +
             '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>' +
           '</button>' +
+          '</div>' +
         '</div>' +
       '</div>';
     const body = el.querySelector(".body");
@@ -169,6 +207,10 @@
       im.alt = "图片";
       im.src = "data:" + img.mimeType + ";base64," + img.data;
       body.appendChild(im);
+    }
+    // 设置时间
+    if (timestamp) {
+      el.querySelector(".msg-time").textContent = formatMessageTime(timestamp);
     }
     messagesEl.appendChild(el);
     App.scrollToBottom(true);
@@ -184,7 +226,8 @@
       '<div class="msg-content">' +
         '<div class="meta">SapBuddy</div>' +
         '<div class="body md"></div>' +
-        '<div class="msg-actions">' +
+        '<div class="msg-footer">' +
+          '<div class="msg-actions">' +
           '<button class="msg-action-btn" data-action="copy" title="复制">' +
             '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
           '</button>' +
@@ -194,6 +237,9 @@
           '<button class="msg-action-btn" data-action="delete" title="删除">' +
             '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>' +
           '</button>' +
+          '</div>' +
+          '<span class="msg-tokens"></span>' +
+          '<span class="msg-time"></span>' +
         '</div>' +
       '</div>';
     messagesEl.appendChild(el);
@@ -624,6 +670,7 @@
   // ── 渲染消息列表 ──
   App.renderMessageList = function(messages) {
     let lastWasAssistant = false; // 同一轮次（相邻 assistant 无 user 间隔）复用气泡，避免刷屏
+    const toolCallTimestamps = new Map(); // 记录 toolCallId -> 开始时间戳（用于历史会话耗时计算）
     for (const msg of messages) {
       if (msg.role === "user") {
         lastWasAssistant = false;
@@ -632,7 +679,7 @@
         const images = blocks.filter((c) => c.type === "image" && c.data && c.mimeType);
         const attachments = parseAttachmentsFromText(text);
         if (text || images.length) {
-          App.addUserBubble(text, images, attachments);
+          App.addUserBubble(text, images, attachments, msg.timestamp);
           state.currentAssistantEl = null;
           state.currentTextDiv = null;
           state.pendingTexts = [];
@@ -642,6 +689,14 @@
       } else if (msg.role === "assistant") {
         // 跳过空 assistant 消息（无内容不产生气泡）
         if (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0)) continue;
+        // 记录 toolCall 的开始时间戳（用于历史会话耗时计算）
+        if (Array.isArray(msg.content)) {
+          msg.content.forEach((block) => {
+            if (block.type === "toolCall" && block.id && msg.timestamp) {
+              toolCallTimestamps.set(block.id, msg.timestamp);
+            }
+          });
+        }
         state.currentTextDiv = null;
         state.currentThinkSeg = null;
         // 同一轮次（上一条是 assistant）复用同一气泡：思考/工具/文本按序合并进一个气泡
@@ -658,8 +713,27 @@
         body._curNarrationEntry = null;     // 叙述文本节点（每消息重置）
         body._inlineBlocks = {};             // 内联文本块（每消息重置，按 key 匹配）
         App.renderAssistantContent(body, msg.content);
+        // 设置AI消息的时间和tokens（找到.msg.agent元素）
+        const agentMsgEl = body.closest(".msg.agent");
+        if (agentMsgEl) {
+          if (msg.timestamp) {
+            const timeEl = agentMsgEl.querySelector(".msg-time");
+            if (timeEl) timeEl.textContent = formatMessageTime(msg.timestamp);
+          }
+          const totalTokens = msg.usage?.totalTokens || msg.usage?.total_tokens;
+          if (totalTokens) {
+            const tokensEl = agentMsgEl.querySelector(".msg-tokens");
+            if (tokensEl) tokensEl.textContent = "消耗 " + formatTokens(totalTokens);
+          }
+        }
       } else if (msg.role === "toolResult") {
-        App.finishToolCard(msg.toolCallId, msg.content, msg.isError);
+        // 计算历史会话的工具耗时：toolResult.timestamp - toolCall所在assistant消息.timestamp
+        let duration = null;
+        const startTime = toolCallTimestamps.get(msg.toolCallId);
+        if (startTime && msg.timestamp) {
+          duration = Math.max(0, msg.timestamp - startTime);
+        }
+        App.finishToolCard(msg.toolCallId, msg.content, msg.isError, duration);
       }
     }
     // 被中断的历史工具调用（无 toolResult 落盘，如运行中被杀掉）→ 标"中断"，避免永久停在"执行中"

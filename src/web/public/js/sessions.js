@@ -371,8 +371,39 @@
     const cur = norm(state.currentPath);
     const s = (state.sessions || []).find((x) => norm(x.path) === cur);
     el.textContent = s ? (s.name || s.firstMessage || "新对话") : "新对话";
-    el.title = el.textContent;
+    // 存储会话文件名，供点击复制使用
+    const fileName = state.currentPath ? state.currentPath.split(/[\\/]/).pop() : "";
+    el.dataset.sessionFile = fileName;
+    el.title = fileName ? `点击复制会话文件名：${fileName}` : "新对话";
   };
+
+  // 点击会话标题复制会话文件名
+  document.addEventListener("click", (e) => {
+    const titleEl = e.target.closest("#topbar-title");
+    if (!titleEl) return;
+    const fileName = titleEl.dataset.sessionFile;
+    if (!fileName) return;
+    // 复制到剪贴板（优先用现代API，失败则降级）
+    const copyFallback = (text) => {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(fileName).catch(() => copyFallback(fileName));
+    } else {
+      copyFallback(fileName);
+    }
+    // 显示复制成功提示
+    const original = titleEl.textContent;
+    titleEl.textContent = "已复制文件名";
+    setTimeout(() => { titleEl.textContent = original; }, 1500);
+  });
 
   // ── 新建对话按钮 ──
   $("#new-chat-btn").addEventListener("click", App.newChat);
