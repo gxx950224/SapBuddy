@@ -247,6 +247,7 @@
   // ── 打开/关闭设置 ──
   async function openSettings() {
     clearKeyError();
+    clearSettingsDirty();
     $("#settings-overlay").classList.add("open");
     applySettingsToForm(await fetchSettings());
     loadMcpConfig();
@@ -261,6 +262,46 @@
     stopMcpPolling();
     $("#settings-overlay").classList.remove("open");
   }
+
+  // ── 未保存更改跟踪 ──
+  let settingsDirty = false;
+  function markSettingsDirty() { settingsDirty = true; }
+  function clearSettingsDirty() { settingsDirty = false; }
+
+  // 监听大模型配置字段修改
+  const dirtyFields = ["#llm-provider", "#llm-model", "#llm-key", "#llm-context-tokens", "#mcp-config"];
+  dirtyFields.forEach(selector => {
+    const el = $(selector);
+    if (el) {
+      el.addEventListener("input", markSettingsDirty);
+      el.addEventListener("change", markSettingsDirty);
+    }
+  });
+
+  // 修改closeSettings，添加未保存更改检查
+  const originalCloseSettings = closeSettings;
+  closeSettings = async function() {
+    if (settingsDirty) {
+      const ok = await App.confirm({
+        title: "未保存的更改",
+        message: "您有未保存的更改，是否保存？",
+        confirmText: "保存",
+        cancelText: "不保存",
+      });
+      if (ok === null || ok === undefined) return; // 取消
+      if (ok) {
+        // 保存设置：先清除dirty状态，然后触发保存按钮
+        clearSettingsDirty();
+        const saveBtn = $("#settings-save");
+        if (saveBtn && !saveBtn.disabled) {
+          saveBtn.click();
+        }
+        return; // 保存成功后会自动关闭
+      }
+    }
+    clearSettingsDirty();
+    originalCloseSettings();
+  };
 
   // ============ MCP 设置面板 ============
   const mcpExpanded = new Set();
@@ -724,6 +765,7 @@
       });
       const j = await r.json();
       if (j.success) {
+        clearSettingsDirty();
         if (j.keyValid === false) {
           showKeyError(j.warning || "API Key 无效，请检查后重试");
           App.showToast(j.warning || "API Key 无效，已保存但 Agent 无法使用", true);
@@ -1157,4 +1199,212 @@
       App.closePreview();
     }
   });
+
+  // ── MCP 可视化配置 ──
+  let mcpVisualConfig = {}; // 可视化配置的内存对象
+  let mcpEditingServer = null; // 当前编辑的服务器名称（null表示新增）
+
+  // 渲染可视化服务器列表
+  function renderMcpVisualList() {
+    const list = $("#mcp-server-list");
+    if (!list) return;
+    const servers = Object.keys(mcpVisualConfig || {});
+    if (!servers.length) {
+      list.innerHTML = '<div class="empty-hint">暂无 MCP 服务器，点击下方按钮添加</div>';
+      return;
+    }
+    list.innerHTML = "";
+    for (const name of servers) {
+      const s = mcpVisualConfig[name] || {};
+      const card = document.createElement("div");
+      card.className = "mcp-server-card";
+      card.innerHTML = `
+        <div class="mcp-server-card-info">
+          <div class="mcp-server-card-name">
+            ${escapeHtml(name)}
+            <span class="mcp-server-card-type">${escapeHtml(s.type || "")}</span>
+          </div>
+          <div class="mcp-server-card-url">${escapeHtml(s.url || "")}</div>
+        </div>
+        <div class="mcp-server-card-actions">
+          <button class="btn-mini" data-action="edit" data-name="${escapeHtml(name)}">编辑</button>
+          <button class="btn-mini danger" data-action="delete" data-name="${escapeHtml(name)}">删除</button>
+        </div>
+      `;
+      list.appendChild(card);
+    }
+    // 绑定编辑/删除事件
+    list.querySelectorAll("button[data-action]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const action = btn.dataset.action;
+        const name = btn.dataset.name;
+        if (action === "edit") openMcpServerEdit(name);
+        else if (action === "delete") deleteMcpServer(name);
+      });
+    });
+  }
+
+  // 打开服务器编辑弹窗
+  function openMcpServerEdit(name) {
+    mcpEditingServer = name;
+    const overlay = $("#mcp-server-edit-overlay");
+    const title = $("#mcp-server-edit-title");
+    const nameInput = $("#mcp-server-name");
+    const typeSelect = $("#mcp-server-type");
+    const urlInput = $("#mcp-server-url");
+    const headersList = $("#mcp-headers-list");
+
+    if (name && mcpVisualConfig[name]) {
+      title.textContent = "编辑 MCP 服务器";
+      nameInput.value = name;
+      nameInput.disabled = true; // 编辑时不允许修改名称
+      typeSelect.value = mcpVisualConfig[name].type || "streamable-http";
+      urlInput.value = mcpVisualConfig[name].url || "";
+      renderMcpHeaders(mcpVisualConfig[name].headers || {});
+    } else {
+      title.textContent = "添加 MCP 服务器";
+      nameInput.value = "";
+      nameInput.disabled = false;
+      typeSelect.value = "streamable-http";
+      urlInput.value = "";
+      renderMcpHeaders({});
+    }
+    overlay.style.display = "flex";
+  }
+
+  // 关闭服务器编辑弹窗
+  function closeMcpServerEdit() {
+    $("#mcp-server-edit-overlay").style.display = "none";
+    mcpEditingServer = null;
+  }
+
+  // 渲染Headers列表
+  function renderMcpHeaders(headers) {
+    const list = $("#mcp-headers-list");
+    if (!list) return;
+    list.innerHTML = "";
+    const keys = Object.keys(headers || {});
+    if (!keys.length) return;
+    for (const key of keys) {
+      addMcpHeaderRow(key, headers[key]);
+    }
+  }
+
+  // 添加一行Header输入
+  function addMcpHeaderRow(key = "", value = "") {
+    const list = $("#mcp-headers-list");
+    if (!list) return;
+    const row = document.createElement("div");
+    row.className = "mcp-header-row";
+    row.innerHTML = `
+      <input type="text" placeholder="Header Key" value="${escapeHtml(key)}" />
+      <input type="text" placeholder="Header Value" value="${escapeHtml(value)}" />
+      <button class="btn-remove-header" title="删除">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    `;
+    list.appendChild(row);
+    row.querySelector(".btn-remove-header").addEventListener("click", () => row.remove());
+  }
+
+  // 收集Headers输入
+  function collectMcpHeaders() {
+    const list = $("#mcp-headers-list");
+    if (!list) return {};
+    const headers = {};
+    list.querySelectorAll(".mcp-header-row").forEach(row => {
+      const inputs = row.querySelectorAll("input");
+      const key = inputs[0]?.value.trim();
+      const value = inputs[1]?.value.trim();
+      if (key) headers[key] = value;
+    });
+    return headers;
+  }
+
+  // 保存服务器编辑
+  function saveMcpServerEdit() {
+    const name = $("#mcp-server-name").value.trim();
+    const type = $("#mcp-server-type").value;
+    const url = $("#mcp-server-url").value.trim();
+    if (!name) { App.showToast("请输入服务器名称", true); return; }
+    if (!url) { App.showToast("请输入服务器URL", true); return; }
+    const headers = collectMcpHeaders();
+    const serverConfig = { type, url };
+    if (Object.keys(headers).length) serverConfig.headers = headers;
+    mcpVisualConfig[name] = serverConfig;
+    // 同步到JSON textarea
+    $("#mcp-config").value = JSON.stringify(mcpVisualConfig, null, 2);
+    renderMcpVisualList();
+    closeMcpServerEdit();
+    App.showToast("服务器配置已更新，请点击保存并生效");
+  }
+
+  // 删除服务器
+  function deleteMcpServer(name) {
+    App.confirm({
+      title: "删除 MCP 服务器",
+      message: `确定要删除服务器「${name}」吗？删除后需要点击保存并生效才能实际生效。`,
+      confirmText: "删除",
+      danger: true,
+    }).then(ok => {
+      if (!ok) return;
+      delete mcpVisualConfig[name];
+      $("#mcp-config").value = JSON.stringify(mcpVisualConfig, null, 2);
+      renderMcpVisualList();
+      App.showToast("服务器已删除，请点击保存并生效");
+    });
+  }
+
+  // 模式切换
+  document.querySelectorAll(".mcp-mode-toggle .mode-toggle-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const mode = btn.dataset.mcpMode;
+      document.querySelectorAll(".mcp-mode-toggle .mode-toggle-btn").forEach(b => b.classList.toggle("active", b === btn));
+      const visual = $("#mcp-visual-mode");
+      const json = $("#mcp-json-mode");
+      if (visual) visual.style.display = mode === "visual" ? "block" : "none";
+      if (json) json.style.display = mode === "json" ? "block" : "none";
+      // 切换到可视化模式时，从JSON同步
+      if (mode === "visual") {
+        try {
+          mcpVisualConfig = JSON.parse($("#mcp-config").value || "{}");
+          renderMcpVisualList();
+        } catch (e) {
+          App.showToast("JSON格式错误，无法切换到可视化模式", true);
+        }
+      }
+    });
+  });
+
+  // 绑定添加服务器按钮
+  const addServerBtn = $("#mcp-add-server");
+  if (addServerBtn) addServerBtn.addEventListener("click", () => openMcpServerEdit(null));
+
+  // 绑定添加Header按钮
+  const addHeaderBtn = $("#mcp-add-header");
+  if (addHeaderBtn) addHeaderBtn.addEventListener("click", () => addMcpHeaderRow());
+
+  // 绑定编辑弹窗的取消/保存按钮
+  const editCancelBtn = $("#mcp-server-edit-cancel");
+  if (editCancelBtn) editCancelBtn.addEventListener("click", closeMcpServerEdit);
+  const editSaveBtn = $("#mcp-server-edit-save");
+  if (editSaveBtn) editSaveBtn.addEventListener("click", saveMcpServerEdit);
+
+  // 点击弹窗背景关闭
+  const editOverlay = $("#mcp-server-edit-overlay");
+  if (editOverlay) {
+    editOverlay.addEventListener("click", (e) => {
+      if (e.target === editOverlay) closeMcpServerEdit();
+    });
+  }
+
+  // 在loadMcpConfig中同步渲染可视化列表
+  const originalLoadMcpConfig = loadMcpConfig;
+  loadMcpConfig = async function() {
+    await originalLoadMcpConfig();
+    try {
+      mcpVisualConfig = JSON.parse($("#mcp-config").value || "{}");
+      renderMcpVisualList();
+    } catch (e) { /* JSON格式错误时忽略 */ }
+  };
 })();

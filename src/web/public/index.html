@@ -176,48 +176,75 @@
     </div>
     <div id="settings-body">
       <div id="settings-tabs">
-        <button class="settings-tab active" data-tab="llm">大模型</button>
-        <button class="settings-tab" data-tab="sap">SAP连接</button>
-        <button class="settings-tab" data-tab="mcp">MCP</button>
-        <button class="settings-tab" data-tab="memory">记忆</button>
-        <button class="settings-tab" data-tab="skills">技能</button>
-        <button class="settings-tab" data-tab="prompts">提示词</button>
-        <button class="settings-tab" data-tab="about">关于</button>
+        <button class="settings-tab active" data-tab="llm">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v1a3 3 0 0 1 3 3v1a3 3 0 0 1-2 2.83V17a3 3 0 0 1-3 3h-1v1a1 1 0 0 1-2 0v-1H9a3 3 0 0 1-3-3v-1.17A3 3 0 0 1 4 11v-1a3 3 0 0 1 3-3V6a4 4 0 0 1 4-4Z"/><path d="M12 6v6M9 9h6"/></svg>
+          <span>大模型</span>
+        </button>
+        <button class="settings-tab" data-tab="sap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+          <span>SAP连接</span>
+        </button>
+        <button class="settings-tab" data-tab="mcp">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/><circle cx="12" cy="12" r="3"/></svg>
+          <span>MCP</span>
+        </button>
+        <button class="settings-tab" data-tab="memory">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/></svg>
+          <span>记忆</span>
+        </button>
+        <button class="settings-tab" data-tab="skills">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+          <span>技能</span>
+        </button>
+        <button class="settings-tab" data-tab="prompts">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="14" y2="13"/></svg>
+          <span>提示词</span>
+        </button>
+        <button class="settings-tab" data-tab="about">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span>关于</span>
+        </button>
       </div>
       <div id="settings-panels">
         <div class="settings-panel active" data-panel="llm">
           <div class="settings-section">
             <h4>大模型配置</h4>
             <p class="settings-desc">配置对话与代码生成所使用的大模型 API。</p>
-            <label class="settings-field">
-              <span>提供商</span>
-              <select id="llm-provider">
-                <!-- 选项由 app.js 依据国产模型清单动态填充 -->
-              </select>
-            </label>
-            <label class="settings-field">
-              <span>模型名称</span>
-              <select id="llm-model">
-                <!-- 选项随提供商切换动态填充 -->
-              </select>
-            </label>
-            <label class="settings-field key-field">
-              <span>API Key</span>
-              <div class="key-input-wrap">
-                <input id="llm-key" type="password" placeholder="未配置，请输入 API Key" />
-                <button type="button" id="llm-key-toggle" class="btn-icon" title="显示/隐藏 Key">
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
-                </button>
+            <div class="form-group">
+              <div class="form-group-title">基本配置</div>
+              <label class="settings-field">
+                <span>提供商</span>
+                <select id="llm-provider">
+                  <!-- 选项由 app.js 依据国产模型清单动态填充 -->
+                </select>
+              </label>
+              <label class="settings-field">
+                <span>模型名称</span>
+                <select id="llm-model">
+                  <!-- 选项随提供商切换动态填充 -->
+                </select>
+              </label>
+              <label class="settings-field key-field">
+                <span>API Key</span>
+                <div class="key-input-wrap">
+                  <input id="llm-key" type="password" placeholder="未配置，请输入 API Key" />
+                  <button type="button" id="llm-key-toggle" class="btn-icon" title="显示/隐藏 Key">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
+                  </button>
+                </div>
+              </label>
+              <label class="settings-field">
+                <span>上下文大小</span>
+                <input id="llm-context-tokens" type="number" min="10000" max="1000000" step="10000" placeholder="200000" />
+                <span class="field-hint">Token 上限（默认 200K），超出时自动压缩历史对话</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <div class="form-group-title">连接管理</div>
+              <div class="llm-conn-btns" style="display:flex;gap:8px">
+                <button type="button" id="llm-add-conn" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加连接</button>
+                <button type="button" id="llm-edit-conn" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> 编辑连接</button>
               </div>
-            </label>
-            <label class="settings-field">
-              <span>上下文大小</span>
-              <input id="llm-context-tokens" type="number" min="10000" max="1000000" step="10000" placeholder="200000" />
-              <span class="field-hint">Token 上限（默认 200K），超出时自动压缩历史对话</span>
-            </label>
-            <div class="llm-conn-btns" style="display:flex;gap:8px;margin-top:10px">
-              <button type="button" id="llm-add-conn" class="btn-sm">＋ 添加连接</button>
-              <button type="button" id="llm-edit-conn" class="btn-sm">✏️ 编辑连接</button>
             </div>
             <div id="llm-conn-form" class="conn-form" style="display:none">
               <h5 id="llm-conn-form-title">新增大模型连接（OpenAI 兼容接口）</h5>
@@ -253,50 +280,58 @@
               <div class="empty-hint">加载中…</div>
             </div>
             <div class="settings-actions" style="margin-top:10px">
-              <button id="sap-add" class="btn-sm">＋ 添加连接</button>
+              <button id="sap-add" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加连接</button>
               <span id="sap-list-status" class="settings-status"></span>
             </div>
             <div id="sap-conn-form" class="conn-form" style="display:none">
               <h5 id="sap-conn-form-title">添加连接</h5>
-              <label class="settings-field">
-                <span>名称</span>
-                <input id="sap-name" type="text" placeholder="如：开发 / 测试 / 正式" />
-                <span class="field-hint">给这个连接起个名字，好认</span>
-              </label>
-              <label class="settings-field">
-                <span>主机地址</span>
-                <input id="sap-host" type="text" placeholder="10.x.x.x 或 sap.example.com" />
-              </label>
-              <label class="settings-field">
-                <span>端口</span>
-                <input id="sap-port" type="text" placeholder="44300" />
-                <span class="field-hint">默认 44300（HTTPS）</span>
-              </label>
-              <label class="settings-field">
-                <span>协议</span>
-                <select id="sap-protocol">
-                  <option value="https">HTTPS</option>
-                  <option value="http">HTTP</option>
-                </select>
-              </label>
-              <label class="settings-field">
-                <span>用户名</span>
-                <input id="sap-user" type="text" placeholder="DEVELOPER" />
-              </label>
-              <label class="settings-field key-field">
-                <span>密码</span>
-                <div class="key-input-wrap">
-                  <input id="sap-password" type="password" placeholder="输入 SAP 密码" />
-                  <button type="button" id="sap-password-toggle" class="btn-icon" title="显示/隐藏密码">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
-                  </button>
+              <div class="form-group">
+                <div class="form-group-title">基本信息</div>
+                <label class="settings-field">
+                  <span>名称</span>
+                  <input id="sap-name" type="text" placeholder="如：开发 / 测试 / 正式" />
+                  <span class="field-hint">给这个连接起个名字，好认</span>
+                </label>
+                <label class="settings-field">
+                  <span>主机地址</span>
+                  <input id="sap-host" type="text" placeholder="10.x.x.x 或 sap.example.com" />
+                </label>
+                <div style="display:flex;gap:12px">
+                  <label class="settings-field" style="flex:1">
+                    <span>端口</span>
+                    <input id="sap-port" type="text" placeholder="44300" />
+                    <span class="field-hint">默认 44300（HTTPS）</span>
+                  </label>
+                  <label class="settings-field" style="flex:1">
+                    <span>协议</span>
+                    <select id="sap-protocol">
+                      <option value="https">HTTPS</option>
+                      <option value="http">HTTP</option>
+                    </select>
+                  </label>
                 </div>
-              </label>
-              <label class="settings-field">
-                <span>Client</span>
-                <input id="sap-client" type="text" placeholder="100" />
-                <span class="field-hint">SAP 客户端编号，默认 100</span>
-              </label>
+              </div>
+              <div class="form-group">
+                <div class="form-group-title">认证信息</div>
+                <label class="settings-field">
+                  <span>用户名</span>
+                  <input id="sap-user" type="text" placeholder="DEVELOPER" />
+                </label>
+                <label class="settings-field key-field">
+                  <span>密码</span>
+                  <div class="key-input-wrap">
+                    <input id="sap-password" type="password" placeholder="输入 SAP 密码" />
+                    <button type="button" id="sap-password-toggle" class="btn-icon" title="显示/隐藏密码">
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M8 5a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3Zm0 5a2 2 0 1 1 0-4 2 2 0 0 1 0 4Z"/><path d="M8 2C4.5 2 1.5 4.5.5 8c1 3.5 4 6 7.5 6s6.5-2.5 7.5-6c-1-3.5-4-6-7.5-6ZM8 12c-2.8 0-5.2-2-6-4 .8-2 3.2-4 6-4s5.2 2 6 4c-.8 2-3.2 4-6 4Z"/></svg>
+                    </button>
+                  </div>
+                </label>
+                <label class="settings-field">
+                  <span>Client</span>
+                  <input id="sap-client" type="text" placeholder="100" />
+                  <span class="field-hint">SAP 客户端编号，默认 100</span>
+                </label>
+              </div>
               <div class="settings-actions">
                 <button id="sap-save" class="btn-sm btn-primary">保存</button>
                 <button id="sap-cancel" class="btn-sm" style="display:none">取消</button>
@@ -313,12 +348,62 @@
         <div class="settings-panel" data-panel="mcp">
           <div class="settings-section">
             <h4>MCP 服务器配置</h4>
-            <p class="settings-desc">采用市场通用 MCP 配置格式（对象）。键为服务器名称，值含 <code>type</code>（sse / streamable-http）、<code>url</code>、<code>headers</code>（可选）。</p>
-            <textarea id="mcp-config" class="mcp-config" spellcheck="false" placeholder='{&#10;  "服务器名": {&#10;    "type": "streamable-http",&#10;    "url": "https://host:port/mcp",&#10;    "headers": {&#10;      "Authorization": "Bearer ..."&#10;    }&#10;  }&#10;}'></textarea>
-            <div class="mcp-config-error" id="mcp-config-error"></div>
-            <div class="mcp-actions">
-              <button id="mcp-format" class="btn-sm">格式化</button>
-              <button id="mcp-save" class="btn-sm btn-primary">保存并生效</button>
+            <p class="settings-desc">配置 MCP 服务器连接，支持可视化配置和 JSON 高级模式。</p>
+            <!-- 模式切换 -->
+            <div class="mcp-mode-toggle" style="display:flex;gap:8px;margin-bottom:12px">
+              <button class="btn-sm mode-toggle-btn active" data-mcp-mode="visual">可视化配置</button>
+              <button class="btn-sm mode-toggle-btn" data-mcp-mode="json">JSON 高级模式</button>
+            </div>
+            <!-- 可视化配置模式 -->
+            <div id="mcp-visual-mode">
+              <div class="mcp-server-list" id="mcp-server-list">
+                <div class="empty-hint">暂无 MCP 服务器，点击下方按钮添加</div>
+              </div>
+              <div style="margin-top:12px">
+                <button id="mcp-add-server" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加服务器</button>
+              </div>
+            </div>
+            <!-- JSON高级模式 -->
+            <div id="mcp-json-mode" style="display:none">
+              <textarea id="mcp-config" class="mcp-config" spellcheck="false" placeholder='{&#10;  "服务器名": {&#10;    "type": "streamable-http",&#10;    "url": "https://host:port/mcp",&#10;    "headers": {&#10;      "Authorization": "Bearer ..."&#10;    }&#10;  }&#10;}'></textarea>
+              <div class="mcp-config-error" id="mcp-config-error"></div>
+              <div class="mcp-actions">
+                <button id="mcp-format" class="btn-sm">格式化</button>
+                <button id="mcp-save" class="btn-sm btn-primary">保存并生效</button>
+              </div>
+            </div>
+          </div>
+          <!-- 服务器编辑弹窗 -->
+          <div id="mcp-server-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+            <div id="mcp-server-edit-dialog" style="background:#fff;border-radius:8px;padding:20px;width:500px;max-width:90vw;max-height:80vh;overflow-y:auto">
+              <h5 id="mcp-server-edit-title" style="margin:0 0 16px 0">添加 MCP 服务器</h5>
+              <div class="form-group">
+                <div class="form-group-title">基本信息</div>
+                <label class="settings-field">
+                  <span>服务器名称</span>
+                  <input id="mcp-server-name" type="text" placeholder="如：my-mcp-server" />
+                </label>
+                <label class="settings-field">
+                  <span>类型</span>
+                  <select id="mcp-server-type">
+                    <option value="streamable-http">streamable-http</option>
+                    <option value="sse">sse</option>
+                  </select>
+                </label>
+                <label class="settings-field">
+                  <span>URL</span>
+                  <input id="mcp-server-url" type="text" placeholder="https://host:port/mcp" />
+                </label>
+              </div>
+              <div class="form-group">
+                <div class="form-group-title">Headers（可选）</div>
+                <div id="mcp-headers-list" style="margin-bottom:8px"></div>
+                <button id="mcp-add-header" class="btn-sm btn-mini"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加 Header</button>
+              </div>
+              <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+                <button id="mcp-server-edit-cancel" class="btn-sm">取消</button>
+                <button id="mcp-server-edit-save" class="btn-sm btn-primary">保存</button>
+              </div>
             </div>
           </div>
           <div class="settings-section">
@@ -335,7 +420,7 @@
               <span class="editor-file-path" id="memory-path">Memory.md</span>
               <div class="editor-toolbar-actions">
                 <span class="mode-toggle"><button class="mode-toggle-btn" data-mode="edit" data-editor="memory-editor" data-preview="memory-preview">编辑</button><button class="mode-toggle-btn active" data-mode="preview" data-editor="memory-editor" data-preview="memory-preview">预览</button></span>
-                <button id="memory-open-location" class="btn-sm" title="打开文件所在位置">📂 打开位置</button>
+                <button id="memory-open-location" class="btn-sm" title="打开文件所在位置"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 打开位置</button>
                 <button id="memory-save" class="btn-sm btn-primary">保存</button>
               </div>
             </div>
@@ -349,7 +434,7 @@
             <div class="skill-tree-panel" id="skill-tree-panel">
               <h4>
                 <span>Skills 目录</span>
-                <button class="skill-tree-collapse-btn" id="skill-tree-collapse" title="折叠/展开目录树">◀</button>
+                <button class="skill-tree-collapse-btn" id="skill-tree-collapse" title="折叠/展开目录树"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
               </h4>
               <div id="skill-tree" class="skill-tree">
                 <div class="empty-hint">加载中…</div>
@@ -364,7 +449,7 @@
                   <span class="editor-file-path" id="skill-file-path"></span>
                   <div class="editor-toolbar-actions">
                     <span class="mode-toggle"><button class="mode-toggle-btn" data-mode="edit" data-editor="skill-editor" data-preview="skill-preview">编辑</button><button class="mode-toggle-btn active" data-mode="preview" data-editor="skill-editor" data-preview="skill-preview">预览</button></span>
-                    <button id="skill-open-location" class="btn-sm" title="打开文件所在位置">📂 打开位置</button>
+                    <button id="skill-open-location" class="btn-sm" title="打开文件所在位置"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 打开位置</button>
                     <button id="skill-save" class="btn-sm btn-primary">保存</button>
                   </div>
                 </div>
@@ -387,14 +472,14 @@
               <span class="editor-file-path" id="prompt-file-path">AGENTS.md</span>
               <div class="editor-toolbar-actions">
                 <span class="mode-toggle"><button class="mode-toggle-btn" data-mode="edit" data-editor="prompt-editor" data-preview="prompt-preview">编辑</button><button class="mode-toggle-btn active" data-mode="preview" data-editor="prompt-editor" data-preview="prompt-preview">预览</button></span>
-                <button id="prompt-open-location" class="btn-sm" title="打开文件所在位置">📂 打开位置</button>
+                <button id="prompt-open-location" class="btn-sm" title="打开文件所在位置"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> 打开位置</button>
                 <button id="prompt-save" class="btn-sm btn-primary">保存</button>
               </div>
             </div>
             <textarea id="prompt-editor" class="code-editor" spellcheck="false"></textarea>
             <div id="prompt-preview" class="md-preview" style="display:none"></div>
             <div class="editor-status" id="prompt-status"></div>
-            <div class="restart-hint" id="prompt-restart" style="display:none">⚠️ 提示词已修改，<b>请重启 SapBuddy</b> 以使其生效。</div>
+            <div class="restart-hint" id="prompt-restart" style="display:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>提示词已修改，<b>请重启 SapBuddy</b> 以使其生效。</div>
           </div>
         </div>
         <div class="settings-panel" data-panel="about">

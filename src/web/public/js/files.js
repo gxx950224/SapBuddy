@@ -106,6 +106,8 @@
         moreBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           closeAllFileMenus();
+          // 菜单可能被 closeAllFileMenus 从 DOM 移除，需重置引用
+          if (menuEl && !document.body.contains(menuEl)) menuEl = null;
           if (menuEl && menuEl.classList.contains("open")) { menuEl.classList.remove("open"); return; }
           if (!menuEl) {
             menuEl = document.createElement("div");
