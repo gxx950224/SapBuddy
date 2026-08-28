@@ -147,8 +147,7 @@
   }
   function showLlmForm() {
     $("#llm-conn-form").style.display = "block";
-    $("#llm-add-conn").style.display = "none";
-    $("#llm-edit-conn").style.display = "none";
+    $("#llm-conn-manager").style.display = "none";
   }
   function openLlmConnForm() {
     resetLlmForm();
@@ -175,8 +174,7 @@
   function hideLlmConnForm() {
     resetLlmForm();
     $("#llm-conn-form").style.display = "none";
-    $("#llm-add-conn").style.display = "";
-    $("#llm-edit-conn").style.display = "";
+    $("#llm-conn-manager").style.display = "";
   }
   $("#llm-add-conn").addEventListener("click", openLlmConnForm);
   $("#llm-edit-conn").addEventListener("click", openLlmEditForm);
@@ -385,8 +383,8 @@
     $("#mcp-config").classList.add("invalid");
   }
 
-  // MCP 保存
-  $("#mcp-save").addEventListener("click", async () => {
+  // MCP 保存（可视化模式与 JSON 模式共用）
+  async function saveMcpConfig() {
     const ta = $("#mcp-config");
     const raw = ta.value.trim();
     let config;
@@ -412,8 +410,10 @@
       }
     }
     clearMcpError();
-    const btn = $("#mcp-save");
-    btn.disabled = true;
+    const jsonBtn = $("#mcp-save");
+    const visualBtn = $("#mcp-visual-save");
+    if (jsonBtn) jsonBtn.disabled = true;
+    if (visualBtn) visualBtn.disabled = true;
     try {
       const r = await fetch("/api/mcp", {
         method: "POST",
@@ -430,9 +430,13 @@
     } catch (e) {
       showMcpError("保存失败：" + e.message);
     } finally {
-      btn.disabled = false;
+      if (jsonBtn) jsonBtn.disabled = false;
+      if (visualBtn) visualBtn.disabled = false;
     }
-  });
+  }
+  $("#mcp-save").addEventListener("click", saveMcpConfig);
+  const mcpVisualSaveBtn = $("#mcp-visual-save");
+  if (mcpVisualSaveBtn) mcpVisualSaveBtn.addEventListener("click", saveMcpConfig);
 
   // MCP 格式化
   $("#mcp-format").addEventListener("click", () => {
