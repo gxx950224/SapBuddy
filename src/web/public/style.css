@@ -1,4 +1,4 @@
-/* ===================================================================
+﻿/* ===================================================================
    SapBuddy — WorkBuddy 风格网页版 UI（三栏：对话管理 / 对话 / OUTPUT）
    浅色 + 深色双主题 · 渐变强调色 · 卡片化功能分区 · 可折叠侧栏
    =================================================================== */
@@ -531,9 +531,9 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 .session-text { flex: 1; min-width: 0; }
 .session-title {
   font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--text-dim);
+  color: #000;
 }
-.session-item.current .session-title { color: var(--text); font-weight: 600; }
+.session-item.current .session-title { color: #000; font-weight: 600; }
 .session-meta { font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 .session-del {
   flex-shrink: 0; width: 26px; height: 26px;
@@ -605,7 +605,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   color: var(--warning, #f59e0b);
 }
 .session-item.pinned .session-title {
-  color: var(--text);
+  color: #000;
 }
 
 /* ── 会话时间分组（可折叠）── */
@@ -617,8 +617,8 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   cursor: pointer;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-faint);
-  padding: 12px 10px 4px;
+  color: #000;
+  padding: 12px 5px 4px 10px;
   letter-spacing: 0.3px;
   user-select: none;
   display: flex;
@@ -629,7 +629,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   display: none;
 }
 .session-group .group-chevron {
-  flex-shrink: 0;
+  flex-shrink: 0; margin-left: auto; order: 2;
   transition: transform 0.15s ease;
   color: var(--text-faint);
 }
@@ -637,10 +637,10 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
   transform: rotate(90deg);
 }
 .session-group > summary:hover {
-  color: var(--text-dim);
+  color: #000;
 }
 .session-group > summary:hover .group-chevron {
-  color: var(--text-dim);
+  color: #000;
 }
 
 /* ── 正在执行的会话图标（旋转动画，显示在标题后）── */
@@ -1864,7 +1864,7 @@ body.is-busy #input-wrap { opacity: 0.7; pointer-events: none; }
 
 #send-btn {
   padding: 0 16px; height: 32px; flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 16px;
   background: var(--accent-grad); color: #fff;
   font-size: 13px; font-weight: 600;
   box-shadow: 0 2px 8px var(--accent-dim);
