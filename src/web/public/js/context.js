@@ -335,5 +335,6 @@
   }
 
   // 页面加载时获取模型配置
+  App.loadModelSettings = loadModelSettings;
   loadModelSettings();
 })();

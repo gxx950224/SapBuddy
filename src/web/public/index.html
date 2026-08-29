@@ -7,7 +7,7 @@
 <link rel="icon" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=__V__">
 <link rel="stylesheet" href="vendor/highlight/github-dark.min.css?v=__V__">
 <!-- 仅支持浅色主题：强制 data-theme="light" -->
@@ -358,7 +358,7 @@
               <div class="mcp-server-list" id="mcp-server-list">
                 <div class="empty-hint">暂无 MCP 服务器，点击下方按钮添加</div>
               </div>
-              <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+              <div class="mcp-actions">
                 <button id="mcp-add-server" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加服务器</button>
                 <button id="mcp-visual-save" class="btn-sm btn-primary">保存并生效</button>
               </div>
@@ -374,8 +374,8 @@
             </div>
           </div>
           <!-- 服务器编辑弹窗 -->
-          <div id="mcp-server-edit-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
-            <div id="mcp-server-edit-dialog" style="background:#fff;border-radius:8px;padding:20px;width:500px;max-width:90vw;max-height:80vh;overflow-y:auto">
+          <div id="mcp-server-edit-overlay">
+            <div id="mcp-server-edit-dialog">
               <h5 id="mcp-server-edit-title" style="margin:0 0 16px 0">添加 MCP 服务器</h5>
               <div class="form-group">
                 <div class="form-group-title">基本信息</div>
@@ -518,10 +518,6 @@
           </div>
         </div>
       </div>
-    </div>
-    <div id="settings-footer">
-      <button id="settings-cancel" class="btn-sm">取消</button>
-      <button id="settings-save" class="btn-sm btn-primary">保存</button>
     </div>
   </div>
 </div>

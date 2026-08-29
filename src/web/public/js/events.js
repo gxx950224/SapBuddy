@@ -282,30 +282,35 @@
         // 输出全部返回后自动收起思考面板（工具执行时自动展开过）
         App.collapseThinkPanels();
         App.resetAutoScroll(); // 输出结束：恢复"到底自动跟随"，防止中途上滚残留把视图留在半路
-        App.consolidateAssistantReplies();
-        // 设置AI消息底部的时间和tokens
-        const agentMsgEl = state.currentAssistantEl?.closest(".msg.agent");
+                        // token/time 须在 consolidate 之前设置（consolidate 会置空 currentAssistantEl）
+        // usage 可能在 ev.message.usage（pi SDK agent_end 事件），也可能在 payload.usage（第三参数）
+        const usageData = usage || ev.message?.usage;
+        let agentMsgEl = state.currentAssistantEl?.closest(".msg.agent");
+        // 兜底：currentAssistantEl 失效时，取最后一条可见 AI 消息
+        if (!agentMsgEl) {
+          const ams = document.querySelectorAll("#messages .msg.agent");
+          agentMsgEl = ams[ams.length - 1] || null;
+        }
         if (agentMsgEl) {
           const timeEl = agentMsgEl.querySelector(".msg-time");
-          if (timeEl && !timeEl.textContent) {
-            timeEl.textContent = App.formatMessageTime(Date.now());
-          }
-          if (usage) {
-            const totalTokens = usage.totalTokens || usage.total_tokens || ((usage.input || 0) + (usage.output || 0));
+          if (timeEl && !timeEl.textContent) timeEl.textContent = App.formatMessageTime(Date.now());
+          if (usageData) {
+            const totalTokens = usageData.totalTokens || usageData.total_tokens || ((usageData.input || 0) + (usageData.output || 0));
             if (totalTokens) {
               const tokensEl = agentMsgEl.querySelector(".msg-tokens");
               if (tokensEl) tokensEl.textContent = "消耗 " + App.formatTokens(totalTokens);
             }
           }
         }
-        if (usage) {
+        App.consolidateAssistantReplies();
+                if (usageData) {
           const elapsedStr = elapsed
             ? `${Math.floor(elapsed / 60000)}分${Math.round((elapsed % 60000) / 1000)}秒`
             : "";
           const parts = [];
-          if (usage.input) parts.push(`输入 ${App.formatTokens(usage.input)}`);
-          if (usage.output) parts.push(`输出 ${App.formatTokens(usage.output)}`);
-          if (usage.cacheRead) parts.push(`缓存命中 ${App.formatTokens(usage.cacheRead)}`);
+          if (usageData.input) parts.push(`输入 ${App.formatTokens(usageData.input)}`);
+          if (usageData.output) parts.push(`输出 ${App.formatTokens(usageData.output)}`);
+          if (usageData.cacheRead) parts.push(`缓存命中 ${App.formatTokens(usageData.cacheRead)}`);
           if (elapsedStr) parts.push(`本轮耗时 ${elapsedStr}`);
           if (parts.length) {
             const note = document.createElement("div");

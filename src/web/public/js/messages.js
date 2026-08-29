@@ -23,7 +23,9 @@
     App.scrollToBottom(true);
   });
   const chatEl = $("#chat");
-  if (chatEl) chatEl.appendChild(scrollBottomBtn);
+  const inputAreaEl = $("#input-area");
+  if (inputAreaEl) inputAreaEl.appendChild(scrollBottomBtn);
+  else if (chatEl) chatEl.appendChild(scrollBottomBtn);
 
   function isNearBottom() {
     // 阈值收紧：几乎贴底才自动跟随，用户稍微上滚就退出，避免流式输出时被反复拉回

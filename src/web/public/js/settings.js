@@ -205,6 +205,7 @@
         hideLlmConnForm();
         applySettingsToForm(await fetchSettings());
         App.refreshState();
+        if (App.loadModelSettings) App.loadModelSettings();
       } else {
         App.showToast("保存失败：" + (j.error || "未知错误"), true);
       }
@@ -751,12 +752,12 @@
   // ============ 设置按钮 ============
   $("#sidebar-settings").addEventListener("click", openSettings);
   $("#settings-close").addEventListener("click", closeSettings);
-  $("#settings-cancel").addEventListener("click", closeSettings);
+  $("#settings-cancel")?.addEventListener("click", closeSettings);
   $("#settings-overlay").addEventListener("click", (e) => {
     if (e.target === e.currentTarget) closeSettings();
   });
 
-  $("#settings-save").addEventListener("click", async () => {
+  $("#settings-save")?.addEventListener("click", async () => {
     const settings = getSettingsFormValues();
     if (!settings.provider) { App.showToast("请选择提供商"); return; }
     const saveBtn = $("#settings-save");
