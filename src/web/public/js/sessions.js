@@ -416,6 +416,19 @@
     }, 0);
   }
 
+  // ── 轻量更新会话高亮（只改 .current class，不全量重建，避免与消息渲染抢 DOM 造成闪烁）──
+  App.updateSessionHighlight = function() {
+    const list = $("#session-list");
+    if (!list) return;
+    const norm = (p) => String(p || "").replace(/\\/g, "/").toLowerCase();
+    const cur = norm(state.currentPath);
+    list.querySelectorAll(".session-item").forEach((el) => {
+      const path = el.dataset.path;
+      const match = path && norm(path) === cur;
+      el.classList.toggle("current", match);
+    });
+  };
+
   // ── 顶栏当前会话标题 ──
   App.updateTopbarTitle = function() {
     const el = document.getElementById("topbar-title");

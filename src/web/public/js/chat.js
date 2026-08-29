@@ -128,7 +128,10 @@
   inputEl.addEventListener("input", autoGrow);
 
   // ── 加载历史 ──
+  let _loadingHistory = false;
   App.loadHistory = async function(path) {
+    if (_loadingHistory) return; // 防重入：避免短时间内重复加载造成"刷新两次"的抖动感
+    _loadingHistory = true;
     state.currentAssistantEl = null;
     state.currentTextDiv = null;
     state.pendingTexts = [];
@@ -143,12 +146,20 @@
       // 设置当前会话路径（优先用传入的 path，否则用后端返回的 path）
       const sessionPath = path || j.data?.path;
       if (sessionPath) state.currentPath = sessionPath;
+      const messagesEl = document.getElementById("messages");
       App.renderMessageList(j.data.messages || []);
+      // 给历史消息加 no-anim 标记，禁入场动画（避免所有气泡集体滑入造成"抖动"感）
+      // 只标记当前已渲染的历史消息，后续流式新消息不受影响
+      if (messagesEl) {
+        messagesEl.querySelectorAll(".msg").forEach((el) => el.classList.add("no-anim"));
+      }
+      App.scrollToBottom(true);
     } catch (e) {
       App.addSystemNote("加载历史失败：" + (e?.message || "未知错误"));
-      return;
+    } finally {
+      // 100ms 后解除重入锁（给浏览器一帧时间稳定，避免连续加载造成"刷新两次"感）
+      setTimeout(() => { _loadingHistory = false; }, 100);
     }
-    App.scrollToBottom(true);
   };
 
   // ── 新建对话 ──

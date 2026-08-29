@@ -577,6 +577,10 @@ input, textarea, select {
   animation: msgIn 240ms var(--ease-out);
 }
 @keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* 历史消息禁入场动画（切换会话时所有气泡集体滑入会有"抖动"感），流式新消息不受影响 */
+.msg.no-anim {
+  animation: none;
+}
 .msg.empty-bubble { display: none; }
 .msg.user { flex-direction: row-reverse; }
 
@@ -636,18 +640,14 @@ input, textarea, select {
 
 /* 用户消息内嵌图片 */
 .msg-img {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  justify-content: flex-end;
-  margin-bottom: 6px;
-}
-.msg-img img {
   max-width: 260px;
   max-height: 200px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
   object-fit: cover;
+  display: block;
+  margin-left: auto;
+  margin-bottom: 6px;
   cursor: zoom-in;
   background: var(--bg-inset);
 }
