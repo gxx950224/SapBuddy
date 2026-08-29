@@ -57,13 +57,33 @@ function pump(g: ConnGate): void {
   }
 }
 
-function acquireRead(id: string): Promise<void> {
+/** 闸门默认超时（与 ClientOptions.timeout 对齐），超时未获锁直接报错，避免永久挂死 */
+const GATE_TIMEOUT_MS = 120_000
+
+function acquireRead(id: string, timeoutMs = GATE_TIMEOUT_MS): Promise<void> {
   const g = gateFor(id)
   if (!g.writer && g.readers < READ_CONCURRENCY) {
     g.readers++
     return Promise.resolve()
   }
-  return new Promise((resolve) => g.waitingReads.push(resolve))
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const onResolve = () => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve()
+    }
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      // 从等待队列中移除自己，避免僵尸 resolve
+      const idx = g.waitingReads.indexOf(onResolve)
+      if (idx >= 0) g.waitingReads.splice(idx, 1)
+      reject(new Error(`读锁等待超时（${Math.round(timeoutMs / 1000)}s）：连接 ${id} 繁忙，请稍后重试`))
+    }, timeoutMs)
+    g.waitingReads.push(onResolve)
+  })
 }
 
 function releaseRead(id: string): void {
@@ -72,13 +92,30 @@ function releaseRead(id: string): void {
   pump(g)
 }
 
-function acquireWrite(id: string): Promise<void> {
+function acquireWrite(id: string, timeoutMs = GATE_TIMEOUT_MS): Promise<void> {
   const g = gateFor(id)
   if (!g.writer && g.readers === 0) {
     g.writer = true
     return Promise.resolve()
   }
-  return new Promise((resolve) => g.waitingWrites.push(resolve))
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const onResolve = () => {
+      if (settled) return
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve()
+    }
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      // 从等待队列中移除自己，避免僵尸 resolve
+      const idx = g.waitingWrites.indexOf(onResolve)
+      if (idx >= 0) g.waitingWrites.splice(idx, 1)
+      reject(new Error(`写锁等待超时（${Math.round(timeoutMs / 1000)}s）：连接 ${id} 繁忙，请稍后重试`))
+    }, timeoutMs)
+    g.waitingWrites.push(onResolve)
+  })
 }
 
 function releaseWrite(id: string): void {
@@ -125,23 +162,51 @@ export function withReadLock<T>(connId: string, fn: () => Promise<T>): Promise<T
 }
 
 /** 全连接独占执行：同时持有所有已配置连接的写锁，运行期间任何连接的读/写都被阻塞。
- *  用于 get_connected_systems —— 连接切换后必须单独执行，其他请求不能与它并行。 */
+ *  用于 get_connected_systems —— 连接切换后必须单独执行，其他请求不能与它并行。
+ *  注意：按 id 字典序加锁避免 ABBA 死锁；顺序逐个获取，中途失败释放已持有的锁。 */
 export function withAllConnMutex<T>(fn: () => Promise<T>): Promise<T> {
   const store = writeLockContext.getStore()
-  const ids = getConfig().connections.map((c) => c.id.toLowerCase())
+  // 按 id 字典序加锁，保证所有调用路径顺序一致，避免 ABBA 死锁
+  const ids = getConfig()
+    .connections.map((c) => c.id.toLowerCase())
+    .sort()
   const need = ids.filter((id) => !store?.has(id))
   if (need.length === 0) return Promise.resolve().then(fn) // 已全部持锁（可重入）
+
+  const acquired: string[] = []
+  const releaseAll = () => {
+    // 倒序释放（非必须，与加锁对称，习惯做法）
+    for (let i = acquired.length - 1; i >= 0; i--) {
+      releaseWrite(acquired[i])
+    }
+  }
+
   return new Promise<T>((resolve, reject) => {
-    Promise.all(need.map((id) => acquireWrite(id))).then(() => {
-      const next = new Set(store ?? [])
-      need.forEach((id) => next.add(id))
-      writeLockContext.run(next, () => {
-        Promise.resolve()
-          .then(fn)
-          .then(resolve, reject)
-          .finally(() => need.forEach((id) => releaseWrite(id)))
-      })
-    })
+    // 顺序逐个加锁：保证失败时已获得的锁能被释放，避免部分持锁泄漏
+    const acquireNext = (idx: number) => {
+      if (idx >= need.length) {
+        // 全部获得，执行业务
+        const next = new Set(store ?? [])
+        need.forEach((id) => next.add(id))
+        writeLockContext.run(next, () => {
+          Promise.resolve()
+            .then(fn)
+            .then(resolve, reject)
+            .finally(releaseAll)
+        })
+        return
+      }
+      acquireWrite(need[idx])
+        .then(() => {
+          acquired.push(need[idx])
+          acquireNext(idx + 1)
+        })
+        .catch((err) => {
+          releaseAll()
+          reject(err)
+        })
+    }
+    acquireNext(0)
   })
 }
 
