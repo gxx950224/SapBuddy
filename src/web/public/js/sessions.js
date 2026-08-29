@@ -270,9 +270,10 @@
           : (groupCollapsedState[group.key] !== undefined ? groupCollapsedState[group.key] : (group.key !== "today"));
         groupEl.className = "session-group" + (!isCollapsed ? " is-open" : "");
         groupEl.open = !isCollapsed;
-        // 折叠/展开时保存状态
+        // 折叠/展开时保存状态 + 同步 is-open class（CSS 动画/样式依赖它）
         groupEl.addEventListener("toggle", () => {
           groupCollapsedState[group.key] = !groupEl.open;
+          groupEl.classList.toggle("is-open", groupEl.open);
           updateToggleAllIcon();
         });
         const summary = document.createElement("summary");
