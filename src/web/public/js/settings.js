@@ -897,7 +897,7 @@
     const pwd = $("#sap-password");
     pwd.value = "";
     pwd.placeholder = conn && conn.hasPassword ? "密码已配置，如需修改请在此输入" : "输入 SAP 密码";
-    $("#sap-cancel").style.display = conn ? "inline-block" : "none";
+    $("#sap-cancel").style.display = "inline-block";
     const st = $("#sap-status");
     if (st) st.textContent = "";
     $("#sap-conn-form").style.display = "block";
@@ -915,7 +915,7 @@
     st.textContent = `${verb}，Ping 测试中…`;
     st.style.color = "";
     const stEl = $("#sap-state");
-    if (stEl) stEl.innerHTML = '<span class="dot"></span> 正在检测当前连接…';
+    if (stEl) stEl.innerHTML = '<svg class="status-icon pending" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#8a94a3"/></svg> 正在检测当前连接…';
     App.refreshSapStatus();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15000);
@@ -926,12 +926,12 @@
         st.textContent = `${verb} · Ping 成功`;
         st.style.color = "var(--success)";
         const cat = pj.data.clientCategoryLabel ? ` · 客户端类别 ${pj.data.clientCategoryLabel}${pj.data.clientCategory ? `(${pj.data.clientCategory})` : ""}` : "";
-        stEl.innerHTML = `<span class="dot ok"></span> 已连接：${pj.data.sid || "SAP"}（用户 ${pj.data.user || ""}${cat}）`;
+        stEl.innerHTML = `<svg class="status-icon ok" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0b7a51"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 已连接：${pj.data.sid || "SAP"}（用户 ${pj.data.user || ""}${cat}）`;
         return true;
       } else {
         st.textContent = `${verb} · Ping 失败`;
         st.style.color = "var(--error)";
-        stEl.innerHTML = `<span class="dot err"></span> Ping 失败：${pj.error || "连接失败"}`;
+        stEl.innerHTML = `<svg class="status-icon err" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#d92d20"/><path d="M9 9l6 6M15 9l-6 6" stroke="white" stroke-width="2" stroke-linecap="round"/></svg> Ping 失败：${pj.error || "连接失败"}`;
         return false;
       }
     } catch (e) {
@@ -939,8 +939,8 @@
       st.textContent = isTimeout ? `${verb} · Ping 超时` : `${verb} · Ping 失败`;
       st.style.color = "var(--error)";
       stEl.innerHTML = isTimeout
-        ? '<span class="dot err"></span> Ping 超时：SAP 在 15 秒内无响应（请检查地址/端口/网络）'
-        : '<span class="dot err"></span> Ping 失败：' + (e?.message || "请求异常");
+        ? '<svg class="status-icon err" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#d92d20"/><path d="M9 9l6 6M15 9l-6 6" stroke="white" stroke-width="2" stroke-linecap="round"/></svg> Ping 超时：SAP 在 15 秒内无响应（请检查地址/端口/网络）'
+        : '<svg class="status-icon err" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#d92d20"/><path d="M9 9l6 6M15 9l-6 6" stroke="white" stroke-width="2" stroke-linecap="round"/></svg> Ping 失败：' + (e?.message || "请求异常");
       return false;
     } finally {
       clearTimeout(timer);
@@ -959,15 +959,15 @@
         const stEl = $("#sap-state");
         const active = (d.connections || []).find((c) => c.active);
         if (active) {
-          stEl.innerHTML = `<span class="dot ok"></span> 当前使用：${escapeHtml(active.name)}（${escapeHtml(active.host)}:${escapeHtml(active.port)} · 用户 ${escapeHtml(active.user)} · Client ${escapeHtml(active.client)}）`;
+          stEl.innerHTML = `<svg class="status-icon ok" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0b7a51"/><path d="M8 12.5l2.5 2.5L16 9.5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg> 当前使用：${escapeHtml(active.name)}（${escapeHtml(active.host)}:${escapeHtml(active.port)} · 用户 ${escapeHtml(active.user)} · Client ${escapeHtml(active.client)}）`;
         } else if (d.connections && d.connections.length) {
-          stEl.innerHTML = '<span class="dot"></span> 尚未指定当前连接（默认用第一个）';
+          stEl.innerHTML = '<svg class="status-icon pending" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#8a94a3"/></svg> 尚未指定当前连接（默认用第一个）';
         } else {
-          stEl.innerHTML = '<span class="dot"></span> 尚未配置 SAP 连接';
+          stEl.innerHTML = '<svg class="status-icon pending" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#8a94a3"/></svg> 尚未配置 SAP 连接';
         }
       }
     } catch {
-      $("#sap-state").innerHTML = '<span class="dot err"></span> 读取配置失败';
+      $("#sap-state").innerHTML = '<svg class="status-icon err" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#d92d20"/><path d="M9 9l6 6M15 9l-6 6" stroke="white" stroke-width="2" stroke-linecap="round"/></svg> 读取配置失败';
     }
   }
 

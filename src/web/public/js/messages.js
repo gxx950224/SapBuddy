@@ -224,7 +224,7 @@
     const el = document.createElement("div");
     el.className = "msg agent";
     el.innerHTML =
-      '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><circle cx="18.5" cy="18.5" r="1.3" fill="white" stroke="none"/></svg></div>' +
+      '<div class="avatar agent-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6 L4 12 L9 18"/><path d="M15 6 L20 12 L15 18"/><path d="M13.5 5 L10.5 19"/><circle cx="18.5" cy="5.5" r="1.5" fill="white" stroke="none"/></svg></div>' +
       '<div class="msg-content">' +
         '<div class="meta">SapBuddy</div>' +
         '<div class="body md"></div>' +
@@ -1060,14 +1060,11 @@
             '<div class="delete-dialog-user">' + App.escapeHtml(userPreview) + '</div>' +
             (agentPreview ? '<div class="delete-dialog-agent">' + App.escapeHtml(agentPreview) + '</div>' : '') +
           '</div>';
-        item.addEventListener("click", (e) => {
-          if (e.target.tagName !== "INPUT") {
-            const cb = item.querySelector(".delete-dialog-checkbox");
-            cb.checked = !cb.checked;
-          }
-          const idx = parseInt(item.querySelector(".delete-dialog-checkbox").dataset.idx);
-          if (selected.has(idx)) selected.delete(idx);
-          else selected.add(idx);
+        item.addEventListener("change", (e) => {
+          if (!e.target.classList.contains("delete-dialog-checkbox")) return;
+          const idx = parseInt(e.target.dataset.idx);
+          if (e.target.checked) selected.add(idx);
+          else selected.delete(idx);
           updateUI();
         });
         listEl.appendChild(item);

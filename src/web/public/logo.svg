@@ -1,12 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <defs>
-    <linearGradient id="abapGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#0A6ED1"/>
-      <stop offset="100%" stop-color="#0B5EAF"/>
+      <stop offset="100%" stop-color="#084E94"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="15" fill="url(#abapGrad)"/>
-  <path d="M20 46 L32 18 L44 46" stroke="white" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <path d="M25.5 38 H38.5" stroke="white" stroke-width="5" stroke-linecap="round" fill="none"/>
-  <circle cx="48" cy="17.5" r="5" fill="#7FC0F8"/>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <!-- < bracket -->
+  <path d="M28 21 L18 32 L28 43" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- > bracket -->
+  <path d="M36 21 L46 32 L36 43" stroke="white" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- / slash -->
+  <path d="M35 19 L29 45" stroke="white" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+  <!-- AI spark -->
+  <circle cx="48" cy="16" r="5" fill="#7FC0F8"/>
+  <circle cx="48" cy="16" r="2.2" fill="white"/>
 </svg>

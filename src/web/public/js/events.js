@@ -126,7 +126,18 @@
           App.setCompressUI(false);
           if (window._ctxTooltip && window._ctxTooltip.classList.contains("visible")) App.refreshCtxTooltip();
         } else if (payload.kind === "error") {
-          App.addSystemNote("错误：" + payload.error);
+          // session.prompt() 抛异常（如模型404/网络错误）：用统一的生成错误提示，
+          // 并清掉可能残留的空气泡，避免"发了消息AI没反应"的体感
+          if (state.currentAssistantEl) {
+            const empty = state.currentAssistantEl.children.length === 0 &&
+              !state.currentAssistantEl.classList.contains("typing");
+            if (empty) {
+              const bubble = state.currentAssistantEl.closest(".msg");
+              if (bubble) bubble.remove();
+            }
+            state.currentAssistantEl = null;
+          }
+          App.onGenerationError(payload.error);
           App.setStreaming(false);
           App.setCompressUI(false);
         } else if (payload.kind === "config_status") {
@@ -169,6 +180,7 @@
     switch (ev.type) {
       case "agent_start":
         App.setStreaming(true);
+        state.aborted = false;
         state.currentAssistantEl = null;
         state.currentTextDiv = null;
         state.pendingTexts = [];
@@ -177,6 +189,7 @@
         break;
 
       case "message_start":
+        if (state.aborted) break; // 用户已中止：忽略后续 message_start，防止重复创建气泡
         if (ev.message?.role === "assistant") {
           App.hideWaiting(); // AI 开始渲染消息 → 移除"等待模型响应"提示
           state.currentTextDiv = null;
@@ -211,6 +224,31 @@
             bubble.classList.toggle("empty-bubble", empty);
           }
         }
+        // 错误检测：pi SDK 的模型错误信息在 message_end.message 中
+        // （agent_end 仅携带 willRetry，不携带 message/stopReason/errorMessage）
+        // 用户主动中止（stopReason=aborted 或 state.aborted）不视为错误，不显示"生成出错"
+        const _meAborted = state.aborted || ev.message?.stopReason === "aborted";
+        const _meErr = ev.message?.errorMessage;
+        const _meTerminated = _meErr === "terminated";
+        const _meHasError = !_meAborted && (
+          ev.message?.stopReason === "error" ||
+          (_meErr && !_meTerminated && String(_meErr).trim() !== ""));
+        if (_meHasError || _meTerminated) {
+          // 清掉空气泡，用错误提示代替
+          if (state.currentAssistantEl) {
+            const empty = state.currentAssistantEl.children.length === 0;
+            if (empty) {
+              const bubble = state.currentAssistantEl.closest(".msg");
+              if (bubble) bubble.remove();
+            }
+            state.currentAssistantEl = null;
+          }
+          if (_meTerminated) {
+            App.onGenerationInterrupted();
+          } else {
+            App.onGenerationError(_meErr || ev.message?.stopReason || "生成失败");
+          }
+        }
         break;
 
       case "tool_execution_start": {
@@ -227,9 +265,19 @@
 
       case "agent_abort":
         console.log("[SapBuddy] 收到 agent_abort 事件");
+        state.aborted = true;
         App.addSystemNote("操作已中止");
-        if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");
-        state.currentAssistantEl = null;
+        // 不置空 currentAssistantEl：后续 message_end 可正常收尾；
+        // 若空气泡（无内容）则直接移除，避免残留空 SapBuddy 气泡
+        if (state.currentAssistantEl) {
+          state.currentAssistantEl.classList.remove("typing");
+          const empty = state.currentAssistantEl.children.length === 0;
+          if (empty) {
+            const bubble = state.currentAssistantEl.closest(".msg");
+            if (bubble) bubble.remove();
+            state.currentAssistantEl = null;
+          }
+        }
         state.currentTextDiv = null;
         state.pendingTexts = [];
         App.markToolCardsInterrupted(); // 未完成的工具调用标"中断"
@@ -238,6 +286,7 @@
         break;
 
       case "agent_end":
+        state.aborted = false;
         console.log("[SapBuddy] 收到 agent_end, stopReason:", ev.message?.stopReason, "willRetry:", ev.willRetry);
         // 临时性 LLM 错误（网络抖动等）SDK 会自动重试：此时不要拆除流式 UI，
         // 否则按钮"停止→发送→停止"来回切、"等待模型响应"闪没。保持流式态等重试继续。
@@ -260,7 +309,12 @@
           state.currentThinkSeg = null;
           break;
         }
-        if (ev.message?.stopReason === "error" || ev.message?.errorMessage === "terminated") {
+        // 错误检测放宽：stopReason=error 或 errorMessage 非空且非 terminated 都算错误
+        const _errMsg = ev.message?.errorMessage;
+        const _isTerminated = _errMsg === "terminated";
+        const _hasError = ev.message?.stopReason === "error" ||
+          (_errMsg && !_isTerminated && String(_errMsg).trim() !== "");
+        if (_hasError || _isTerminated) {
           // 出错时清掉这次失败消息产生的空气泡（用错误提示代替空泡）
           if (state.currentAssistantEl) {
             const empty =
@@ -272,10 +326,10 @@
             }
           }
           // 区分"模型明确拒绝"（如图片不支持，给精准提示）与"中途中断"（保留继续生成入口）
-          if (ev.message?.errorMessage === "terminated") {
+          if (_isTerminated) {
             App.onGenerationInterrupted();
           } else {
-            App.onGenerationError(ev.message?.errorMessage);
+            App.onGenerationError(_errMsg || ev.message?.stopReason || "生成失败");
           }
         }
         if (state.currentAssistantEl) state.currentAssistantEl.classList.remove("typing");

@@ -134,6 +134,7 @@
           const rect = moreBtn.getBoundingClientRect();
           menuEl.style.top = (rect.bottom + 2) + "px";
           menuEl.style.left = Math.min(rect.left, window.innerWidth - 160) + "px";
+          // transition 模式下直接添加 open 类即可
           menuEl.classList.add("open");
           el.classList.add("menu-open");
         });
@@ -144,49 +145,17 @@
 
   $("#refresh-files").addEventListener("click", () => App.refreshFiles(true));
 
-  // ── 文件菜单管理 ──
+  // ── 文件菜单管理（只移除 open 类，不销毁元素，避免闪烁） ──
   function closeAllFileMenus() {
     document.querySelectorAll(".file-menu.open").forEach((m) => {
       m.classList.remove("open");
-      if (m.parentNode === document.body && !m.dataset.persistent) {
-        setTimeout(() => { if (!m.classList.contains("open")) m.remove(); }, 200);
-      }
     });
     document.querySelectorAll(".file-item.menu-open, .output-file-item.menu-open").forEach((el) => el.classList.remove("menu-open"));
   }
 
-  function positionFileMenu(menu, btn) {
-    menu.style.visibility = "hidden";
-    menu.classList.add("open");
-    const mw = menu.offsetWidth || 150;
-    const mh = menu.offsetHeight || 76;
-    let left = Math.min(btn.getBoundingClientRect().right - mw, window.innerWidth - mw - 8);
-    left = Math.max(8, left);
-    let top = btn.getBoundingClientRect().bottom + 4;
-    if (top + mh > window.innerHeight - 8) {
-      top = btn.getBoundingClientRect().top - mh - 4;
-    }
-    menu.style.left = left + "px";
-    menu.style.top = Math.max(8, top) + "px";
-    menu.style.visibility = "";
-  }
-
+  // 点击菜单外部关闭（moreBtn 已 stopPropagation，不会触发这里）
   document.addEventListener("click", (e) => {
-    const moreBtn = e.target.closest(".file-more");
-    if (moreBtn) {
-      e.stopPropagation();
-      const item = moreBtn.closest(".file-item");
-      const menu = moreBtn.closest(".file-actions")?.querySelector(".file-menu");
-      if (!menu) return;
-      const isOpen = menu.classList.contains("open");
-      closeAllFileMenus();
-      if (!isOpen) {
-        positionFileMenu(menu, moreBtn);
-        item?.classList.add("menu-open");
-      }
-      return;
-    }
-    if (!e.target.closest(".file-menu")) {
+    if (!e.target.closest(".file-menu") && !e.target.closest(".file-more")) {
       closeAllFileMenus();
     }
   });

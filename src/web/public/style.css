@@ -306,6 +306,30 @@ input, textarea, select {
   text-transform: uppercase;
   color: var(--text-faint);
 }
+.section-title-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.icon-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  border-radius: 5px;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn-sm:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
 .section-body { display: flex; flex-direction: column; }
 
 .session-group { display: flex; flex-direction: column; }
@@ -313,16 +337,18 @@ input, textarea, select {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 16px 5px;
+  margin: 12px 16px 4px;
+  padding: 2px 0;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
   user-select: none;
   list-style: none;
   transition: color var(--ease);
 }
-.session-group-header:hover { color: var(--text); }
+.session-group-header:hover { color: var(--text-dim); }
 .session-group-header::-webkit-details-marker { display: none; }
 .group-chevron {
   flex-shrink: 0;
@@ -336,38 +362,37 @@ input, textarea, select {
 .session-item {
   position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 10px;
   margin: 1px 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
+  padding: 9px 10px 9px 12px;
+  border-radius: 8px;
   cursor: pointer;
   transition: background var(--ease);
 }
 .session-item:hover { background: var(--bg-hover); }
-.session-item.current { background: var(--bg-active); }
-.session-item.current::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 20%;
-  bottom: 20%;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--accent);
+.session-item.current { background: var(--accent-soft); }
+.session-item-icon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .session-text { flex: 1; min-width: 0; }
 .session-title {
   font-size: 13px;
   font-weight: 500;
   color: var(--text);
+  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.session-item.current .session-title { font-weight: 600; color: var(--text); }
+.session-item.current .session-title { font-weight: 600; }
 .session-meta {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 11px;
   color: var(--text-faint);
   white-space: nowrap;
@@ -380,16 +405,18 @@ input, textarea, select {
 .session-more {
   width: 24px; height: 24px;
   flex-shrink: 0;
+  margin-top: -1px;
   border-radius: 6px;
   color: var(--text-faint);
   opacity: 0;
   transition: opacity var(--ease), background var(--ease), color var(--ease);
 }
-.session-item:hover .session-more { opacity: 1; }
+.session-item:hover .session-more,
+.session-item.current .session-more { opacity: 1; }
 .session-more:hover { background: var(--bg-elevated); color: var(--text); }
 .session-more.has-pinned { opacity: 1; }
 
-/* 会话更多操作菜单 */
+/* 会话更多操作菜单（持久单例，通过 open 类控制显隐） */
 .session-menu {
   position: fixed;
   z-index: 300;
@@ -399,9 +426,18 @@ input, textarea, select {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  animation: menuIn 120ms var(--ease-out);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out), visibility 120ms;
 }
-@keyframes menuIn { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
+.session-menu.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
 .session-menu-item {
   display: flex;
   align-items: center;
@@ -1259,9 +1295,18 @@ input, textarea, select {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md);
-  display: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out), visibility 120ms;
 }
-.file-menu.open { display: block; animation: menuIn 120ms var(--ease-out); }
+.file-menu.open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: none;
+}
 .file-menu-item {
   display: block;
   width: 100%;
@@ -1797,6 +1842,7 @@ input, textarea, select {
 .settings-status.warn { color: var(--warning); }
 .settings-actions { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .settings-state { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+.settings-state .status-icon { display: inline-block; vertical-align: -2px; margin-right: 6px; }
 
 /* 连接列表（SAP） */
 .conn-list { display: flex; flex-direction: column; gap: 8px; }
@@ -1813,6 +1859,59 @@ input, textarea, select {
 .conn-name { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
 .conn-host { font-size: 12px; color: var(--text-faint); margin-top: 3px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .conn-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* 连接列表项交互态 */
+.conn-row {
+  transition: border-color var(--ease), box-shadow var(--ease), background var(--ease);
+}
+.conn-row:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-sm);
+}
+.conn-row.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 新增/编辑连接表单卡片（大模型 & SAP 通用） */
+.conn-form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 18px 20px 16px;
+  margin-top: 14px;
+}
+.conn-form h5 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conn-form h5::before {
+  content: "";
+  width: 3px;
+  height: 15px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.conn-form .form-group {
+  margin-bottom: 12px;
+}
+.conn-form .form-group:last-of-type {
+  margin-bottom: 4px;
+}
+.conn-form .settings-actions,
+.conn-form .llm-conn-actions {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
 
 /* MCP 面板 */
 .mcp-mode-toggle { display: flex; gap: 8px; margin-bottom: 12px; }

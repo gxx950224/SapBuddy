@@ -47,6 +47,31 @@
     });
   }
 
+  // 全展开 / 全折叠切换按钮（有折叠则全展开，全展开则全折叠）
+  const toggleAllBtn = document.getElementById("toggle-all-groups");
+  const ICON_EXPAND = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>';
+  const ICON_COLLAPSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg>';
+  function setAllGroups(collapsed) {
+    Object.keys(groupCollapsedState).forEach((k) => { groupCollapsedState[k] = collapsed; });
+    document.querySelectorAll("#session-list .session-group").forEach((g) => {
+      g.open = !collapsed;
+      g.classList.toggle("is-open", !collapsed);
+    });
+    updateToggleAllIcon();
+  }
+  function updateToggleAllIcon() {
+    if (!toggleAllBtn) return;
+    const anyCollapsed = Object.values(groupCollapsedState).some(Boolean);
+    toggleAllBtn.innerHTML = anyCollapsed ? ICON_EXPAND : ICON_COLLAPSE;
+    toggleAllBtn.title = anyCollapsed ? "全展开" : "全折叠";
+  }
+  if (toggleAllBtn) {
+    toggleAllBtn.addEventListener("click", () => {
+      const anyCollapsed = Object.values(groupCollapsedState).some(Boolean);
+      setAllGroups(!anyCollapsed ? true : false);
+    });
+  }
+
   // 时间分组：今天 / 昨天 / 7 天内 / 更早
   function getTimeGroup(ts) {
     const now = new Date();
@@ -238,13 +263,17 @@
       for (const group of groups) {
         if (group.items.length === 0) continue;
         // 可折叠分组：使用保存的折叠状态（避免操作后自动恢复默认）
+        // 搜索时强制展开所有有匹配项的分组，清除搜索后恢复用户保存的状态
         const groupEl = document.createElement("details");
-        const isCollapsed = groupCollapsedState[group.key] !== undefined ? groupCollapsedState[group.key] : (group.key !== "today");
+        const isCollapsed = sessionSearch
+          ? false
+          : (groupCollapsedState[group.key] !== undefined ? groupCollapsedState[group.key] : (group.key !== "today"));
         groupEl.className = "session-group" + (!isCollapsed ? " is-open" : "");
         groupEl.open = !isCollapsed;
         // 折叠/展开时保存状态
         groupEl.addEventListener("toggle", () => {
           groupCollapsedState[group.key] = !groupEl.open;
+          updateToggleAllIcon();
         });
         const summary = document.createElement("summary");
         summary.className = "session-group-header";
@@ -268,7 +297,7 @@
           // 正在执行的会话：标题后加旋转图标
           const isCurrent = norm(s.path) === norm(curPath);
           const isRunning = isCurrent && state.streaming;
-          let titleHtml = (pinned ? "📌 " : "") + escapeHtml(s.name || s.firstMessage || "(空对话)");
+          let titleHtml = escapeHtml(s.name || s.firstMessage || "(空对话)");
           if (isRunning) {
             titleHtml += '<span class="session-running-icon" title="正在执行"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></span>';
           }
@@ -278,6 +307,12 @@
           meta.textContent = `${formatTime(s.modified)} · ${s.messageCount} 条消息`;
           text.appendChild(title);
           text.appendChild(meta);
+
+          // 左侧消息图标（视觉锚点）
+          const itemIcon = document.createElement("div");
+          itemIcon.className = "session-item-icon";
+          itemIcon.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+          item.appendChild(itemIcon);
           item.appendChild(text);
 
           // 更多操作按钮（...），点击弹出菜单：固定/重命名/删除
@@ -289,7 +324,7 @@
           moreBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
             // toggle: 同一会话的菜单已打开则关闭，避免先关后开闪烁
-            if (_sessionMenu && _sessionMenu.dataset.sessionPath === s.path) {
+            if (_sessionMenu && _sessionMenu.classList.contains("open") && _sessionMenu.dataset.sessionPath === s.path) {
               closeSessionMenu();
               return;
             }
@@ -302,21 +337,30 @@
         }
         list.appendChild(groupEl);
       }
+      updateToggleAllIcon();
     } catch { /* 忽略 */ }
   };
 
-  // ── 会话更多操作菜单 ──
+  // ── 会话更多操作菜单（持久单例：只创建一次，通过 open 类控制显隐，避免 create/remove 闪烁）──
   let _sessionMenu = null;
-    function closeSessionMenu(e) {
+  function ensureSessionMenu() {
+    if (_sessionMenu) return _sessionMenu;
+    _sessionMenu = document.createElement("div");
+    _sessionMenu.className = "session-menu";
+    document.body.appendChild(_sessionMenu);
+    return _sessionMenu;
+  }
+  function closeSessionMenu(e) {
     // 点击更多操作按钮或菜单内部时不关闭（避免捕获阶段先关闭导致闪烁）
     if (e && e.target && (e.target.closest('.session-more') || e.target.closest('.session-menu'))) return;
-    if (_sessionMenu) { _sessionMenu.remove(); _sessionMenu = null; }
+    if (_sessionMenu) {
+      _sessionMenu.classList.remove("open");
+      _sessionMenu.dataset.sessionPath = "";
+    }
     document.removeEventListener("click", closeSessionMenu, true);
   }
   function showSessionMenu(anchor, s, pinned) {
-    closeSessionMenu();
-    const menu = document.createElement("div");
-    menu.className = "session-menu";
+    const menu = ensureSessionMenu();
     menu.innerHTML =
       '<div class="session-menu-item" data-action="pin">' +
         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>' +
@@ -336,11 +380,11 @@
     menu.style.top = (rect.bottom + 4) + "px";
     menu.style.right = (window.innerWidth - rect.right) + "px";
     menu.dataset.sessionPath = s.path;
-    document.body.appendChild(menu);
-    _sessionMenu = menu;
+    // transition 模式下直接添加 open 类即可，无需 remove→void→add（避免一帧空白）
+    menu.classList.add("open");
 
-    // 点击菜单项
-    menu.addEventListener("click", async (ev) => {
+    // 点击菜单项（单例模式下用 onclick 覆盖，避免重复绑定）
+    menu.onclick = async (ev) => {
       const item = ev.target.closest(".session-menu-item");
       if (!item) return;
       const action = item.dataset.action;
@@ -363,9 +407,9 @@
       } else if (action === "delete") {
         App.deleteChat(s.path, ev);
       }
-    });
+    };
 
-    // 点击其他地方关闭
+    // 点击其他地方关闭（setTimeout 确保本次点击不会触发）
     setTimeout(() => {
       document.addEventListener("click", closeSessionMenu, true);
     }, 0);
