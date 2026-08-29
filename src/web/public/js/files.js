@@ -191,7 +191,6 @@
     const frame = $("#preview-frame");
     const openExt = $("#preview-open-external");
     $("#preview-title").textContent = name;
-    $("#preview-download").href = url + "?download=1";
 
     if (/\.html?$/i.test(name)) {
       dialog.classList.add("html-mode");
