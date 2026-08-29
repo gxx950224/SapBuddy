@@ -325,8 +325,9 @@ function checkDistStale() {
       }
     }
     walk(srcDir)
-    // 容差 1 秒：同一次构建/安装产生的文件 mtime 可能有亚秒差异
-    if (newest > fs.statSync(distFile).mtimeMs + 1000) {
+    // 容差 10 秒：npm 打包/解压时文件时间戳可能有几秒偏差，
+    // 同一版本发布包里 src 与 dist 一定是配套的，几秒差异属于误报。
+    if (newest > fs.statSync(distFile).mtimeMs + 10000) {
       console.log("⚠️  src/sap-tools 有更新但 dist 未重新构建，当前加载的可能是旧代码（安全修复可能不生效）。请运行 npm run build 后再启动。")
     }
   } catch { /* 检查失败不阻塞启动 */ }
