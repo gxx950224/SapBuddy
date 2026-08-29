@@ -288,6 +288,11 @@
           moreBtn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
           moreBtn.addEventListener("click", (ev) => {
             ev.stopPropagation();
+            // toggle: 同一会话的菜单已打开则关闭，避免先关后开闪烁
+            if (_sessionMenu && _sessionMenu.dataset.sessionPath === s.path) {
+              closeSessionMenu();
+              return;
+            }
             showSessionMenu(moreBtn, s, pinned);
           });
           item.appendChild(moreBtn);
@@ -302,7 +307,9 @@
 
   // ── 会话更多操作菜单 ──
   let _sessionMenu = null;
-  function closeSessionMenu() {
+    function closeSessionMenu(e) {
+    // 点击更多操作按钮或菜单内部时不关闭（避免捕获阶段先关闭导致闪烁）
+    if (e && e.target && (e.target.closest('.session-more') || e.target.closest('.session-menu'))) return;
     if (_sessionMenu) { _sessionMenu.remove(); _sessionMenu = null; }
     document.removeEventListener("click", closeSessionMenu, true);
   }
@@ -328,6 +335,7 @@
     const rect = anchor.getBoundingClientRect();
     menu.style.top = (rect.bottom + 4) + "px";
     menu.style.right = (window.innerWidth - rect.right) + "px";
+    menu.dataset.sessionPath = s.path;
     document.body.appendChild(menu);
     _sessionMenu = menu;
 

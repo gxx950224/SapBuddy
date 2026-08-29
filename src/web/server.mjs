@@ -1246,9 +1246,25 @@ const ids = models.map((m) => m.id)
         try { return json(res, 200, { success: true, data: { content: fs.readFileSync(target, "utf8"), path: target } }) }
         catch { return json(res, 200, { success: true, data: { content: "", path: target } }) }
       }
+      // 递归扫描技能目录树（支持嵌套子目录与多文件）
+      function buildSkillTree(dir, relPath) {
+        let entries = []
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }) } catch { return [] }
+        const result = []
+        for (const entry of entries) {
+          if (entry.name.startsWith(".")) continue
+          const fullPath = path.join(dir, entry.name)
+          const childRel = relPath ? relPath + "/" + entry.name : entry.name
+          if (entry.isDirectory()) {
+            result.push({ type: "dir", name: entry.name, path: childRel, children: buildSkillTree(fullPath, childRel) })
+          } else if (entry.isFile()) {
+            result.push({ type: "file", name: entry.name, path: childRel })
+          }
+        }
+        return result
+      }
       try {
-        const dirs = fs.readdirSync(skillsDir, { withFileTypes: true }).filter((d) => d.isDirectory())
-        return json(res, 200, { success: true, data: { tree: dirs.map((d) => ({ type: "dir", name: d.name, path: d.name, children: [{ type: "file", name: "SKILL.md", path: d.name + "/SKILL.md" }] })) } })
+        return json(res, 200, { success: true, data: { tree: buildSkillTree(skillsDir, "") } })
       } catch {
         return json(res, 200, { success: true, data: [] })
       }

@@ -272,8 +272,9 @@
   dirtyFields.forEach(selector => {
     const el = $(selector);
     if (el) {
-      el.addEventListener("input", markSettingsDirty);
-      el.addEventListener("change", markSettingsDirty);
+      // 只响应用户真实操作（isTrusted），忽略 JS 加载初始值时触发的事件
+      el.addEventListener("input", (e) => { if (e.isTrusted) markSettingsDirty(); });
+      el.addEventListener("change", (e) => { if (e.isTrusted) markSettingsDirty(); });
     }
   });
 
@@ -484,8 +485,10 @@
       const j = await r.json();
       if (j.success) {
         setEditorStatus("memory-status", "ok", j.message);
+        App.showToast(j.message || "记忆已保存");
       } else {
         setEditorStatus("memory-status", "err", j.error);
+        App.showToast(j.error || "保存失败", true);
       }
     } catch (e) {
       setEditorStatus("memory-status", "err", "保存失败：" + e.message);
@@ -569,6 +572,7 @@
           $("#skill-editor").value = j.data.content;
           $("#skill-editor").dataset.file = filePath;
           setEditorStatus("skill-status", "ok", "");
+          autoResizeTextarea($("#skill-editor"));
           activatePreview("skill-editor", "skill-preview");
         } else {
           setEditorStatus("skill-status", "err", j.error);
@@ -592,8 +596,10 @@
       const j = await r.json();
       if (j.success) {
         setEditorStatus("skill-status", "ok", j.message);
+        App.showToast(j.message || "技能已保存");
       } else {
         setEditorStatus("skill-status", "err", j.error);
+        App.showToast(j.error || "保存失败", true);
       }
     } catch (e) {
       setEditorStatus("skill-status", "err", "保存失败：" + e.message);
@@ -647,8 +653,10 @@
       if (j.success) {
         setEditorStatus("prompt-status", "ok", j.message);
         $("#prompt-restart").style.display = "";
+        App.showToast(j.message || "提示词已保存");
       } else {
         setEditorStatus("prompt-status", "err", j.error);
+        App.showToast(j.error || "保存失败", true);
       }
     } catch (e) {
       setEditorStatus("prompt-status", "err", "保存失败：" + e.message);
@@ -667,6 +675,9 @@
   $("#skill-tree-collapse").addEventListener("click", () => {
     const panel = $("#skill-tree-panel");
     panel.classList.toggle("collapsed");
+    // 同步给外层 layout 加 collapsed，让 Grid 列宽跟随变化
+    const layout = panel.closest(".skill-layout");
+    if (layout) layout.classList.toggle("collapsed", panel.classList.contains("collapsed"));
   });
 
   // 提示词子标签
@@ -691,6 +702,18 @@
     if (cls) el.classList.add(cls);
   }
 
+  // textarea 自动跟随内容高度（与预览模式行为一致）
+  function autoResizeTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const cs = getComputedStyle(textarea);
+    const maxH = parseInt(cs.maxHeight) || 580;
+    const h = Math.min(textarea.scrollHeight, maxH);
+    textarea.style.height = h + "px";
+  }
+  const _skillEditorEl = document.getElementById("skill-editor");
+  if (_skillEditorEl) _skillEditorEl.addEventListener("input", () => autoResizeTextarea(_skillEditorEl));
+
   // 编辑/预览模式切换
   document.addEventListener("click", (e) => {
     const btn = e.target.closest(".mode-toggle-btn");
@@ -714,6 +737,7 @@
       if (previewEl && editorEl) {
         previewEl.style.display = "none";
         editorEl.style.display = "";
+        autoResizeTextarea(editorEl);
       }
     }
   });

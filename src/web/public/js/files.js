@@ -105,10 +105,14 @@
         let menuEl = null;
         moreBtn.addEventListener("click", (e) => {
           e.stopPropagation();
+          // toggle: 若当前菜单已打开则直接关闭，避免先关后开导致闪烁
+          if (menuEl && document.body.contains(menuEl) && menuEl.classList.contains("open")) {
+            menuEl.classList.remove("open");
+            el.classList.remove("menu-open");
+            return;
+          }
           closeAllFileMenus();
-          // 菜单可能被 closeAllFileMenus 从 DOM 移除，需重置引用
           if (menuEl && !document.body.contains(menuEl)) menuEl = null;
-          if (menuEl && menuEl.classList.contains("open")) { menuEl.classList.remove("open"); return; }
           if (!menuEl) {
             menuEl = document.createElement("div");
             menuEl.className = "file-menu";
@@ -288,7 +292,7 @@
       toast = document.createElement("div");
       toast.id = "sapbuddy-toast";
       toast.style.cssText = `
-        position: fixed; right: 20px; bottom: 20px; z-index: 200;
+        position: fixed; right: 20px; bottom: 20px; z-index: 9999;
         padding: 10px 16px; border-radius: 8px;
         background: var(--bg-surface); color: var(--text);
         border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);

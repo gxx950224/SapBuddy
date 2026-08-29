@@ -329,7 +329,8 @@ input, textarea, select {
   color: var(--text-faint);
   transition: transform var(--ease);
 }
-.session-group.is-open .group-chevron { transform: rotate(90deg); }
+.session-group.is-open .group-chevron,
+.session-group[open] .group-chevron { transform: rotate(90deg); }
 
 /* 会话项 */
 .session-item {
@@ -1842,7 +1843,7 @@ input, textarea, select {
   padding: 12px;
   border: 1px solid var(--border-input);
   border-radius: var(--radius-md);
-  background: var(--bg-inset);
+  background: #fff;
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.6;
@@ -1986,7 +1987,7 @@ input, textarea, select {
   border: 1px solid var(--border);
   border-top: none;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  background: var(--bg-inset);
+  background: #fff;
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.65;
@@ -2016,7 +2017,7 @@ input, textarea, select {
   max-height: 560px;
 }
 /* 技能编辑器更大 */
-#skill-editor { font-size: 13px; min-height: 440px; max-height: 580px; }
+#skill-editor { font-size: 13px; height: auto; min-height: 440px; max-height: 580px; resize: vertical; overflow-y: auto; }
 #skill-preview {
   font-size: 14.5px;
   line-height: 1.8;
@@ -2063,7 +2064,10 @@ input, textarea, select {
   color: var(--text-faint);
 }
 .skill-tree-collapse-btn:hover { background: var(--bg-hover); color: var(--text); }
+.skill-layout.collapsed { grid-template-columns: 42px 1fr; }
 .skill-tree-panel.collapsed { width: 42px; }
+.skill-tree-panel.collapsed h4 { justify-content: center; padding: 10px 6px; }
+.skill-tree-panel.collapsed h4 span { display: none; }
 .skill-tree-panel.collapsed .skill-tree-collapse-btn svg { transform: rotate(180deg); }
 .skill-tree-panel.collapsed .skill-tree { display: none; }
 .skill-tree { max-height: 560px; overflow-y: auto; padding: 6px; }
@@ -2302,7 +2306,7 @@ input, textarea, select {
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: 1200;
+  z-index: 9999;
   padding: 10px 16px;
   border-radius: var(--radius-md);
   background: var(--bg-surface);
