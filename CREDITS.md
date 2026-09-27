@@ -12,12 +12,16 @@ SAP ABAP 的 VS Code 扩展。本项目的 SAP 工具集（搜索、读源码、
 
 SAP ADT 协议的 Node.js 客户端库，本项目直接的运行时依赖（`dependencies`），用于与 SAP 系统（`/sap/bc/adt`）通信。
 
-## 运行时依赖
+## 运行时与构建依赖
+
+Web 对话界面的视觉与交互方式参考 [Beautiful UI](https://github.com/slev12397/beautiful-ui)（Shane Levine，MIT），固定参考版本为 `44a274e598395ab61e7c96c26fda2758780253b7`。SapBuddy 按 pi 事件流和现有业务接口实现 React 组件，没有引入其演示应用或付费图标。许可证保留于 `src/web/public/vendor/beautiful-ui-LICENSE.txt`。
 
 | 依赖 | 说明 |
 |---|---|
 | [@earendil-works/pi-coding-agent](https://github.com/badlogic/pi-mono) | AI Agent 引擎（会话、模型、工具框架） |
 | [abap-adt-api](https://github.com/marcellourbani/abap-adt-api) | SAP ADT 协议客户端 |
+| [React](https://react.dev/) / [React DOM](https://react.dev/) | Web 对话组件运行时与挂载 |
+| [Vite](https://vite.dev/) / [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react) | 构建 Web 对话资源 |
 | [zod](https://github.com/colinhacks/zod) | 工具参数 schema 校验 |
 | [typebox](https://github.com/sinclairzx81/typebox) | 工具参数类型（pi 工具注册） |
 

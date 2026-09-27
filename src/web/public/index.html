@@ -7,8 +7,10 @@
 <link rel="icon" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css?v=__V__">
+<link rel="stylesheet" href="beautiful.css?v=__V__">
+<link rel="stylesheet" href="ui/chat.css?v=__V__">
 <link rel="stylesheet" href="vendor/highlight/github-dark.min.css?v=__V__">
 <!-- 仅支持浅色主题：强制 data-theme="light" -->
 <script>
@@ -74,7 +76,7 @@
     <section id="chat">
       <div class="chat-header">
         <button id="left-toggle" class="panel-toggle-btn" title="折叠/展开对话管理">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/><polyline points="14 10 11 12 14 14"/></svg>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4.5H9v15H5.5a2 2 0 0 1-2-2v-11a2 2 0 0 1 2-2Z" fill="currentColor" fill-opacity=".12" stroke="none"/><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9 4.5v15"/></svg>
         </button>
         <div class="chat-header-center">
           <span id="topbar-title" class="chat-title" title="点击复制会话文件名">新对话</span>
@@ -84,7 +86,7 @@
           </span>
         </div>
         <button id="right-toggle" class="panel-toggle-btn" title="折叠/展开产物">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="15" y1="4" x2="15" y2="20"/><polyline points="10 10 13 12 10 14"/></svg>
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4.5h3.5a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H15Z" fill="currentColor" fill-opacity=".12" stroke="none"/><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M15 4.5v15"/></svg>
         </button>
       </div>
       <div id="messages"></div>
@@ -94,7 +96,7 @@
           <div id="attachments"></div>
           <div id="images"></div>
           <div id="input-wrap">
-            <textarea id="input" rows="2" placeholder="输入你的需求，或点击左下角 + 上传文件/图片…（可粘贴截图让 AI 看图）"></textarea>
+            <textarea id="input" rows="2" placeholder="随心输入"></textarea>
             <input type="file" id="file-input" multiple hidden accept=".abap,.txt,.md,.js,.mjs,.ts,.json,.xml,.html,.css,.csv,.sql,.yml,.yaml,.cfg,.ini,.log,.docx,.xlsx,.pptx,image/png,image/jpeg,image/gif,image/webp,image/bmp" />
             <div id="input-bottom-bar">
               <div class="input-bottom-left">
@@ -113,7 +115,7 @@
                   </button>
                   <div id="model-dropdown" class="selector-dropdown" hidden></div>
                 </div>
-                <button id="send-btn">发送</button>
+                <div id="send-control-root"></div>
               </div>
             </div>
           </div>
@@ -174,7 +176,11 @@
     <div id="settings-body">
       <div id="settings-tabs">
         <button class="settings-tab active" data-tab="llm">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v1a3 3 0 0 1 3 3v1a3 3 0 0 1-2 2.83V17a3 3 0 0 1-3 3h-1v1a1 1 0 0 1-2 0v-1H9a3 3 0 0 1-3-3v-1.17A3 3 0 0 1 4 11v-1a3 3 0 0 1 3-3V6a4 4 0 0 1 4-4Z"/><path d="M12 6v6M9 9h6"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 6a3 3 0 0 0-6 0 3.5 3.5 0 0 0-2 6 3.5 3.5 0 0 0 2 6 3 3 0 0 0 6 0V6Z"/>
+            <path d="M12 6a3 3 0 0 1 6 0 3.5 3.5 0 0 1 2 6 3.5 3.5 0 0 1-2 6 3 3 0 0 1-6 0"/>
+            <path d="M6 6c0 2 1 3 3 3m9-3c0 2-1 3-3 3M6 18c0-2 1-3 3-3m9 3c0-2-1-3-3-3"/>
+          </svg>
           <span>大模型</span>
         </button>
         <button class="settings-tab" data-tab="sap">
@@ -197,12 +203,34 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="14" y2="13"/></svg>
           <span>提示词</span>
         </button>
+        <button class="settings-tab" data-tab="sessions">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H8l-4 4z"/></svg>
+          <span>会话</span>
+        </button>
         <button class="settings-tab" data-tab="about">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
           <span>关于</span>
         </button>
       </div>
       <div id="settings-panels">
+        <div class="settings-panel" data-panel="sessions">
+          <div class="settings-section">
+            <h4>会话管理</h4>
+            <p class="settings-desc">搜索并批量删除历史会话。当前打开的会话不可选择，请先切换到其他会话。</p>
+            <div class="session-manager-toolbar">
+              <input id="session-manager-search" type="search" placeholder="搜索会话名称" aria-label="搜索会话名称" />
+              <button id="session-manager-refresh" type="button" class="btn-sm">刷新</button>
+              <button id="session-manager-delete" type="button" class="btn-sm danger" disabled>删除所选</button>
+            </div>
+            <label class="session-manager-select"><input id="session-manager-all" type="checkbox" />全选本页</label>
+            <p id="session-manager-status" role="status" aria-live="polite"></p>
+            <div id="session-manager-list"></div>
+            <div class="session-manager-toolbar">
+              <button id="session-manager-prev" type="button" class="btn-sm">上一页</button>
+              <button id="session-manager-next" type="button" class="btn-sm">下一页</button>
+            </div>
+          </div>
+        </div>
         <div class="settings-panel active" data-panel="llm">
           <div class="settings-section">
             <h4>大模型配置</h4>
@@ -235,6 +263,9 @@
                 <input id="llm-context-tokens" type="number" min="10000" max="1000000" step="10000" placeholder="200000" />
                 <span class="field-hint">Token 上限（默认 200K），超出时自动压缩历史对话</span>
               </label>
+            </div>
+            <div class="settings-actions">
+              <button type="button" id="settings-save" class="btn-sm btn-primary">保存设置</button>
             </div>
             <div class="form-group" id="llm-conn-manager">
               <div class="form-group-title">连接管理</div>
@@ -557,6 +588,7 @@
 <script src="js/api.js?v=__V__"></script>
 <script src="js/state.js?v=__V__"></script>
 <script src="js/markdown.js?v=__V__"></script>
+<script src="ui/chat.js?v=__V__"></script>
 <script src="js/messages.js?v=__V__"></script>
 <script src="js/tool-cards.js?v=__V__"></script>
 <script src="js/events.js?v=__V__"></script>
@@ -566,6 +598,7 @@
 <script src="js/status.js?v=__V__"></script>
 <script src="js/files.js?v=__V__"></script>
 <script src="js/settings.js?v=__V__"></script>
+<script src="js/session-manager.js?v=__V__"></script>
 <script src="js/theme.js?v=__V__"></script>
 <script src="app.js?v=__V__"></script>
 <!-- Mermaid 放大查看 -->

@@ -244,17 +244,28 @@
   }
 
   // ── 打开/关闭设置 ──
+  const loadedPanels = new Set();
+  async function loadSettingsPanel(target) {
+    if (target === "mcp") startMcpPolling(); else stopMcpPolling();
+    if (target === "sessions") { await App.loadSessionManager?.(); return; }
+    if (loadedPanels.has(target)) return;
+    loadedPanels.add(target);
+    try {
+      if (target === "llm") applySettingsToForm(await fetchSettings());
+      if (target === "sap") await loadSapConfig();
+      if (target === "mcp") await loadMcpConfig();
+      if (target === "memory") await loadMemory();
+      if (target === "skills") await loadSkillTree();
+      if (target === "prompts") await App.loadPrompt(document.querySelector(".prompt-subtab.active")?.dataset.prompt || "AGENTS.md");
+      if (target === "about") await loadAbout();
+    } catch (error) { loadedPanels.delete(target); App.showToast(`加载失败：${error.message}`); }
+  }
   async function openSettings() {
     clearKeyError();
     clearSettingsDirty();
     $("#settings-overlay").classList.add("open");
-    applySettingsToForm(await fetchSettings());
-    loadMcpConfig();
-    startMcpPolling();
-    loadMemory();
-    loadSkillTree();
-    App.loadPrompt("AGENTS.md");
-    loadSapConfig();
+    loadedPanels.clear();
+    await loadSettingsPanel(document.querySelector(".settings-tab.active")?.dataset.tab || "llm");
   }
 
   function closeSettings() {
@@ -766,10 +777,7 @@
       tab.classList.add("active");
       const panel = document.querySelector(`.settings-panel[data-panel="${target}"]`);
       if (panel) panel.classList.add("active");
-      if (target === "mcp") { loadMcpConfig(); startMcpPolling(); } else { stopMcpPolling(); }
-      if (target === "memory") loadMemory();
-      if (target === "skills") loadSkillTree();
-      if (target === "about") loadAbout();
+      loadSettingsPanel(target);
     });
   });
 

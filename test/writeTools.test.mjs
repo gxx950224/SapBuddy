@@ -10,6 +10,9 @@ const require = createRequire(import.meta.url)
 const { createObjectTool, parseIncludeNames, verifySavedContent } = require("../dist/sap-tools/tools/writeTools.js")
 const { normalizeFormIncludeSource } = require("../dist/sap-tools/tools/fmoduleInterface.js")
 const { normalizeFunctionGroupIncludeUri } = require("../dist/sap-tools/tools/shared.js")
+const { __setConfigForTest } = require("../dist/sap-tools/config.js")
+// Validation tests must not inherit the user's selected SAP system.
+__setConfigForTest({ connections: [{ id: "none", active: true, url: "https://write-validation.invalid", client: "100", username: "fixture", password: "fixture" }], security: { readOnly: true } })
 
 const base = { name: "ZTEST001", description: "测试对象", packageName: "ZPKG", connectionId: "none" }
 
@@ -82,7 +85,7 @@ test("normalizeFunctionGroupIncludeUri：已是函数组通道 URI 不改写", a
 test("normalizeFunctionGroupIncludeUri：函数组形态需连接验证（无连接时报错而非静默猜错）", async () => {
   await assert.rejects(
     () => normalizeFunctionGroupIncludeUri("none", "/sap/bc/adt/programs/includes/lzbcg014f01"),
-    /未找到|连接|none|ABAP/i
+    /未找到|连接|none|ABAP|ENOTFOUND/i
   )
 })
 

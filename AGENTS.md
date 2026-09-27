@@ -89,6 +89,8 @@ node cli.mjs tools   # 工具列表
 
 ## 安全
 
+- **连接范围**：所有注册 SAP 工具只能使用用户当前启用的连接；`tools/shared.ts` 的 `resolveConnectionId` 拒绝其他 ID，`register.ts` 将解析后的 ID 显式传入工具。连接失败、对象不存在均不得自动切换系统；用户必须在连接设置中切换。`get_connected_systems` 只返回、探测当前连接。
+
 - `connections.json`（SAP 凭据）与 `.SapBuddy/auth.json`（API Key）**已被 .gitignore 排除**，绝不提交
 - 配置模板在 `config/*.example.json`
 - **默认只读**：connections.json 未显式设置 `security.readOnly: false` 即视为只读（所有写工具拒绝）；要允许写操作需在 connections.json 显式 `"security": { "readOnly": false }`

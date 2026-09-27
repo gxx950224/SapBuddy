@@ -181,8 +181,8 @@ function inferProgramDir(basename: string): string {
  * - Web/headless：block 并提示 AI 先展示计划，等待前端确认后重放（isWriteApproved）
  * @param onBlocked Web 模式回调（通知 server 广播确认浮层）
  */
-export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: { toolName: string; input: unknown }) => void }): void {
-  pi.on("tool_call" as never, async (event: { toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
+export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: { toolCallId?: string; toolName: string; input: unknown }) => void }): void {
+  pi.on("tool_call" as never, async (event: { toolCallId?: string; toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
     const name = event?.toolName
     if (!name) return
     const input = (event.input ?? {}) as Record<string, unknown>
@@ -317,7 +317,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
             if (ok) return
             return { block: true, reason: "⛔ 用户拒绝了审查报告生成。请向用户说明审查结论（不生成文件）。" }
           }
-          opts?.onBlocked?.({ toolName: name, input: event.input })
+          opts?.onBlocked?.({ toolCallId: event.toolCallId, toolName: name, input: event.input })
           return {
             block: true,
             reason:
@@ -330,7 +330,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         // abap_wiki 知识库专用写门禁：mcp_abap_wiki_ 写类工具（append/create/update/patch/delete/rename 等）一律直接拦截，不可人工确认放行（知识库只读）；其他 MCP 服务器工具不拦截
     const ABAP_WIKI_WRITE_RE = /^mcp_abap_wiki_(append|create|update|patch|delete|rename|write|edit|move|remove|set)(_|$)/i
     if (ABAP_WIKI_WRITE_RE.test(name)) {
-      opts?.onBlocked?.({ toolName: name, input: event.input })
+      opts?.onBlocked?.({ toolCallId: event.toolCallId, toolName: name, input: event.input })
       return {
         block: true,
         reason:
@@ -375,7 +375,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
           appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: "tmp:user_reject" })
           return { block: true, reason: "⛔ 用户拒绝了创建到 $TMP。请改为正式开发包，或先向用户确认测试意图。" }
         }
-        opts?.onBlocked?.({ toolName: name, input: event.input })
+        opts?.onBlocked?.({ toolCallId: event.toolCallId, toolName: name, input: event.input })
         appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), reason: "tmp:confirm_required" })
         return {
           block: true,
@@ -404,7 +404,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       return { block: true, reason: `⛔ 用户拒绝了写操作 ${name}。请调整方案，不要再次尝试该写操作。` }
     }
     // Web/headless：拦截并提示 AI 先出计划，等待用户手动输入确认
-    opts?.onBlocked?.({"toolName": name, "input": event.input})
+    opts?.onBlocked?.({ toolCallId: event.toolCallId, toolName: name, input: event.input })
     appendAudit({ event: "blocked", tool: name, objects: extractObjectNames(input), connectionId: String((input as Record<string, unknown>).connectionId ?? "") || undefined, reason: "confirm_required" })
     return {
       block: true,
@@ -580,7 +580,7 @@ export function registerSapTools(pi: ExtensionAPI): number {
       name: t.name,
       label: t.title ?? t.name,
       description: `[SAP ABAP] ${t.description}
-connectionId 缺省用 get_connected_systems 第一个。`,
+connectionId 仅允许当前启用连接；省略时使用当前连接。禁止自动切换其他系统。`,
       promptSnippet: "SAP ABAP 工具（搜索/读取/分析/编辑 SAP 对象、执行 ATC/单测/SQL 等）",
       parameters: jsonSchemaToTypeboxCompact(t.inputSchema) as never,
       async execute(_toolCallId, params) {
@@ -623,9 +623,9 @@ connectionId 缺省用 get_connected_systems 第一个。`,
             ? await withConnMutex(connId, async () => {
                 // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
                 await assertDevClient(connId)
-                return t.execute((params ?? {}) as Record<string, unknown>)
+                return t.execute({ ...p, connectionId: connId })
               })
-            : await t.execute((params ?? {}) as Record<string, unknown>)
+            : await t.execute({ ...p, connectionId: connId })
           // 写操作成功执行 → 记审计（谁/何时/改了哪个对象）
           if (t.write) {
             appendAudit({ event: "executed", tool: t.name, objects: extractObjectNames(p), connectionId: connId })

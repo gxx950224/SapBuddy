@@ -4,6 +4,7 @@ package-lock.json
 
 # 编译产物（开源：源码入库，dist 由 npm run build 生成，不提交）
 dist/
+src/web/public/ui/
 
 # 日志与临时
 *.log

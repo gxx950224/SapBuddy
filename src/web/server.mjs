@@ -23,17 +23,20 @@
  *   GET  /api/memory          读写 Memory
  *   GET  /api/skills          Skills 列表与读写
  */
+import { SessionStore } from "./session-store.mjs"
 import http from "node:http"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import os from "node:os"
 import { spawn } from "node:child_process"
+import { randomUUID } from "node:crypto"
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(HERE, "..", "..")
 const PUBLIC_DIR = path.join(HERE, "public")
 const USER_PI = path.join(os.homedir(), ".SapBuddy")
+const sessionStore = new SessionStore(path.join(USER_PI, "sessions"))
 const OUTPUT_DIR = path.join(USER_PI, "output")
 
 const portArg = process.argv.indexOf("--port")
@@ -89,8 +92,37 @@ async function loadPiSdk() {
 // ─── Agent 会话 ────────────────────────────────────────────────────────────
 let agent = null
 let session = null
+let liveAssistant = null
 let busy = false
 let rebuildPromise = null  // 在途重建任务（新建/切换懒重建，防并发双开 agent）
+
+function sanitizeWriteValue(value, depth = 0) {
+  if (typeof value === "string") return value.length > 600 ? `${value.slice(0, 600)}…（已截断）` : value
+  if (!value || typeof value !== "object") return value
+  if (depth >= 3) return "[嵌套内容已省略]"
+  if (Array.isArray(value)) return value.slice(0, 32).map((entry) => sanitizeWriteValue(entry, depth + 1))
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !/(password|secret|token|api.?key|credential|authorization)/i.test(key))
+    .slice(0, 16)
+    .map(([key, entry]) => [key, sanitizeWriteValue(entry, depth + 1)]))
+}
+
+function summarizeWriteInput(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {}
+  return sanitizeWriteValue(input)
+}
+
+function notifyWriteBlocked(info, sessionFile = session?.sessionFile) {
+  broadcast({
+    kind: "write_approval_required",
+    id: randomUUID(),
+    toolCallId: info?.toolCallId ? String(info.toolCallId) : undefined,
+    sessionFile,
+    toolName: String(info?.toolName || "未知写操作"),
+    input: summarizeWriteInput(info?.input),
+    ts: Date.now(),
+  })
+}
 
 async function ensureAgent() {
   // 有后台重建在途 → 等它完成（新建/切换后立即发消息的场景）
@@ -98,7 +130,7 @@ async function ensureAgent() {
   if (agent) return agent
   const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
   // 启动后首次对话：默认新建会话（不自动续最近历史会话；用户主动点历史会话才切换）
-  agent = await createAgent()
+  agent = await createAgent({ onWriteBlocked: (info) => notifyWriteBlocked(info) })
   session = agent.session
   attachStreaming(session)
   return agent
@@ -128,7 +160,7 @@ async function rebuildAgent(sessionFile) {
       r.clearWriteApproval?.()
     } catch { /* 忽略 */ }
     const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-    agent = await createAgent({ sessionFile })
+    agent = await createAgent({ sessionFile, onWriteBlocked: (info) => notifyWriteBlocked(info, sessionFile) })
     session = agent.session
     attachStreaming(session)
     return agent
@@ -146,18 +178,26 @@ function maybeRebuildAgent(oldProvider, oldModel, newProvider, newModel) {
 
 function attachStreaming(s) {
   s.subscribe((event) => {
+    if (s !== session) return;
     if (event.type === "message_end" && event.message?.role === "assistant") {
       // 落盘会话文件已由 SessionManager 自动处理
     }
-    broadcast({ kind: "agent", event, ts: Date.now() })
+    if (event.type === "message_start" || event.type === "message_update") {
+      if (event.message?.role === "assistant") liveAssistant = event.message
+    }
+    if (event.type === "message_end" || event.type === "agent_end") liveAssistant = null
+    // message already contains the current snapshot; partial repeats it in SDK delta events.
+    const { assistantMessageEvent, ...webEvent } = event
+    broadcast({ kind: "agent", event: webEvent, sessionFile: s.sessionFile, ts: Date.now() })
   })
-  s.subscribe((event) => { if (event.type === "agent_end") busy = false })
+  s.subscribe((event) => { if (s === session && event.type === "agent_end" && !event.willRetry) busy = false })
 }
 
 // ─── SSE ────────────────────────────────────────────────────────────────────
 const sseClients = new Set()
+let streamSequence = 0
 function broadcast(payload) {
-  const data = `data: ${JSON.stringify(payload)}\n\n`
+  const data = `data: ${JSON.stringify({ ...payload, sequence: ++streamSequence })}\n\n`
   for (const res of sseClients) {
     try { res.write(data) } catch { sseClients.delete(res) }
   }
@@ -187,7 +227,7 @@ function isWithinDir(target, dir) {
 /** 用户消息是否"可见"（前端口径：有文本或带图片块）。用于截断/删除时与前端计数对齐，避免图片消息被漏算 */
 function userMsgVisible(m) {
   if (!m || m.role !== "user") return false
-  const blocks = Array.isArray(m.content) ? m.content : []
+  const blocks = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : []
   const text = blocks.map((c) => (c.type === "text" ? c.text || "" : "")).join("")
   const hasImage = blocks.some((c) => c.type === "image" && c.data && c.mimeType)
   return !!(text || hasImage)
@@ -561,8 +601,17 @@ const server = http.createServer(async (req, res) => {
     // 会话历史
     if (p === "/api/history" && req.method === "GET") {
       const file = url.searchParams.get("path") || session?.sessionFile
+      if (!file) return json(res, 200, { success: true, data: { messages: [], userOffset: 0, before: null } })
       if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许读取会话文件" })
-      return json(res, 200, { success: true, data: { path: file, messages: readSessionMessages(file) } })
+      const before = url.searchParams.has("before") ? Math.max(0, Math.floor(Number(url.searchParams.get("before")) || 0)) : undefined
+      const limit = Math.min(100, Math.max(1, Math.floor(Number(url.searchParams.get("limit")) || 20)))
+      const historySequence = streamSequence
+      const data = await sessionStore.history(file, { before, limit })
+      data.sequence = historySequence
+      data.isStreaming = file === session?.sessionFile && busy
+      if (before === undefined && file === session?.sessionFile && liveAssistant &&
+          !data.messages.some(m => m.role === "assistant" && m.timestamp === liveAssistant.timestamp)) data.messages.push(liveAssistant)
+      return json(res, 200, { success: true, data })
     }
 
     // 新建会话（真正创建新会话文件 + 重建 agent，避免数据叠加）
@@ -578,36 +627,11 @@ const server = http.createServer(async (req, res) => {
 
     // 会话列表
     if (p === "/api/sessions" && req.method === "GET") {
-      const dir = sessionsDir()
-      const list = []
-      if (fs.existsSync(dir)) {
-        for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".jsonl"))) {
-          const full = path.join(dir, f)
-          try {
-            // 读全文：消息数需精确统计（元数据行/toolResult 不计、连续 assistant 合并成一个气泡），
-            // 会话文件通常在几百 KB 内，本地读取开销可忽略；标题取首条 user 消息，自定义名取末尾 session_info。
-            const lines = fs.readFileSync(full, "utf8").split("\n").filter(Boolean)
-            const messageCount = countVisibleMessages(lines)
-            const firstUserLine = lines.find((l) => l.includes('"role":"user"'))
-            let title = ""
-            if (firstUserLine) {
-              try {
-                const m = JSON.parse(firstUserLine).message
-                title = (m?.content ?? []).map((c) => c.text || "").join("").slice(0, 40)
-              } catch { /* 忽略坏行 */ }
-            }
-            // 自定义名称（session_info 事件，pi /name、Ctrl+R 同机制）；新名字 append 在文件末尾，取最后一条
-            let customName = ""
-            try {
-              const line = lines.filter((l) => l.includes('"type":"session_info"')).pop()
-              if (line) { const i = JSON.parse(line); customName = (i.name || "").trim() }
-            } catch { /* 忽略 */ }
-            list.push({ path: full, name: customName || title || "新会话", time: fs.statSync(full).mtimeMs, messageCount, modified: fs.statSync(full).mtimeMs, firstMessage: title || "新会话" })
-          } catch { /* 忽略 */ }
-        }
-      }
-      list.sort((a, b) => b.time - a.time)
-      return json(res, 200, { success: true, data: { sessions: list.map((s) => ({ ...s, modified: s.time, firstMessage: s.name, current: false })) } })
+      const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50))
+      const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0)
+      const data = await sessionStore.list({ limit, offset, query: url.searchParams.get("q") || "", pinned: url.searchParams.getAll("pin") })
+      data.sessions = data.sessions.map(s => ({ ...s, current: s.path === session?.sessionFile }))
+      return json(res, 200, { success: true, data })
     }
 
     // 删除会话
@@ -615,7 +639,11 @@ const server = http.createServer(async (req, res) => {
       const { path: file } = await readBody(req)
       // 安全：仅允许删除会话目录内的文件（防任意文件删除）
       if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许删除会话文件" })
-      try { if (file && fs.existsSync(file)) fs.unlinkSync(file) } catch {}
+      if (file && session?.sessionFile && path.resolve(file) === path.resolve(session.sessionFile)) {
+        return json(res, 409, { error: "请先切换会话，再删除当前会话" })
+      }
+      try { if (file && fs.existsSync(file)) fs.unlinkSync(file) }
+      catch (error) { return json(res, 500, { error: `删除失败：${error.message}` }) }
       return json(res, 200, { success: true })
     }
 

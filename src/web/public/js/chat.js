@@ -9,31 +9,19 @@
   const $ = App.$;
 
   const inputEl = $("#input");
-  const sendBtn = $("#send-btn");
 
   // ── 流式状态 ──
   App.setStreaming = function(on) {
-    // 无条件清残留光标：覆盖 abort/error/点停止等不经过 consolidate 的路径，防光标残留
-    document.querySelectorAll(".stream-cursor").forEach((c) => c.remove());
     const prev = state.streaming;
     state.streaming = on;
-    sendBtn.textContent = on ? "停止" : "发送";
-    sendBtn.classList.toggle("stop", on);
+    App.chatView?.setStreaming(on);
     inputEl.disabled = false;
     // 兜底：发送失败/中止/结束时清掉"等待模型响应"提示，防止卡住
     if (!on) App.hideWaiting();
     App.refreshStateQuick(on);
     // 流式状态变化时刷新会话列表（更新"正在执行"图标）
     if (App.refreshSessions) App.refreshSessions(true);
-    // 流式结束：用保存的原始 markdown 全文重渲染（textContent 会丢掉 md 标记）
-    if (!on && prev) {
-      const lastDiv = state.pendingTexts?.[state.pendingTexts.length - 1];
-      if (lastDiv && lastDiv._renderedLen > 0 && !lastDiv._finalized) {
-        lastDiv._finalized = true;
-        App.mountMarkdown(lastDiv, lastDiv._fullText || lastDiv.textContent, { highlight: true });
-        lastDiv._cursor = null;
-      }
-    }
+    if (!on && prev) App.chatView?.finishAssistant();
   };
 
   // ── 忙碌态 ──
@@ -52,12 +40,13 @@
   // opts.images：编辑重发/重新生成场景，传入原消息的图片数据（格式：[{mimeType, data}]）
   // opts.attachments：编辑重发/重新生成场景，传入原消息的附件数据（格式：[{name, path}]）
   App.sendMessage = async function(textOverride, opts) {
+    const preserveDraft = opts?.preserveDraft === true;
     const skipUserBubble = !!(opts && opts.skipUserBubble);
     const overrideImages = opts && opts.images ? opts.images : null;
     const overrideAttachments = opts && opts.attachments ? opts.attachments : null;
     const raw = (textOverride != null ? String(textOverride).trim() : inputEl.value.trim());
-    const atts = overrideAttachments || (state.attachments || []);
-    const imgs = overrideImages || (state.images || []);
+    const atts = overrideAttachments || (preserveDraft ? [] : (state.attachments || []));
+    const imgs = overrideImages || (preserveDraft ? [] : (state.images || []));
     if ((!raw && !atts.length && !imgs.length) || state.streaming) return;
 
     // 气泡显示：用户文本 + 附件名；图片直接以缩略图渲染（不再拼图片名，与历史回显一致）
@@ -74,9 +63,12 @@
     if (!skipUserBubble) {
       App.addUserBubble(displayText, imgs, atts, Date.now());
     }
-    if (textOverride == null) inputEl.value = "";
-    App.clearAttachments();
-    App.clearImages();
+    const approvalSubmission = App.chatView?.submitApproval(raw, state.currentPath) || [];
+    if (!preserveDraft) {
+      if (textOverride == null) inputEl.value = "";
+      App.clearAttachments();
+      App.clearImages();
+    }
     autoGrow();
     App.setStreaming(true);
     App.resetAutoScroll(); // 每次提问都恢复到底自动跟随
@@ -93,32 +85,32 @@
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
+        App.chatView?.settleApprovalSubmission(approvalSubmission, false);
         App.addSystemNote("发送失败：" + (j.error || r.status));
         App.setStreaming(false);
+      } else {
+        App.chatView?.settleApprovalSubmission(approvalSubmission, true);
       }
     } catch (e) {
       // 网络波动/服务不可达：清掉等待提示并给出明确反馈，避免一直"等待模型响应"
+      App.chatView?.settleApprovalSubmission(approvalSubmission, false);
       App.addSystemNote("发送失败（网络异常），请检查连接后重试。");
       App.setStreaming(false);
     }
   };
 
-  // ── 停止 / 发送按钮 ──
-  sendBtn.addEventListener("click", (e) => {
-    if (state.streaming) {
-      navigator.sendBeacon("/api/abort");
-      App.markToolCardsInterrupted(); // 本地立即标"中断"，不等 SSE 广播
-      App.setStreaming(false);
-      return;
-    }
-    App.sendMessage();
-  });
   inputEl.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       App.sendMessage();
     }
   });
+
+  App.prefillMessage = function(text) {
+    inputEl.value = String(text || "");
+    autoGrow();
+    inputEl.focus();
+  };
 
   function autoGrow() {
     inputEl.style.height = "auto";
@@ -128,37 +120,64 @@
   inputEl.addEventListener("input", autoGrow);
 
   // ── 加载历史 ──
-  let _loadingHistory = false;
-  App.loadHistory = async function(path) {
-    if (_loadingHistory) return; // 防重入：避免短时间内重复加载造成"刷新两次"的抖动感
-    _loadingHistory = true;
-    state.currentAssistantEl = null;
-    state.currentTextDiv = null;
-    state.pendingTexts = [];
-    state.processEl = null;
-    state.currentThinkSeg = null;
-    state.toolCards.clear();
+  let historyRequest = 0;
+  let historyController;
+  App.cancelHistoryLoad = function() {
+    historyRequest++;
+    historyController?.abort();
+    state.historyLoading = false;
+  };
+  App.loadHistory = async function(path, before = null) {
+    if (before !== null && state.streaming) { App.showToast("请等待本轮完成后加载更早消息"); return; }
+    historyController?.abort();
+    historyController = new AbortController();
+    const token = ++historyRequest;
+    state.historyLoading = true;
+    const messagesEl = document.getElementById("messages");
+    const previousHeight = messagesEl.scrollHeight;
+    const previousTop = messagesEl.scrollTop;
     try {
-      const url = path ? "/api/history?path=" + encodeURIComponent(path) : "/api/history";
-      const r = await fetch(url);
+      const params = new URLSearchParams({ limit: "20" });
+      if (path) params.set("path", path);
+      if (before !== null) params.set("before", before);
+      const r = await fetch("/api/history?" + params, { signal: historyController.signal });
       const j = await r.json();
-      if (!j.success) return;
-      // 设置当前会话路径（优先用传入的 path，否则用后端返回的 path）
+      if (token !== historyRequest) return;
+      if (!r.ok || !j.success) throw new Error(j.error || r.status);
       const sessionPath = path || j.data?.path;
       if (sessionPath) state.currentPath = sessionPath;
-      const messagesEl = document.getElementById("messages");
-      App.renderMessageList(j.data.messages || []);
-      // 给历史消息加 no-anim 标记，禁入场动画（避免所有气泡集体滑入造成"抖动"感）
-      // 只标记当前已渲染的历史消息，后续流式新消息不受影响
-      if (messagesEl) {
-        messagesEl.querySelectorAll(".msg").forEach((el) => el.classList.add("no-anim"));
+      if (sessionPath && j.data.name) {
+        state.currentTitlePath = String(sessionPath).replace(/\\/g, "/").toLowerCase();
+        state.currentTitle = j.data.name;
+        App.updateTopbarTitle();
       }
-      App.scrollToBottom(true);
+      if (before === null) state.historyEventSequence = j.data.sequence || 0;
+      state.currentAssistantEl = null;
+      state.historyUserOffset = j.data.userOffset || 0;
+      if (before === null) state.aborted = false;
+      const wasStreaming = state.streaming;
+      state.streaming = false;
+      try {
+        App.renderMessageList(j.data.messages || [], {
+          live: j.data.isStreaming,
+          prepend: before !== null,
+          userOffset: j.data.userOffset || 0,
+        });
+        App.chatView?.setHistoryMore(j.data.before != null ? { path: sessionPath, before: j.data.before } : null);
+      }
+      finally { state.streaming = wasStreaming; }
+      state.historyLoading = false;
+      if (before === null) {
+        App.setStreaming(!!j.data.isStreaming);
+        if (j.data.isStreaming && !App.chatView?.activeAssistant()) App.showWaiting();
+      }
+      if (before !== null) requestAnimationFrame(() => { messagesEl.scrollTop = previousTop + messagesEl.scrollHeight - previousHeight; });
+      else App.scrollToBottom(true);
+      App.showWelcome();
     } catch (e) {
-      App.addSystemNote("加载历史失败：" + (e?.message || "未知错误"));
+      if (e.name !== "AbortError" && token === historyRequest) App.addSystemNote("加载历史失败：" + e.message);
     } finally {
-      // 100ms 后解除重入锁（给浏览器一帧时间稳定，避免连续加载造成"刷新两次"感）
-      setTimeout(() => { _loadingHistory = false; }, 100);
+      if (token === historyRequest) state.historyLoading = false;
     }
   };
 

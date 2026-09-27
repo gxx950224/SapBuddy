@@ -519,6 +519,7 @@ input, textarea, select {
 .chat-title:hover { background: var(--bg-hover); }
 
 .panel-toggle-btn {
+  display: inline-flex; align-items: center; justify-content: center;
   width: 32px; height: 32px;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
@@ -526,6 +527,7 @@ input, textarea, select {
   transition: background var(--ease), color var(--ease);
 }
 .panel-toggle-btn:hover { background: var(--bg-hover); color: var(--text); }
+.panel-toggle-btn svg { display: block; flex-shrink: 0; }
 
 .sap-status-header {
   display: flex;
@@ -562,7 +564,7 @@ input, textarea, select {
   display: flex;
   flex-direction: column;
   gap: 26px;
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   position: relative;
 }
 
@@ -702,8 +704,7 @@ input, textarea, select {
 .agent-think summary::-webkit-details-marker { display: none; }
 .agent-think summary:hover { background: var(--bg-hover); }
 .think-chevron { color: var(--text-faint); transition: transform var(--ease); }
-.agent-think[open] summary .think-chevron,
-.inline-think-wrap[open] summary .think-chevron { transform: rotate(90deg); }
+.agent-think[open] summary .think-chevron { transform: rotate(90deg); }
 .think-label { color: var(--text-dim); }
 .agent-think-body {
   max-height: 520px;
@@ -715,220 +716,6 @@ input, textarea, select {
   border-top: 1px dashed var(--border);
 }
 .think-seg { white-space: pre-wrap; word-break: break-word; }
-
-/* 内联思考块（message 内容流中） */
-.inline-think-wrap {
-  width: 100%;
-  margin: 8px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-inset);
-  overflow: hidden;
-}
-.inline-think-summary {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 12px;
-  cursor: pointer;
-  list-style: none;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-dim);
-  user-select: none;
-}
-.inline-think-summary::-webkit-details-marker { display: none; }
-.inline-think-summary:hover { background: var(--bg-hover); }
-.think-count { font-weight: 500; color: var(--text-faint); }
-.inline-think-body {
-  padding: 2px 14px 10px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-word;
-  border-top: 1px dashed var(--border);
-}
-
-/* 内联叙述（有工具时 AI 的过程性文字） */
-.inline-narration {
-  margin: 4px 0;
-  padding: 2px 0;
-  font-size: 13px;
-  line-height: 1.7;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* 流式光标 */
-.stream-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 1px;
-  vertical-align: text-bottom;
-  background: var(--accent);
-  border-radius: 1px;
-  animation: blink 0.9s steps(1) infinite;
-}
-@keyframes blink { 50% { opacity: 0; } }
-
-/* ============================
-   8. 工具调用条目（紧凑行 + 状态轨）
-   ============================ */
-.tool-invoke-item {
-  width: 100%;
-  margin: 8px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-surface);
-  overflow: hidden;
-  transition: border-color var(--ease), box-shadow var(--ease);
-}
-.tool-invoke-item:hover { border-color: var(--border-strong); }
-.tool-invoke-item.expanded { box-shadow: var(--shadow-sm); }
-
-.invoke-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 8px 12px;
-  cursor: pointer;
-  user-select: none;
-}
-.invoke-status {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px; height: 20px;
-  flex-shrink: 0;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fff;
-}
-.invoke-status.running { background: var(--accent); }
-.invoke-status.done { background: #12a150; }
-.invoke-status.failed { background: var(--error); }
-.invoke-status.interrupted { background: var(--text-faint); }
-
-.invoke-spinner {
-  width: 11px; height: 11px;
-  border: 2px solid rgba(255,255,255,0.4);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.invoke-name {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.invoke-args {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--text-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.invoke-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.invoke-duration { font-size: 11.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.invoke-caret {
-  width: 6px; height: 6px;
-  border-right: 1.5px solid var(--text-faint);
-  border-bottom: 1.5px solid var(--text-faint);
-  transform: rotate(45deg);
-  transition: transform var(--ease);
-}
-.tool-invoke-item.expanded .invoke-caret { transform: rotate(-135deg); }
-
-.invoke-detail {
-  display: none;
-  border-top: 1px solid var(--border);
-  background: var(--bg-inset);
-}
-.tool-invoke-item.expanded .invoke-detail { display: block; }
-.invoke-section { padding: 10px 14px; }
-.invoke-section + .invoke-section { border-top: 1px dashed var(--border); }
-.invoke-section-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-  margin-bottom: 7px;
-}
-.invoke-input {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow-y: auto;
-}
-.invoke-output { font-size: 13px; }
-.invoke-pending { color: var(--text-faint); }
-.invoke-pending.interrupted { color: var(--warning); }
-.invoke-result {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 280px;
-  overflow-y: auto;
-}
-
-/* 错误友好卡片 */
-.invoke-error-friendly { border-radius: var(--radius-md); overflow: hidden; }
-.error-friendly-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-surface);
-  border-radius: var(--radius-md);
-  border-left-width: 1px !important; /* JS 内联 3px 错误色左条 → 收敛为 1px 细色轨 */
-}
-.error-icon { font-size: 14px; }
-.error-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.error-friendly-tips { margin-top: 8px; padding: 8px 12px; background: var(--bg-surface); border-radius: var(--radius-md); }
-.error-tip { font-size: 12.5px; line-height: 1.7; color: var(--text-dim); }
-.error-detail-wrap { margin-top: 8px; }
-.error-detail-summary {
-  padding: 6px 12px;
-  font-size: 12px;
-  color: var(--text-faint);
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-.error-detail-summary:hover { color: var(--text-dim); }
-.error-raw {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--error);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 200px;
-  overflow-y: auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 12px;
-}
-.error-actions { margin-top: 8px; }
 
 /* ============================
    9. 确认卡片（对话中的写操作确认）
@@ -942,7 +729,6 @@ input, textarea, select {
   background: var(--accent-soft);
 }
 .confirm-card.resolved { opacity: 0.6; }
-.confirm-question { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
 .confirm-btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .confirm-btn {
   height: 30px;
@@ -1686,6 +1472,15 @@ input, textarea, select {
   transition: transform 220ms var(--ease-out);
 }
 #settings-overlay.open #settings-dialog { transform: none; }
+.session-manager-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.session-manager-toolbar input { flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); color: var(--text); }
+.session-manager-select, .session-manager-row { display: flex; align-items: center; gap: 10px; }
+.session-manager-row { padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.session-manager-row > span { min-width: 0; }
+.session-manager-row strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
+.session-manager-row small { display: block; margin-top: 4px; color: var(--text-dim); }
+.session-manager-row input, .session-manager-select input { flex: 0 0 16px; width: 16px; height: 16px; }
+#session-manager-status { color: var(--text-dim); font-size: 12px; overflow-wrap: anywhere; }
 
 #settings-header {
   display: flex;

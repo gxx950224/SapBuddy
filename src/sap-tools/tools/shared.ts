@@ -15,7 +15,7 @@ export const DEFAULT_SEARCH_TYPES = [
 export const connectionIdSchema = z
   .string()
   .optional()
-  .describe("SAP 连接 ID，省略时使用 get_connected_systems 返回的第一个连接")
+  .describe("SAP 连接 ID，只允许用户当前启用的连接；省略时使用当前连接，禁止自动切换系统")
 
 export const objectTypeSchema = z
   .string()
@@ -54,10 +54,13 @@ export function toToolError(err: unknown): string {
 
 /** 校验 connectionId 或取默认（当前启用连接，无标记则第一个） */
 export async function resolveConnectionId(connectionId?: string): Promise<string> {
-  if (connectionId) return connectionId.toLowerCase()
   const { getConfig, activeConnectionId } = await import("../config.js")
   if (getConfig().connections.length === 0) throw new Error("没有配置任何 SAP 连接")
-  return activeConnectionId()
+  const active = activeConnectionId()
+  if (connectionId && connectionId.toLowerCase() !== active.toLowerCase()) {
+    throw new Error(`连接范围拦截：当前启用连接为「${active}」，禁止访问「${connectionId}」。连接失败或对象不存在时也不得自动切换系统。请用户在连接设置中明确切换后再操作。`)
+  }
+  return active
 }
 
 /** 按名称+类型搜索对象，返回第一条结果的完整信息（含 URI）

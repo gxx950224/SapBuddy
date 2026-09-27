@@ -1,0 +1,59 @@
+/* Adapted from Beautiful UI design tokens (MIT, Shane Levine).
+   See vendor/beautiful-ui-LICENSE.txt. SapBuddy keeps its pi event and action flows. */
+:root {
+  --bg-app: oklch(0.961 0.002 247.84);
+  --bg-panel: #fff;
+  --bg-inset: oklch(0.979 0.002 247.839);
+  --bg-hover: oklch(0.97 0.002 247.839);
+  --text: oklch(0.247 0.006 258.361);
+  --text-dim: oklch(0.506 0.01 264.477);
+  --border: oklch(0.946 0.003 264.542);
+  --border-strong: oklch(0.912 0.005 258.326);
+  --accent: oklch(0.626 0.205 254.947);
+  --bg-active: oklch(0.96 0.019 252.878);
+  --sidebar-w: 264px;
+  --right-w: 280px;
+  --msg-max: 860px;
+}
+#sidebar { background: var(--bg-inset); }
+.sidebar-header { border-bottom: 0; }
+.logo-text { font-size: 16px; letter-spacing: -.5px; }
+.btn-new { border-radius: 8px; box-shadow: 0 1px 2px #19243512; }
+.session-item { border-radius: 8px; margin: 3px 0; }
+.session-item.current { background: var(--bg-active); box-shadow: inset 0 0 0 1px #d9e7fa; }
+.session-meta { font-size: 11px; font-variant-numeric: tabular-nums; }
+.session-group-header { font-size: 11px; letter-spacing: .035em; }
+.chat-header { background: var(--bg-panel); border-bottom: 1px solid var(--border); }
+#chat { background: var(--bg-panel); }
+#messages { padding-top: 32px; overflow-anchor: none; }
+.msg { animation: none; }
+.msg.agent .body { line-height: 1.8; }
+.msg.user .body { border-radius: 14px; box-shadow: none; }
+.reply-text { overflow-wrap: anywhere; min-width: 0; }
+.reply-text + .reply-text { margin-top: 16px; }
+.confirm-card { border: 1px solid #c9dcf5; border-radius: 10px; box-shadow: 0 2px 8px #19243508; }
+#input-area { background: var(--bg-panel); padding-bottom: 20px; }
+#input-card { border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: 0 2px 4px #19243506, 0 8px 24px #19243508; }
+#input-card:focus-within { border-color: #91b7ed; box-shadow: 0 0 0 3px #eaf2fd; }
+#input { font-size: 14px; }
+.md table { border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.md th { background: var(--bg-inset); font-weight: 500; }
+.load-more { display: block; margin: 12px auto; padding: 9px 14px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--bg-panel); color: var(--text-dim); font: inherit; font-size: 12px; cursor: pointer; }
+.load-more:hover { background: var(--bg-hover); color: var(--text); }
+.load-more:disabled { opacity: .6; cursor: wait; }
+.chat-welcome { max-width: 640px; margin: clamp(24px, 10vh, 100px) auto 32px; padding: 24px; }
+.welcome-label { font-size: 11px; letter-spacing: .14em; color: var(--text-dim); margin-bottom: 16px; }
+.chat-welcome h1 { font-size: clamp(23px, 3vw, 32px); font-weight: 500; letter-spacing: -.8px; margin: 0 0 12px; }
+.chat-welcome p { font-size: 14px; color: var(--text-dim); line-height: 1.8; }
+.welcome-prompts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 28px; }
+.welcome-prompts button { text-align: left; padding: 16px; border: 1px solid var(--border); background: var(--bg-inset); border-radius: 10px; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; }
+.welcome-prompts button:hover { background: var(--bg-active); border-color: #c9dcf5; }
+.welcome-prompts small { display: block; color: var(--text-dim); font-size: 11px; margin-top: 5px; }
+@media (max-width: 760px) {
+  .welcome-prompts { grid-template-columns: 1fr; }
+  .chat-welcome { margin-top: 16px; padding: 12px; }
+  #messages { padding-top: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}

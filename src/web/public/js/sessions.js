@@ -12,6 +12,9 @@
   // ── 会话管理增强：搜索 / 固定 / 时间分组 ──
   const PIN_KEY = "sapbuddy_pinned_sessions";
   let sessionSearch = "";
+  let searchTimer;
+  let nextOffset = null;
+  let visibleLimit = 50;
   // 分组折叠状态：true=折叠，false=展开。默认只有"今天"展开
   const groupCollapsedState = {
     pinned: true,
@@ -43,7 +46,9 @@
   if (searchInput) {
     searchInput.addEventListener("input", () => {
       sessionSearch = searchInput.value.trim().toLowerCase();
-      App.refreshSessions(true);
+      visibleLimit = 50;
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => App.refreshSessions(true), 180);
     });
   }
 
@@ -191,18 +196,26 @@
   // ── 刷新会话列表（数据无变化时跳过 DOM 重建） ──
   let _refreshToken = 0;
   let _lastSessionsSig = "";
-  App.refreshSessions = async function(force) {
+  App.refreshSessions = async function(force, more = false) {
     const token = ++_refreshToken;
+    if (more) visibleLimit += 50;
     try {
-      const r = await fetch("/api/sessions");
-      const j = await r.json();
-      if (!j.success) return;
-      if (token !== _refreshToken) return;
-      const sessions = j.data.sessions || [];
+      const sessions = [];
+      let j;
+      do {
+        const params = new URLSearchParams({ limit: String(Math.min(200, visibleLimit - sessions.length)), offset: String(sessions.length), q: sessionSearch });
+        for (const pin of getPinned()) params.append("pin", pin);
+        const r = await fetch("/api/sessions?" + params);
+        j = await r.json();
+        if (!j.success || token !== _refreshToken) return;
+        sessions.push(...(j.data.sessions || []));
+        if (!j.data.sessions?.length) break;
+      } while (j.data.nextOffset != null && sessions.length < visibleLimit);
+      nextOffset = j.data.nextOffset;
       state.sessions = sessions;
       App.updateTopbarTitle();
       // 计算签名，数据未变则跳过 DOM 重建（搜索/排序变化时 force=true）
-      const sig = JSON.stringify(sessions.map((s) => s.path + "|" + s.modified + "|" + s.messageCount + "|" + !!s.current));
+      const sig = JSON.stringify([sessionSearch, j.data.total, state.currentPath, state.streaming, sessions.map((s) => [s.path, s.name, s.modified, s.messageCount, !!s.current])]);
       if (!force && sig === _lastSessionsSig && sessions.length > 0) return;
       _lastSessionsSig = sig;
       const list = $("#session-list");
@@ -338,6 +351,17 @@
         }
         list.appendChild(groupEl);
       }
+      if (nextOffset !== null && nextOffset !== undefined) {
+        const moreBtn = document.createElement("button");
+        moreBtn.className = "load-more";
+        moreBtn.textContent = "加载更多对话（已显示 " + sessions.length + " / " + j.data.total + "）";
+        moreBtn.onclick = async () => {
+          moreBtn.disabled = true;
+          await App.refreshSessions(true, true);
+          moreBtn.disabled = false;
+        };
+        list.appendChild(moreBtn);
+      }
       updateToggleAllIcon();
     } catch { /* 忽略 */ }
   };
@@ -436,7 +460,8 @@
     const norm = (p) => String(p || "").replace(/\\/g, "/").toLowerCase();
     const cur = norm(state.currentPath);
     const s = (state.sessions || []).find((x) => norm(x.path) === cur);
-    el.textContent = s ? (s.name || s.firstMessage || "新对话") : "新对话";
+    if (s) { state.currentTitlePath = cur; state.currentTitle = s.name || s.firstMessage || "新对话"; }
+    el.textContent = state.currentTitlePath === cur ? state.currentTitle : "新对话";
     // 存储会话文件名，供点击复制使用
     const fileName = state.currentPath ? state.currentPath.split(/[\\/]/).pop() : "";
     el.dataset.sessionFile = fileName;

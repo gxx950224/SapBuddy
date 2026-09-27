@@ -7,11 +7,13 @@
   const App = window.SapBuddy;
   const escapeHtml = App.escapeHtml;
 
-  App.renderMarkdown = function(src) {
+  App.renderMarkdown = function(src, opts) {
     const blocks = [];
     const stashBlock = (html) => { blocks.push(html); return "\x01" + (blocks.length - 1) + "\x02"; };
 
     let text = src.replace(/\r\n/g, "\n");
+    // Keep an unfinished fenced block in its code container while tokens arrive.
+    if (opts?.streaming && (text.match(/^```[^\n]*$/gm) || []).length % 2) text += "\n```";
 
     // Mermaid 图：```mermaid\n...``` → 渲染为图表（由 App.renderMermaid 异步渲染）
     text = text.replace(/^```mermaid\s*\n([\s\S]*?)^```\s*$/gm, (m, code) => {
@@ -73,7 +75,7 @@
     text = text.replace(/\x01(\d+)\x02/g, (m, i) => blocks[+i]);
 
     // 渲染 Mermaid 图（DOM 插入后异步执行）
-    if (/class="mermaid"/.test(text)) {
+    if (!opts?.streaming && /class="mermaid"/.test(text)) {
       setTimeout(() => App.renderMermaid(document.body), 0);
     }
     return text;
@@ -94,7 +96,7 @@
    * 否则增量 textNode 会破坏 hljs 生成的 span 结构。
    */
   App.mountMarkdown = function(container, src, opts) {
-    container.innerHTML = App.renderMarkdown(src);
+    container.innerHTML = App.renderMarkdown(src, opts);
     if (opts?.highlight) App.highlightCodeBlocks(container);
     return container;
   };

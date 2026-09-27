@@ -25,18 +25,16 @@
 
   App.setCompressUI = function(loading) {
     const btn = $("#compress-btn");
-    const send = $("#send-btn");
     const input = $("#input");
     if (!btn) return;
+    App.chatView?.setCompressing(loading);
     if (loading) {
       btn.disabled = true;
       setCompressLoading(btn);
-      if (send) send.disabled = true;
       if (input) input.disabled = true;
     } else {
       btn.disabled = false;
       setCompressIcon(btn);
-      if (send) send.disabled = false;
       if (input) input.disabled = false;
     }
   };

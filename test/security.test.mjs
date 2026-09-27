@@ -16,6 +16,21 @@ const { escapeXmlAttr } = shared
 before(() => clearWriteApproval())
 after(() => clearWriteApproval())
 
+test("Web 写入拦截回调保留 pi toolCallId", async () => {
+  clearWriteApproval()
+  let handler
+  const blocked = []
+  installWriteGate({ on: (event, callback) => { if (event === "tool_call") handler = callback } }, {
+    onBlocked: info => blocked.push(info),
+  })
+  const event = { toolCallId: "call-web-42", toolName: "replace_string_in_abap_object", input: { objectName: "ZTEST", oldString: "old", newString: "new" } }
+  const result = await handler(event, {})
+  assert.equal(result?.block, true)
+  assert.equal(blocked.length, 1)
+  assert.deepEqual(blocked[0], { toolCallId: event.toolCallId, toolName: event.toolName, input: event.input })
+  clearWriteApproval()
+})
+
 // ── scanCodeViolations ───────────────────────────────────────────────────────
 test("scanCodeViolations：硬编码中文文案被拦截", () => {
   const code = `WRITE: '你好世界'.`

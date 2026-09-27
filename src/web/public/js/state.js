@@ -15,13 +15,8 @@ App.state = {
   currentPath: undefined,
   currentGen: 0,
   currentAssistantEl: null,
-  currentTextDiv: null,
-  pendingTexts: [],
-  toolCards: new Map(),
   es: null,
   historyOpen: false,
-  processEl: null,
-  currentThinkSeg: null,
   messageCount: 0,
   sessions: [],
 };

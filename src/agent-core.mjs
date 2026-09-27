@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import path from "node:path"
 import fs from "node:fs"
 import os from "node:os"
+import { registerQuestionTool } from "./question-tool.mjs"
 
 const require = createRequire(import.meta.url)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -261,6 +262,7 @@ export async function createAgent(opts = {}) {
     appendSystemPrompt: [promptFile("SYSTEM.md"), promptFile("Memory.md")], // 与 CLI 一致：主目录优先，回退包内
     extensionFactories: [
       (pi) => {
+        registerQuestionTool(pi)
         // 加载期直接注册（不能调 getAllTools 等 action method，registerTool 本身可用）
         try {
           const n = registerSapTools(pi)
