@@ -12,6 +12,7 @@
 
   // ── 流式状态 ──
   App.setStreaming = function(on) {
+    if (!on && state.stopping) return;
     const prev = state.streaming;
     state.streaming = on;
     App.chatView?.setStreaming(on);
@@ -22,6 +23,20 @@
     // 流式状态变化时刷新会话列表（更新"正在执行"图标）
     if (App.refreshSessions) App.refreshSessions(true);
     if (!on && prev) App.chatView?.finishAssistant();
+  };
+  App.stopGeneration = async function() {
+    if (state.stopping) return;
+    state.stopping = true;
+    App.chatView.setStopping(true);
+    try {
+      const response = await fetch("/api/abort", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "停止失败");
+      state.stopping = false;
+      App.markToolCardsInterrupted();
+      App.setStreaming(false);
+    } catch (error) { App.showToast("停止失败，可再次尝试：" + error.message, true); }
+    finally { state.stopping = false; App.chatView.setStopping(false); }
   };
 
   // ── 忙碌态 ──
@@ -127,7 +142,7 @@
     historyController?.abort();
     state.historyLoading = false;
   };
-  App.loadHistory = async function(path, before = null) {
+  App.loadHistory = async function(path, before = null, options = {}) {
     if (before !== null && state.streaming) { App.showToast("请等待本轮完成后加载更早消息"); return; }
     historyController?.abort();
     historyController = new AbortController();
@@ -136,10 +151,13 @@
     const messagesEl = document.getElementById("messages");
     const previousHeight = messagesEl.scrollHeight;
     const previousTop = messagesEl.scrollTop;
+    const savedScroll = options.preserveScroll ? App.captureScroll() : null;
+    App.chatView.setHistoryStatus("loading");
     try {
-      const params = new URLSearchParams({ limit: "20" });
+      const params = new URLSearchParams({ limit: String(options.preserveScroll ? Math.max(20, state.loadedHistoryTurns || 20) : 20) });
       if (path) params.set("path", path);
       if (before !== null) params.set("before", before);
+      if (options.preserveScroll && before === null) params.set("fromTurn", String(state.historyUserOffset || 0));
       const r = await fetch("/api/history?" + params, { signal: historyController.signal });
       const j = await r.json();
       if (token !== historyRequest) return;
@@ -151,9 +169,14 @@
         state.currentTitle = j.data.name;
         App.updateTopbarTitle();
       }
-      if (before === null) state.historyEventSequence = j.data.sequence || 0;
+      if (before === null) {
+        state.historyEventSequence = j.data.sequence || 0;
+        state.historyStreamId = j.data.streamId;
+      }
       state.currentAssistantEl = null;
       state.historyUserOffset = j.data.userOffset || 0;
+      const loadedTurns = (j.data.messages || []).filter(message => message.role === "user").length;
+      state.loadedHistoryTurns = before !== null ? (state.loadedHistoryTurns || 0) + loadedTurns : loadedTurns;
       if (before === null) state.aborted = false;
       const wasStreaming = state.streaming;
       state.streaming = false;
@@ -169,13 +192,17 @@
       state.historyLoading = false;
       if (before === null) {
         App.setStreaming(!!j.data.isStreaming);
-        if (j.data.isStreaming && !App.chatView?.activeAssistant()) App.showWaiting();
+        if (!j.data.isStreaming) App.hideWaiting();
+        if (j.data.isStreaming && j.data.retry) App.showRetrying(`模型暂时不可用，正在重试（${j.data.retry.attempt}/${j.data.retry.maxAttempts}）…`);
+        else if (j.data.isStreaming && !App.chatView?.activeAssistant()) App.showWaiting();
       }
+      App.chatView.setHistoryStatus("");
       if (before !== null) requestAnimationFrame(() => { messagesEl.scrollTop = previousTop + messagesEl.scrollHeight - previousHeight; });
+      else if (savedScroll) App.restoreScroll(savedScroll);
       else App.scrollToBottom(true);
       App.showWelcome();
     } catch (e) {
-      if (e.name !== "AbortError" && token === historyRequest) App.addSystemNote("加载历史失败：" + e.message);
+      if (e.name !== "AbortError" && token === historyRequest) App.chatView.setHistoryStatus("error", { path, before, options });
     } finally {
       if (token === historyRequest) state.historyLoading = false;
     }

@@ -14,7 +14,8 @@
   // ── 滚动跟随 ──
   let autoScroll = true;
   let scrollRaf = 0;
-  let forceScrollPending = false;
+  let previousTop = messagesEl.scrollTop;
+  let previousHeight = messagesEl.scrollHeight;
   const scrollBottomBtn = document.createElement("button");
   scrollBottomBtn.className = "scroll-bottom-btn";
   scrollBottomBtn.title = "回到底部";
@@ -25,31 +26,84 @@
   if (inputAreaEl) inputAreaEl.appendChild(scrollBottomBtn);
 
   function isNearBottom() {
-    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 40;
+    return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight <= 4;
   }
 
+  function updateScrollButton() {
+    scrollBottomBtn.classList.toggle("show", !isNearBottom());
+  }
+  function pauseScroll() {
+    autoScroll = false;
+    if (scrollRaf) cancelAnimationFrame(scrollRaf);
+    scrollRaf = 0;
+  }
+  // Stop a queued follow immediately, before the browser applies the user's scroll.
+  messagesEl.addEventListener("wheel", event => { if (event.deltaY < 0) pauseScroll(); }, { passive: true });
+  let touchY = null;
+  messagesEl.addEventListener("touchstart", event => { touchY = event.touches[0]?.clientY; }, { passive: true });
+  messagesEl.addEventListener("touchmove", event => {
+    const nextY = event.touches[0]?.clientY;
+    if (touchY != null && nextY > touchY) pauseScroll();
+    touchY = nextY;
+  }, { passive: true });
+  messagesEl.addEventListener("keydown", event => {
+    if (event.target.closest("input, textarea, [contenteditable='true']")) return;
+    if (["ArrowUp", "PageUp", "Home"].includes(event.key) || (event.key === " " && event.shiftKey)) pauseScroll();
+  });
   messagesEl.addEventListener("scroll", () => {
-    autoScroll = isNearBottom();
-    scrollBottomBtn.classList.toggle("show", !autoScroll);
+    const top = messagesEl.scrollTop;
+    const height = messagesEl.scrollHeight;
+    if (isNearBottom()) autoScroll = true;
+    else if (top < previousTop && height === previousHeight) pauseScroll();
+    previousTop = top;
+    previousHeight = height;
+    updateScrollButton();
   });
 
   App.scrollToBottom = function(force) {
-    if (state.historyLoading || (!force && !autoScroll)) return;
-    if (force) forceScrollPending = true;
+    if (force) autoScroll = true;
+    if (state.historyLoading || !autoScroll) { updateScrollButton(); return; }
     if (scrollRaf) return;
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = requestAnimationFrame(() => {
         scrollRaf = 0;
-        const forceNow = forceScrollPending;
-        forceScrollPending = false;
-        if (forceNow || autoScroll) messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (autoScroll && !state.historyLoading) {
+          messagesEl.scrollTop = messagesEl.scrollHeight;
+          previousTop = messagesEl.scrollTop;
+          previousHeight = messagesEl.scrollHeight;
+        }
+        updateScrollButton();
       });
     });
   };
 
+  // Observe committed React content and delayed layout changes (images, code, resizing).
+  const resized = new Set();
+  const resizeObserver = new ResizeObserver(() => App.scrollToBottom());
+  resizeObserver.observe(messagesEl);
+  new MutationObserver(() => {
+    for (const element of resized) if (element.parentElement !== messagesEl) { resizeObserver.unobserve(element); resized.delete(element); }
+    for (const element of messagesEl.children) if (!resized.has(element)) { resizeObserver.observe(element); resized.add(element); }
+    App.scrollToBottom();
+  }).observe(messagesEl, { childList: true, subtree: true, characterData: true });
+
   App.resetAutoScroll = function() {
     autoScroll = true;
     App.scrollToBottom(true);
+  };
+  App.captureScroll = function() {
+    const rect = messagesEl.getBoundingClientRect();
+    const anchor = [...messagesEl.querySelectorAll("[data-item-id]")].find(el => el.getBoundingClientRect().bottom > rect.top);
+    return { following: autoScroll, top: messagesEl.scrollTop, id: anchor?.dataset.itemId,
+      offset: anchor ? anchor.getBoundingClientRect().top - rect.top : 0 };
+  };
+  App.restoreScroll = function(saved) {
+    if (!saved || saved.following) { App.resetAutoScroll(); return; }
+    pauseScroll();
+    const anchor = saved.id && [...messagesEl.querySelectorAll("[data-item-id]")].find(el => el.dataset.itemId === saved.id);
+    messagesEl.scrollTop = anchor ? messagesEl.scrollTop + anchor.getBoundingClientRect().top - messagesEl.getBoundingClientRect().top - saved.offset : saved.top;
+    previousTop = messagesEl.scrollTop; previousHeight = messagesEl.scrollHeight;
+    updateScrollButton();
   };
 
   App.formatMessageTime = function(ts) {
@@ -104,8 +158,8 @@
   App.finalizeAssistantBubble = function() { chatView.finishAssistant(); };
   App.consolidateAssistantReplies = function(usage, elapsed) { chatView.finishAssistant(usage, elapsed); };
 
-  App.addConfirmation = function(payload) { chatView.addApproval(payload, "question"); App.scrollToBottom(true); };
-  App.addWriteApproval = function(payload) { chatView.addApproval(payload, "write"); App.scrollToBottom(true); };
+  App.addConfirmation = function(payload) { chatView.addApproval(payload, "question"); App.scrollToBottom(); };
+  App.addWriteApproval = function(payload) { chatView.addApproval(payload, "write"); App.scrollToBottom(); };
   App.setHistoryMore = function(value) { chatView.setHistoryMore(value); };
 
   App.addSystemNote = function(text) {
@@ -115,7 +169,7 @@
 
   App.showWaiting = function(text) {
     chatView.setWaiting(text || "等待模型响应…");
-    App.scrollToBottom(true);
+    App.scrollToBottom();
   };
 
   App.showRetrying = function(text) {

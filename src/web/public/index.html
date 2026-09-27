@@ -220,10 +220,17 @@
             <div class="session-manager-toolbar">
               <input id="session-manager-search" type="search" placeholder="搜索会话名称" aria-label="搜索会话名称" />
               <button id="session-manager-refresh" type="button" class="btn-sm">刷新</button>
+              <button id="session-manager-export" type="button" class="btn-sm" disabled>导出所选</button>
               <button id="session-manager-delete" type="button" class="btn-sm danger" disabled>删除所选</button>
             </div>
-            <label class="session-manager-select"><input id="session-manager-all" type="checkbox" />全选本页</label>
+            <div class="session-manager-toolbar">
+              <label>更新日期 <input id="session-manager-from" type="date" aria-label="起始日期" /></label>
+              <label>至 <input id="session-manager-to" type="date" aria-label="结束日期" /></label>
+              <button id="session-manager-clear" type="button" class="btn-sm">清空选择</button>
+            </div>
+            <label class="session-manager-select"><input id="session-manager-all" type="checkbox" />全选本页（跨页保留）</label>
             <p id="session-manager-status" role="status" aria-live="polite"></p>
+            <p id="session-manager-selection" role="status" aria-live="polite"></p>
             <div id="session-manager-list"></div>
             <div class="session-manager-toolbar">
               <button id="session-manager-prev" type="button" class="btn-sm">上一页</button>
@@ -269,7 +276,8 @@
             </div>
             <div class="form-group" id="llm-conn-manager">
               <div class="form-group-title">连接管理</div>
-              <div class="llm-conn-btns" style="display:flex;gap:8px">
+              <div class="llm-conn-btns" style="display:flex;gap:8px;flex-wrap:wrap">
+                <button type="button" id="llm-delete-conn" class="btn-sm" style="order:1;color:var(--danger, #dc3545)"><svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg> 删除连接</button>
                 <button type="button" id="llm-add-conn" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> 添加连接</button>
                 <button type="button" id="llm-edit-conn" class="btn-sm"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> 编辑连接</button>
               </div>

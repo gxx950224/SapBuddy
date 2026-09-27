@@ -235,6 +235,23 @@ test("bash 命令门禁：start 指向敏感配置仍拦截", async () => {
 test("bash 命令门禁：cat 读取 output 仍拦截（读产物应走 read 工具）", async () => {
   const r = await triggerWriteGate({ command: "cat C:/Users/Administrator/.SapBuddy/output/x/y.html" }, "bash")
   assert.equal(r?.block, true, "cat 不是放行操作，应拦截")
+  assert.match(r.reason, /产物检查命令未执行/)
+  assert.match(r.reason, /read/)
+  assert.doesNotMatch(r.reason, /涉及敏感配置/)
+})
+
+test("产物复合检查提供读取替代方式，混合敏感路径仍走安全拦截", async () => {
+  const command = "ls -la ~/.SapBuddy/output/*.md && wc -c ~/.SapBuddy/output/散文.md && head -5 ~/.SapBuddy/output/散文.md"
+  const result = await triggerWriteGate({ command }, "bash")
+  assert.equal(result.block, true)
+  assert.match(result.reason, /不表示文件写入失败/)
+  for (const suffix of [" && cat ~/.SapBuddy/auth.json", " && ls ~/.SapBuddy", " && cat ~/.SapBuddy/output/../auth.json"]) {
+    const blocked = await triggerWriteGate({ command: command + suffix }, "bash")
+    assert.equal(blocked.block, true)
+    assert.match(blocked.reason, /安全拦截/)
+  }
+  const read = await triggerWriteGate({ path: "~/.SapBuddy/output/散文.md" }, "read")
+  assert.equal(read?.block, undefined)
 })
 
 test("bash 命令门禁：路径穿越 ../ 不因 output 前缀被放行", async () => {

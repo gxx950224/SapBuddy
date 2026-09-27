@@ -24,6 +24,8 @@
  *   GET  /api/skills          Skills 列表与读写
  */
 import { SessionStore } from "./session-store.mjs"
+import { historySnapshot } from "./history-snapshot.mjs"
+import { removeModelConnection } from "./model-connections.mjs"
 import http from "node:http"
 import fs from "node:fs"
 import path from "node:path"
@@ -93,7 +95,9 @@ async function loadPiSdk() {
 let agent = null
 let session = null
 let liveAssistant = null
+let retryState = null
 let busy = false
+let abortPromise = null
 let rebuildPromise = null  // 在途重建任务（新建/切换懒重建，防并发双开 agent）
 
 function sanitizeWriteValue(value, depth = 0) {
@@ -149,6 +153,8 @@ async function rebuildAgent(sessionFile) {
     const oldFile = oldSession?.sessionFile
     agent = null
     session = null
+    liveAssistant = null
+    retryState = null
     try { await oldSession?.dispose() } catch {}
     // 旧会话是空会话（无任何消息）→ 顺手删掉，避免列表残留「新会话」空条目
     if (oldFile && path.resolve(oldFile) !== path.resolve(sessionFile) && isEmptySession(oldFile)) {
@@ -179,6 +185,8 @@ function maybeRebuildAgent(oldProvider, oldModel, newProvider, newModel) {
 function attachStreaming(s) {
   s.subscribe((event) => {
     if (s !== session) return;
+    if (event.type === "auto_retry_start") retryState = { attempt: event.attempt, maxAttempts: event.maxAttempts }
+    if (["agent_start", "message_start", "agent_abort"].includes(event.type) || (event.type === "agent_end" && !event.willRetry)) retryState = null
     if (event.type === "message_end" && event.message?.role === "assistant") {
       // 落盘会话文件已由 SessionManager 自动处理
     }
@@ -197,7 +205,7 @@ function attachStreaming(s) {
 const sseClients = new Set()
 let streamSequence = 0
 function broadcast(payload) {
-  const data = `data: ${JSON.stringify({ ...payload, sequence: ++streamSequence })}\n\n`
+  const data = `data: ${JSON.stringify({ ...payload, sequence: ++streamSequence, streamId: START_TS })}\n\n`
   for (const res of sseClients) {
     try { res.write(data) } catch { sseClients.delete(res) }
   }
@@ -380,7 +388,7 @@ const server = http.createServer(async (req, res) => {
         ? images.filter((i) => i && typeof i.data === "string" && typeof i.mimeType === "string" && i.data.length <= 14 * 1024 * 1024)
         : []
       if (!text?.trim() && imgs.length === 0) return json(res, 400, { error: "text 不能为空" })
-      if (busy) return json(res, 409, { error: "上一轮仍在处理中" })
+      if (busy || abortPromise) return json(res, 409, { error: "上一轮仍在处理中" })
       busy = true
       json(res, 200, { ok: true, ts: Date.now() })
       try {
@@ -412,23 +420,22 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 停止 / 压缩 / 思考级别
-    // 停止：不阻塞等 agent 空闲。session.abort() 内部要等当前操作真正结束才 resolve，
-    // SAP 请求挂起（VPN 断等，最长 120s）时干等下去前端就是"点了没反应"。
-    // 改为：先触发中止信号 + 立即广播终态事件清 UI，后台继续等超时自动收尾。
-    if (p === "/api/abort") {
-      busy = false
+    // Acknowledge only after the agent has actually stopped.
+    if (p === "/api/abort" && req.method === "POST") {
       try {
-        const ap = session?.abort?.()
-        if (ap && typeof ap.then === "function") ap.catch(() => {})
-      } catch { /* 无活动会话忽略 */ }
-      broadcast({ kind: "agent", event: { type: "agent_abort" }, ts: Date.now() })
-      return json(res, 200, { ok: true })
+        if (!abortPromise) abortPromise = Promise.resolve().then(() => session?.abort?.()).then(() => {
+          busy = false
+          broadcast({ kind: "agent", event: { type: "agent_abort" }, ts: Date.now(), sessionFile: session?.sessionFile })
+        }).finally(() => { abortPromise = null })
+        await abortPromise
+        return json(res, 200, { ok: true })
+      } catch (error) { return json(res, 500, { error: error.message }) }
     }
 
     // 写操作确认：用户点击允许/拒绝后，注入批准窗口并提示 AI 继续
     if (p === "/api/write-approve" && req.method === "POST") {
       const { approved } = await readBody(req)
-      if (busy) return json(res, 409, { error: "上一轮仍在处理中" })
+      if (busy || abortPromise) return json(res, 409, { error: "上一轮仍在处理中" })
       busy = true
       json(res, 200, { ok: true })
       try {
@@ -580,7 +587,7 @@ const server = http.createServer(async (req, res) => {
         success: true,
         data: {
           ready: true,
-          isStreaming: busy,
+          isStreaming: busy || !!abortPromise,
           messageCount: session?.agent?.state?.messages?.length ?? 0,
           model: model ? `${model.provider}/${model.id}` : "-",
           sessionId: session?.sessionId ?? "",
@@ -605,10 +612,18 @@ const server = http.createServer(async (req, res) => {
       if (!isWithinDir(file, sessionsDir())) return json(res, 403, { error: "Forbidden: 仅允许读取会话文件" })
       const before = url.searchParams.has("before") ? Math.max(0, Math.floor(Number(url.searchParams.get("before")) || 0)) : undefined
       const limit = Math.min(100, Math.max(1, Math.floor(Number(url.searchParams.get("limit")) || 20)))
+      const fromTurn = before === undefined && url.searchParams.has("fromTurn") ? Math.max(0, Math.floor(Number(url.searchParams.get("fromTurn")) || 0)) : null
+      // Capture messages, live output and sequence synchronously from one session snapshot.
+      if (before === undefined && file === session?.sessionFile && session.sessionManager?.getEntries) {
+        const snapshot = historySnapshot(session.sessionManager.getEntries(), liveAssistant, limit, fromTurn)
+        return json(res, 200, { success: true, data: { path: file, ...snapshot,
+          sequence: streamSequence, streamId: START_TS, isStreaming: busy || !!abortPromise, retry: busy ? retryState : null } })
+      }
       const historySequence = streamSequence
-      const data = await sessionStore.history(file, { before, limit })
+      const data = await sessionStore.history(file, { before, limit, fromTurn })
       data.sequence = historySequence
-      data.isStreaming = file === session?.sessionFile && busy
+      data.streamId = START_TS
+      data.isStreaming = file === session?.sessionFile && (busy || !!abortPromise)
       if (before === undefined && file === session?.sessionFile && liveAssistant &&
           !data.messages.some(m => m.role === "assistant" && m.timestamp === liveAssistant.timestamp)) data.messages.push(liveAssistant)
       return json(res, 200, { success: true, data })
@@ -629,11 +644,21 @@ const server = http.createServer(async (req, res) => {
     if (p === "/api/sessions" && req.method === "GET") {
       const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50))
       const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0)
-      const data = await sessionStore.list({ limit, offset, query: url.searchParams.get("q") || "", pinned: url.searchParams.getAll("pin") })
+      const data = await sessionStore.list({ limit, offset, query: url.searchParams.get("q") || "", pinned: url.searchParams.getAll("pin"), from: url.searchParams.get("from"), to: url.searchParams.get("to") })
       data.sessions = data.sessions.map(s => ({ ...s, current: s.path === session?.sessionFile }))
       return json(res, 200, { success: true, data })
     }
 
+    if (p === "/api/session/export" && req.method === "POST") {
+      const { paths } = await readBody(req)
+      if (!Array.isArray(paths) || !paths.length || paths.length > 500) return json(res, 400, { error: "请选择 1 至 500 个会话" })
+      if (paths.some(file => typeof file !== "string" || !isWithinDir(file, sessionsDir()) || path.extname(file) !== ".jsonl")) return json(res, 403, { error: "仅允许导出会话文件" })
+      try {
+        const sessions = []
+        for (const file of new Set(paths)) sessions.push({ name: path.basename(file), jsonl: await fs.promises.readFile(file, "utf8") })
+        return json(res, 200, { success: true, version: 1, sessions })
+      } catch (error) { return json(res, 500, { error: `导出失败：${error.message}` }) }
+    }
     // 删除会话
     if (p === "/api/session/delete" && req.method === "POST") {
       const { path: file } = await readBody(req)
@@ -837,7 +862,7 @@ const server = http.createServer(async (req, res) => {
           "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'none'; form-action 'none'"
         headers["X-Content-Type-Options"] = "nosniff"
       }
-      if (url.searchParams.get("download")) headers["Content-Disposition"] = `attachment; filename="${path.basename(file)}"`
+      if (url.searchParams.get("download")) headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(path.basename(file))}`
       res.writeHead(200, headers)
       res.end(data)
       return
@@ -908,6 +933,21 @@ const server = http.createServer(async (req, res) => {
       const body = await readBody(req)
       try {
         const cur = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
+        if (Object.hasOwn(body, "deleteProvider")) {
+          if (busy || abortPromise) return json(res, 409, { error: "请等待当前回答结束后再删除连接" })
+          const modelsFile = path.join(USER_PI, "models.json")
+          const authFile = path.join(USER_PI, "auth.json")
+          const modelsCfg = JSON.parse(fs.readFileSync(modelsFile, "utf8"))
+          const auth = fs.existsSync(authFile) ? JSON.parse(fs.readFileSync(authFile, "utf8")) : {}
+          let next
+          try { next = removeModelConnection(body.deleteProvider, modelsCfg, auth, cur) }
+          catch (e) { return json(res, 400, { error: e.message }) }
+          fs.writeFileSync(modelsFile, JSON.stringify(next.models, null, 2))
+          fs.writeFileSync(authFile, JSON.stringify(next.auth, null, 2))
+          fs.writeFileSync(settingsFile, JSON.stringify(next.settings, null, 2))
+          maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, next.settings.defaultProvider, next.settings.defaultModel)
+          return json(res, 200, { success: true })
+        }
         // ── 编辑已有大模型连接（可改名 / 改地址 / 改模型 / 改 Key）──
         if (body.editProvider) {
           const oldName = String(body.editProvider).trim()

@@ -86,4 +86,33 @@ test("question submission retries, retires the card and preserves composer draft
   await page.waitForFunction(() => document.querySelector("#session-manager-status").textContent.includes("已删除 1 个会话"))
   assert.deepEqual(deleted, ["old.jsonl", "failed.jsonl"])
   assert.match(await page.locator("#session-manager-status").textContent(), /模拟删除失败/)
+  assert.equal(await page.locator('#session-manager-list input[value="failed.jsonl"]').isChecked(), true)
+  assert.match(await page.locator("#session-manager-delete").textContent(), /1/)
+  // Selection survives page changes and exports the rows from both pages.
+  await page.locator("#session-manager-clear").click()
+  await page.route("**/api/sessions?**", route => {
+    const offset = Number(new URL(route.request().url()).searchParams.get("offset") || 0)
+    return route.fulfill({ json: { success: true, data: { sessions: [{ path: offset ? "second.jsonl" : "first.jsonl", name: offset ? "第二页" : "第一页", modified: Date.now() }], total: 31, nextOffset: offset ? null : 30 } } })
+  })
+  await page.evaluate(() => window.SapBuddy.loadSessionManager())
+  await page.locator("#session-manager-all").check()
+  await page.locator("#session-manager-next").click()
+  await page.locator('#session-manager-list input[value="second.jsonl"]').check()
+  assert.match(await page.locator("#session-manager-delete").textContent(), /2/)
+  assert.match(await page.locator("#session-manager-selection").textContent(), /已选 2 项，其中 1 项不在当前页/)
+  await page.locator("#session-manager-prev").click()
+  assert.equal(await page.locator('#session-manager-list input[value="first.jsonl"]').isChecked(), true)
+  let exported
+  await page.route("**/api/session/export", route => {
+    exported = route.request().postDataJSON().paths
+    return route.fulfill({ json: { success: true, sessions: exported.map(name => ({ name, jsonl: "fixture" })) } })
+  })
+  const download = page.waitForEvent("download")
+  await page.locator("#session-manager-export").click()
+  await download
+  assert.deepEqual(exported, ["first.jsonl", "second.jsonl"])
+  await page.setViewportSize({ width: 390, height: 844 })
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  const toolbarFits = await page.locator(".settings-panel[data-panel='sessions']").evaluate(el => el.scrollWidth <= el.clientWidth)
+  assert.equal(toolbarFits, true)
 })

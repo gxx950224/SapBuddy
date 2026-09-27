@@ -79,3 +79,17 @@ test("damaged cache and partial records recover on next append", async t => {
   await fs.appendFile(file, JSON.stringify(assistant("恢复").message) + "}\n")
   assert.equal((await store.list()).sessions[0].messageCount, 2)
 })
+
+test("session date filters use inclusive start and exclusive end before pagination", async t => {
+  const { dir, store } = await fixture(t)
+  for (const [name, day] of [["early", 1], ["middle", 2], ["late", 3]]) {
+    const file = path.join(dir, name + ".jsonl")
+    await fs.writeFile(file, JSON.stringify(user(name)))
+    const date = new Date(`2026-09-0${day}T12:00:00Z`)
+    await fs.utimes(file, date, date)
+  }
+  const data = await store.list({ from: Date.parse("2026-09-02T00:00:00Z"), to: Date.parse("2026-09-03T00:00:00Z"), limit: 1 })
+  assert.equal(data.total, 1)
+  assert.equal(data.sessions[0].name, "middle")
+  assert.equal(data.nextOffset, null)
+})

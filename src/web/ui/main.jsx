@@ -19,6 +19,9 @@ let historyMore = null
 let waiting = null
 let streaming = false
 let compressing = false
+let stopping = false
+let historyStatus = ""
+let historyRetry = null
 let snapshot = { items: [], historyMore, waiting, streaming, compressing, revision: 0 }
 
 function publish() {
@@ -26,7 +29,7 @@ function publish() {
     cancelAnimationFrame(pendingPublishFrame)
     pendingPublishFrame = 0
   }
-  snapshot = { items: messageItems, historyMore, waiting, streaming, compressing, revision: snapshot.revision + 1 }
+  snapshot = { items: messageItems, historyMore, historyStatus, historyRetry, waiting, streaming, compressing, stopping, revision: snapshot.revision + 1 }
   for (const listener of listeners) listener()
 }
 
@@ -34,7 +37,7 @@ function publishNextFrame() {
   if (pendingPublishFrame) return
   pendingPublishFrame = requestAnimationFrame(() => {
     pendingPublishFrame = 0
-    snapshot = { items: messageItems, historyMore, waiting, streaming, compressing, revision: snapshot.revision + 1 }
+    snapshot = { items: messageItems, historyMore, historyStatus, historyRetry, waiting, streaming, compressing, stopping, revision: snapshot.revision + 1 }
     for (const listener of listeners) listener()
   })
 }
@@ -434,6 +437,8 @@ const view = {
     })
   },
   setHistoryMore(value) { historyMore = value || null; publish() },
+  setHistoryStatus(value, retry = null) { historyStatus = value; historyRetry = retry; flushSync(publish) },
+  setStopping(value) { stopping = value; publish() },
   remove(id) {
     if (!messageItems.has(id)) return
     const next = new Map(messageItems)
@@ -524,6 +529,7 @@ function RecordsTable({ rows }) {
 
 function ToolChip({ tool }) {
   const [expanded, setExpanded] = useState(false)
+  const [showLog, setShowLog] = useState(false)
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     if (tool.status !== "running") return
@@ -540,13 +546,15 @@ function ToolChip({ tool }) {
       <span className="bui-row-glyph"><TraceIcon kind={presentation.icon}/><TraceIcon kind="chevron" className="bui-row-chevron"/></span>
       <span className="bu-tool-name">{presentation.label}</span>
     </summary>
-    <div className="bu-tool-detail">
+    {expanded && <div className="bu-tool-detail">
       <div className="bu-tool-status">{toolLabel(tool.status)}{duration ? ` · ${duration}` : ""}</div>
-      <div className="bu-tool-detail-section"><div className="bu-detail-label">输入</div><pre>{JSON.stringify(tool.args || {}, null, 2)}</pre></div>
+      {tool.isError && <p className="bu-tool-error-summary">{(resultText || "工具执行失败").split("\n").find(line => line.trim())?.slice(0, 180)}</p>}
+      {tool.isError && <button type="button" className="bui-more" onClick={() => setShowLog(!showLog)}>{showLog ? "收起完整日志" : "查看完整输入与错误"}</button>}
+      {(!tool.isError || showLog) && <><div className="bu-tool-detail-section"><div className="bu-detail-label">输入</div><pre>{JSON.stringify(tool.args || {}, null, 2)}</pre></div>
       {expanded && tool.result != null && <div className="bu-tool-detail-section"><div className="bu-detail-label">{tool.isError ? "错误" : "结果"}</div>
         {records ? <RecordsTable rows={records} /> : <pre className="bu-tool-result">{resultText || (tool.isError ? "工具执行失败" : "执行完成")}</pre>}
-      </div>}
-    </div>
+      </div>}</>}
+    </div>}
   </details>
 }
 
@@ -557,12 +565,13 @@ function ToolChips({ tools, expandedByDefault = false }) {
     if (!expandedByDefault) setOpen(false)
   }, [expandedByDefault])
   const running = tools.filter(tool => tool.status === "running")
+  const failures = tools.filter(tool => tool.isError || tool.status === "failed").length
   const visible = more ? tools : running.length && tools.length > 4 ? [...tools.slice(0, 3), running.at(-1)].filter((tool, index, all) => all.findIndex(other => other.id === tool.id) === index) : tools.slice(0, 4)
   return <details className="bu-tool-group" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary><TraceIcon kind="chevron" className="bu-chevron"/><span>{tools.length} 次工具调用</span></summary>
-    <div className="bu-tool-list">{visible.map(tool => <ToolChip key={tool.id} tool={tool} />)}</div>
+    <summary><TraceIcon kind="chevron" className="bu-chevron"/><span>{tools.length} 次工具调用{failures > 0 && <span className="bu-tool-error-summary"> · {failures} 次失败</span>}</span></summary>
+    {open && <><div className="bu-tool-list">{visible.map(tool => <ToolChip key={tool.id} tool={tool} />)}</div>
     {tools.length > 4 && <button type="button" className="bui-more" onClick={() => setMore(!more)}>{more ? "收起" : `+${tools.length - 4} 更多`}</button>}
-    <ToolDiffs tools={tools}/>
+    <ToolDiffs tools={tools}/></>}
   </details>
 }
 
@@ -708,6 +717,23 @@ const UserMessage = memo(function UserMessage({ item }) {
   </div>
 })
 
+function ArtifactCards({ tools }) {
+  const paths = [...new Set(tools.filter(tool => ["write", "edit"].includes(tool.name) && tool.status === "complete" && !tool.isError).map(tool => {
+    const file = String(tool.args?.path || tool.args?.file_path || "").replace(/\\/g, "/")
+    const marker = ".sapbuddy/output/"
+    const index = file.toLowerCase().indexOf(marker)
+    if (index < 0) return null
+    const relative = file.slice(index + marker.length)
+    return relative && !relative.split("/").some(part => part === ".." || part === ".") ? relative : null
+  }).filter(Boolean))]
+  return paths.length > 0 && <div className="artifact-cards">{paths.map(path => <div className="artifact-card" key={path}>
+    <span className="artifact-name" title={path}>{path}</span>
+    <div className="artifact-actions"><button type="button" onClick={() => App.previewFile?.(path)}>预览</button>
+      <a href={`/api/output-files/${encodeURIComponent(path)}?download=1`} download>下载</a>
+      <button type="button" onClick={() => App.openFileLocation?.(path)}>打开目录</button></div>
+  </div>)}</div>
+}
+
 const AssistantMessage = memo(function AssistantMessage({ item, active, turnRunning = false }) {
   const streamingHere = active && item.status === "running"
   const tokens = item.usage?.totalTokens || item.usage?.total_tokens
@@ -731,6 +757,7 @@ const AssistantMessage = memo(function AssistantMessage({ item, active, turnRunn
         {showThinking && <ThinkingTrace texts={thoughts} tools={tools} working={streamingHere} />}
         {tools.length > 0 && <ToolChips tools={tools} expandedByDefault={active && turnRunning} />}
         {content}
+        <ArtifactCards tools={tools}/>
       </div>
       <div className="msg-footer"><span className="msg-time">{timeLabel(item.timestamp)}</span>{tokens > 0 && <span className="msg-tokens">消耗 {App.formatTokens(tokens)}</span>}{elapsedLabel && <span className="msg-tokens">本轮 {elapsedLabel}</span>}<MessageActions item={item} /></div>
     </div>
@@ -816,13 +843,11 @@ function LoadingState({ waiting: value }) {
 
 function SendControl() {
   const state = useChat()
-  return <button id="send-btn" type="button" className={state.streaming ? "stop" : ""} disabled={state.compressing} onClick={() => {
+  return <button id="send-btn" type="button" className={state.streaming ? "stop" : ""} disabled={state.compressing || state.stopping} onClick={() => {
     if (state.streaming) {
-      navigator.sendBeacon("/api/abort")
-      App.markToolCardsInterrupted?.()
-      App.setStreaming(false)
+      App.stopGeneration?.()
     } else App.sendMessage?.()
-  }}>{state.streaming ? <><span className="bu-stop-icon"/>停止</> : "发送"}</button>
+  }}>{state.stopping ? "正在停止…" : state.streaming ? <><span className="bu-stop-icon"/>停止</> : "发送"}</button>
 }
 
 function SelectionActions() {
@@ -850,10 +875,26 @@ function SelectionActions() {
 function Conversation() {
   const state = useChat()
   const scrollRef = useRef(null)
+  useEffect(() => {
+    const container = document.getElementById("messages")
+    let previousTop = container.scrollTop
+    const onScroll = () => {
+      const upward = container.scrollTop < previousTop
+      previousTop = container.scrollTop
+      if (upward && container.scrollTop < 100 && state.historyMore && !state.streaming && !App.state.historyLoading && state.historyStatus !== "error") {
+        App.loadHistory?.(state.historyMore.path, state.historyMore.before)
+      }
+    }
+    container.addEventListener("scroll", onScroll, { passive: true })
+    return () => container.removeEventListener("scroll", onScroll)
+  }, [state.historyMore, state.streaming, state.historyStatus])
   const items = [...state.items.values()]
   const hasConversation = items.some((item) => ["user", "assistant", "system", "approval"].includes(item.kind)) || state.waiting
   return <>
-    {state.historyMore && <button className="load-more history-more" type="button" onClick={() => App.loadHistory?.(state.historyMore.path, state.historyMore.before)}>加载更早的消息</button>}
+    {(state.historyMore || state.historyStatus) && <button className="load-more history-more" type="button" disabled={state.historyStatus === "loading"} onClick={() => {
+      const retry = state.historyRetry || state.historyMore
+      if (retry) App.loadHistory?.(retry.path, retry.before, retry.options)
+    }}>{state.historyStatus === "loading" ? "正在加载历史…" : state.historyStatus === "error" ? "历史加载失败，点击重试" : "加载更早的消息"}</button>}
     {!hasConversation && <Welcome />}
     {items.map((item) => {
       if (item.kind === "user") return <UserMessage key={item.id} item={item} />

@@ -87,22 +87,24 @@ export class SessionStore {
       modified: stat.mtimeMs, size: stat.size, turns }
   }
 
-  async list({ limit = 50, offset = 0, query = "", pinned = [] } = {}) {
+  async list({ limit = 50, offset = 0, query = "", pinned = [], from = null, to = null } = {}) {
     let all = await this.refresh()
     const normalize = p => path.resolve(p).toLowerCase()
     const pins = new Set(pinned.map(normalize))
     if (query) all = all.filter(e => e.name.toLowerCase().includes(query.toLowerCase()))
+    if (from != null && Number.isFinite(Number(from))) all = all.filter(e => e.modified >= Number(from))
+    if (to != null && Number.isFinite(Number(to))) all = all.filter(e => e.modified < Number(to))
     all.sort((a, b) => Number(pins.has(normalize(b.path))) - Number(pins.has(normalize(a.path))) || b.modified - a.modified || a.path.localeCompare(b.path))
     const sessions = all.slice(offset, offset + limit)
     return { sessions, total: all.length, nextOffset: offset + sessions.length < all.length ? offset + sessions.length : null }
   }
 
-  async history(file, { before, limit = 20 } = {}) {
+  async history(file, { before, limit = 20, fromTurn = null } = {}) {
     await this.refresh()
     const e = this.entries[path.basename(file)]
     if (!e) return { path: file, messages: [], userOffset: 0, before: null }
     const endTurn = before == null ? e.turns.length : Math.max(0, Math.min(before, e.turns.length))
-    const startTurn = Math.max(0, endTurn - limit)
+    const startTurn = fromTurn == null ? Math.max(0, endTurn - limit) : Math.max(0, Math.min(fromTurn, Math.max(0, endTurn - 1)))
     const start = startTurn === 0 ? 0 : e.turns[startTurn]
     const end = endTurn < e.turns.length ? e.turns[endTurn] : e.size
     const messages = []

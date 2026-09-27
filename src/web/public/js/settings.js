@@ -178,6 +178,34 @@
   }
   $("#llm-add-conn").addEventListener("click", openLlmConnForm);
   $("#llm-edit-conn").addEventListener("click", openLlmEditForm);
+  $("#llm-delete-conn").addEventListener("click", async () => {
+    const provider = $("#llm-provider").value;
+    if (!providerList.some((p) => p.name === provider)) return App.showToast("请先选择要删除的连接");
+    if (state.streaming) return App.showToast("请等待当前回答结束后再删除连接");
+    const button = $("#llm-delete-conn");
+    button.disabled = true;
+    try {
+      const ok = await App.confirm({
+        title: "删除大模型连接",
+        message: `确定删除「${providerLabel(provider)}」？该连接的模型配置及 API Key 将被移除。若正在使用此连接，将切换到剩余连接，会话历史保留。`,
+        confirmText: "删除连接", danger: true,
+      });
+      if (!ok) return;
+      const response = await fetch("/api/settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deleteProvider: provider }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || "未知错误");
+      hideLlmConnForm();
+      applySettingsToForm(await fetchSettings());
+      App.refreshState();
+      App.loadModelSettings?.();
+      App.showToast("连接已删除");
+    } catch (error) {
+      App.showToast("删除失败：" + error.message, true);
+    } finally { button.disabled = false; }
+  });
   $("#llm-conn-cancel").addEventListener("click", hideLlmConnForm);
   $("#llm-new-model-add").addEventListener("click", () => addModelRow());
   $("#llm-conn-save").addEventListener("click", async () => {

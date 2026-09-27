@@ -16,7 +16,7 @@
     const batchSize = 20;
 
     function handlePayload(payload) {
-      if (payload.sequence && payload.sequence <= (state.historyEventSequence || 0)) return;
+      if ((!payload.streamId || !state.historyStreamId || payload.streamId === state.historyStreamId) && payload.sequence && payload.sequence <= (state.historyEventSequence || 0)) return;
       if (payload.sessionFile && state.currentPath && payload.sessionFile !== state.currentPath) return;
       if (payload.kind === "agent") {
         handleAgentEvent(payload.event, payload.elapsed, payload.usage);
@@ -84,7 +84,9 @@
     es.onopen = () => {
       App.setAgentStatus(true, "Agent 已连接");
       if (reconnecting) {
-        App.loadHistory(state.currentPath);
+        pendingFailure = null;
+        queue = [];
+        App.loadHistory(state.currentPath, null, { preserveScroll: true });
         App.refreshState();
         reconnecting = false;
       }
@@ -178,7 +180,7 @@
           else App.onGenerationError(errorText || finalMessage?.stopReason || "生成失败");
         } else App.clearGenerationError?.();
         App.chatView.staleUnexecutedApprovals(state.currentPath);
-        App.resetAutoScroll();
+        App.scrollToBottom();
         App.consolidateAssistantReplies(usage || event.message?.usage, elapsed);
         state.currentAssistantEl = null;
         App.setStreaming(false);

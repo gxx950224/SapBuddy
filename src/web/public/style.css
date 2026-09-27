@@ -174,6 +174,10 @@ input, textarea, select {
 #app.left-collapsed #main  { grid-template-columns: 0px minmax(0, 1fr) var(--right-w); }
 #app.right-collapsed #main { grid-template-columns: var(--sidebar-w) minmax(0, 1fr) 0px; }
 #app.left-collapsed.right-collapsed #main { grid-template-columns: 0px minmax(0, 1fr) 0px; }
+#sidebar { grid-column: 1; grid-row: 1; }
+#chat { grid-column: 2; grid-row: 1; }
+#right-panel { grid-column: 3; grid-row: 1; }
+.panel-backdrop { display: none; }
 
 /* ============================
    3. 通用面板（左 / 右）
@@ -1472,7 +1476,7 @@ input, textarea, select {
   transition: transform 220ms var(--ease-out);
 }
 #settings-overlay.open #settings-dialog { transform: none; }
-.session-manager-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.session-manager-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
 .session-manager-toolbar input { flex: 1; min-width: 140px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-panel); color: var(--text); }
 .session-manager-select, .session-manager-row { display: flex; align-items: center; gap: 10px; }
 .session-manager-row { padding: 10px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -2343,19 +2347,29 @@ input, textarea, select {
 }
 
 @media (max-width: 900px) {
-  /* sidebar display:none 后不占 grid 轨道，网格须与可见项（chat+right）匹配，否则 chat 会落入 0 宽列塌缩 */
-  #main { grid-template-columns: minmax(0, 1fr) var(--right-w); }
-  #sidebar { display: none; }
-  #app.right-collapsed #main { grid-template-columns: minmax(0, 1fr) 0; }
+  /* Keep chat in a stable track. Mobile panels overlay instead of consuming columns. */
+  #app #main, #app.left-collapsed #main, #app.right-collapsed #main,
+  #app.left-collapsed.right-collapsed #main { grid-template-columns: 0 minmax(0, 1fr) 0; transition: none; }
+  #sidebar, #right-panel {
+    position: fixed; top: 0; bottom: 0; z-index: 51;
+    width: min(320px, calc(100vw - 56px)); visibility: hidden; pointer-events: none;
+    transition: transform 180ms ease, visibility 180ms;
+    box-shadow: 0 8px 32px #0002;
+  }
+  #sidebar { left: 0; transform: translateX(-100%); }
+  #right-panel { right: 0; transform: translateX(100%); }
+  #app.mobile-left-open #sidebar, #app.mobile-right-open #right-panel {
+    transform: translateX(0); visibility: visible; pointer-events: auto;
+  }
+  #app.mobile-left-open .panel-backdrop, #app.mobile-right-open .panel-backdrop {
+    display: block; position: fixed; inset: 0; z-index: 50; width: 100%; height: 100%;
+    background: #0003; border: 0; border-radius: 0;
+  }
   .msg { padding: 0 16px; }
   #input-area { padding: 8px 16px 14px; }
 }
 
 @media (max-width: 720px) {
-  /* sidebar 与 right 均不占位时，仅 chat 可见 → 单列网格 */
-  #main { grid-template-columns: minmax(0, 1fr); }
-  #right-panel { display: none; }
-  #app.right-collapsed #main, #app.left-collapsed #main { grid-template-columns: minmax(0, 1fr); }
   /* 设置弹窗：Tab 改为顶部横向滚动 */
   #settings-dialog { width: 100vw; height: 100vh; max-width: none; max-height: none; border-radius: 0; }
   #settings-body { flex-direction: column; }

@@ -215,6 +215,14 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
       const refsProtected = PROTECTED_CONFIG.some((f) => cmd.includes(f))
       const allowed = (isOpenArtifact || uploadsOnly) && !traversal && !refsProtected
       if (!allowed && (cmd.includes(".sapbuddy") || refsProtected)) {
+        const artifactCheck = !traversal && !refsProtected &&
+          /\.sapbuddy[\\/]output([\\/]|[\s"']|$)/.test(cmd) &&
+          [...cmd.matchAll(/\.sapbuddy[\\/]?([^\s"';&|]*)/g)].every(m => /^output([\\/]|$)/.test(m[1]))
+        if (artifactCheck) return {
+          block: true,
+          reason: "⛔ 产物检查命令未执行：output 目录中的文件允许读取，但请使用 read 工具读取刚写入文件的完整路径，不要通过 bash 的 ls/wc/head/tail/cat 检查。\n" +
+            "文件较长时使用 read 的 offset/limit 分段核对；此拦截不表示文件写入失败。不要重写文件、换用脚本或重复执行同类命令。只按实际读取结果报告检查结论，未统计时不要宣称精确字数。",
+        }
         return {
           block: true,
           reason:

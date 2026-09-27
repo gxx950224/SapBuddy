@@ -583,7 +583,8 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
   emit({ type: "tool_execution_end", toolCallId: "wide-table", result: { structuredContent: wideRows, content: [{ type: "text", text: "3 条记录" }] } })
   emit({ type: "message_end", message: wideMessage })
   emit({ type: "agent_end" })
-  await page.waitForFunction(() => document.querySelectorAll(".bu-code-lines").length === 1 && document.querySelectorAll(".bu-tool").length === 1)
+  await page.waitForFunction(() => document.querySelectorAll(".bu-code-lines").length === 1 && document.querySelectorAll(".bu-tool-group").length === 1)
+  assert.equal(await page.locator(".bu-tool").count(), 0)
   await page.setViewportSize({ width: 390, height: 844 })
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
   await page.locator(".bu-tool-group > summary").click()
@@ -623,7 +624,7 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
   await page.evaluate(() => window.SapBuddy.loadHistory("fixture.jsonl"))
   assert.equal(await page.locator(".bu-thinking").count(), 1)
   assert.equal(await page.locator(".bu-tool-group").count(), 1)
-  assert.equal(await page.locator(".bu-tool").count(), 4)
+  assert.equal(await page.locator(".bu-tool").count(), 0)
   await page.locator(".bu-tool-group > summary").click()
   await page.locator(".bu-tool-group > .bui-more").click()
   await page.waitForFunction(() => document.querySelectorAll(".bu-tool").length === 6)
@@ -639,7 +640,7 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
     await page.evaluate(() => { window.SapBuddy.setStreaming(false); return window.SapBuddy.loadHistory("fixture.jsonl") })
     assert.equal(await page.locator(".bu-tool-group").count(), 1)
     assert.equal(await page.locator(".bu-thinking").count(), 1)
-    assert.equal(await page.locator(".bu-tool").count(), Math.min(4, callCount))
+    assert.equal(await page.locator(".bu-tool").count(), 0)
     assert.equal(await page.locator(".bui-trace-shell[data-variant='Reasoning']").count(), 1)
     await page.locator(".bu-tool-group").scrollIntoViewIfNeeded()
     await page.locator(".bu-tool-group > summary").click()
@@ -655,5 +656,146 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
     await capture("session-narrow")
   }
+  history = { path: "fixture.jsonl", messages: [message("user", "恢复重试", timestamp + 100)], userOffset: 0, before: null,
+    isStreaming: true, sequence: 80, streamId: "old-server", retry: { attempt: 2, maxAttempts: 3 } }
+  for (const client of clients) client.end()
+  await page.waitForFunction(() => document.querySelector(".waiting-text")?.textContent.includes("2/3"))
+  assert.equal(await page.locator("#send-btn").textContent(), "停止")
+  // An event already covered by the snapshot must not overwrite restored output.
+  broadcast({ kind: "agent", sequence: 79, streamId: "old-server", event: { type: "message_update", message: message("assistant", "不应出现", timestamp + 101) } })
+  // A restarted server can begin at a lower sequence and must still be accepted.
+  broadcast({ kind: "agent", sequence: 1, streamId: "new-server", event: { type: "message_update", message: message("assistant", "恢复后的回答", timestamp + 102) } })
+  broadcast({ kind: "agent", sequence: 2, streamId: "new-server", event: { type: "agent_end" } })
+  await page.waitForFunction(() => document.querySelector("#send-btn")?.textContent === "发送")
+  assert.equal(await page.locator(".msg.agent").count(), 1)
+  assert.doesNotMatch(await page.locator("#messages").textContent(), /不应出现/)
+  assert.match(await page.locator("#messages").textContent(), /恢复后的回答/)
+
+  history = { path: "fixture.jsonl", userOffset: 0, before: null, messages: [message("user", "失败工具", timestamp + 200),
+    { role: "assistant", timestamp: timestamp + 201, content: [{ type: "toolCall", id: "failed-summary", name: "bash", arguments: { command: "fixture" } }] },
+    { role: "toolResult", toolCallId: "failed-summary", isError: true, content: [{ type: "text", text: "连接超时\n完整日志内容" }] }] }
+  await page.evaluate(() => window.SapBuddy.loadHistory("fixture.jsonl"))
+  assert.match(await page.locator(".bu-tool-group > summary").textContent(), /1 次失败/)
+  assert.equal(await page.locator(".bu-tool").count(), 0)
+  await page.locator(".bu-tool-group > summary").click()
+  await page.locator(".bu-tool > summary").click()
+  await page.locator(".bu-tool-detail .bu-tool-error-summary").waitFor()
+  assert.equal(await page.locator(".bu-tool-detail .bu-tool-error-summary").textContent(), "连接超时")
+  assert.equal(await page.locator(".bu-tool pre").count(), 0)
+  await page.getByRole("button", { name: "查看完整输入与错误" }).click()
+  assert.match(await page.locator(".bu-tool-result").textContent(), /完整日志内容/)
+  // Scroll follows only while at the bottom, including delayed layout growth.
+  const scrollTime = timestamp + 300
+  let scrollText = Array.from({ length: 90 }, (_, i) => `段落 ${i}：滚动回归内容。`).join("\n\n")
+  history = { path: "fixture.jsonl", userOffset: 0, before: null, isStreaming: true, messages: [message("user", "滚动测试", scrollTime), message("assistant", scrollText, scrollTime + 1)] }
+  await page.setViewportSize({ width: 1100, height: 720 })
+  await page.evaluate(() => window.SapBuddy.loadHistory("fixture.jsonl"))
+  const waitAtBottom = () => page.waitForFunction(() => {
+    const el = document.querySelector("#messages")
+    return el.scrollHeight - el.scrollTop - el.clientHeight <= 4 && !document.querySelector(".scroll-bottom-btn").classList.contains("show")
+  })
+  await waitAtBottom()
+  scrollText += "\n\n继续输出\n\n".repeat(20)
+  emit({ type: "message_update", message: message("assistant", scrollText, scrollTime + 1) })
+  await page.waitForFunction(() => document.querySelector(".reply-text")?.textContent.includes("继续输出"))
+  await waitAtBottom()
+  await page.locator("#messages").hover()
+  await page.mouse.wheel(0, -500)
+  await page.waitForFunction(() => document.querySelector(".scroll-bottom-btn").classList.contains("show"))
+  await page.waitForTimeout(150)
+  const pausedTop = await page.locator("#messages").evaluate(el => el.scrollTop)
+  scrollText += "\n\n上滚时新增内容\n\n".repeat(20)
+  emit({ type: "message_update", message: message("assistant", scrollText, scrollTime + 1) })
+  emit({ type: "agent_end" })
+  await page.waitForFunction(() => document.querySelector("#send-btn")?.textContent === "发送")
+  await page.waitForTimeout(100)
+  assert.ok(Math.abs(await page.locator("#messages").evaluate(el => el.scrollTop) - pausedTop) < 5, "finishing the reply must not steal the user's scroll position")
+  await page.locator(".scroll-bottom-btn").click()
+  await waitAtBottom()
+  // Directly returning the scrollbar to the bottom also resumes following.
+  await page.locator("#messages").evaluate(el => { el.scrollTop -= 300 })
+  await page.waitForFunction(() => document.querySelector(".scroll-bottom-btn").classList.contains("show"))
+  await page.locator("#messages").evaluate(el => { el.scrollTop = el.scrollHeight })
+  await waitAtBottom()
+  await page.locator(".reply-text").evaluate(el => { el.style.paddingBottom = "250px" })
+  await waitAtBottom()
+  await page.setViewportSize({ width: 1100, height: 600 })
+  await waitAtBottom()
+  // Reconnect refresh preserves the current reading position rather than forcing the bottom.
+  await page.locator("#messages").evaluate(el => { el.scrollTop = 500 })
+  await page.waitForFunction(() => document.querySelector(".scroll-bottom-btn").classList.contains("show"))
+  const readingTop = await page.locator("#messages").evaluate(el => el.scrollTop)
+  await page.evaluate(() => window.SapBuddy.loadHistory("fixture.jsonl", null, { preserveScroll: true }))
+  await page.waitForTimeout(100)
+  assert.ok(Math.abs(await page.locator("#messages").evaluate(el => el.scrollTop) - readingTop) < 5)
+
+  // Stop remains pending until the server responds, and failures remain retryable.
+  let releaseStop
+  await page.route("**/api/abort", async route => {
+    await new Promise(resolve => { releaseStop = resolve })
+    await route.fulfill({ json: { ok: true } })
+  })
+  await page.evaluate(() => window.SapBuddy.setStreaming(true))
+  await page.locator("#send-btn").click()
+  await page.waitForFunction(() => document.querySelector("#send-btn").textContent === "正在停止…")
+  assert.equal(await page.locator("#send-btn").isDisabled(), true)
+  assert.equal(await page.evaluate(() => window.SapBuddy.state.streaming), true)
+  releaseStop()
+  await page.waitForFunction(() => document.querySelector("#send-btn").textContent === "发送")
+  await page.unroute("**/api/abort")
+  await page.route("**/api/abort", route => route.fulfill({ status: 500, json: { error: "fixture stop failure" } }))
+  await page.evaluate(() => window.SapBuddy.setStreaming(true))
+  await page.locator("#send-btn").click()
+  await page.waitForFunction(() => document.querySelector("#send-btn").textContent === "停止" && !document.querySelector("#send-btn").disabled)
+  await page.evaluate(() => window.SapBuddy.setStreaming(false))
+  await page.unroute("**/api/abort")
+
+  // Failed pagination leaves existing content intact and offers a retry in place.
+  const originalReply = await page.locator(".reply-text").textContent()
+  await page.route("**/api/history?**", route => route.fulfill({ status: 500, json: { error: "fixture history failure" } }))
+  await page.evaluate(() => window.SapBuddy.loadHistory("fixture.jsonl", 1))
+  assert.match(await page.locator(".history-more").textContent(), /点击重试/)
+  assert.equal(await page.locator(".reply-text").textContent(), originalReply)
+  await page.unroute("**/api/history?**")
+  await page.locator(".history-more").click()
+  await page.waitForFunction(() => document.querySelector("#messages").textContent.includes("更早的问题"))
+
+  history = { path: "fixture.jsonl", before: null, userOffset: 0, messages: [message("user", "生成文件", scrollTime + 5),
+    { role: "assistant", timestamp: scrollTime + 6, content: [{ type: "toolCall", id: "artifact-ok", name: "write", arguments: { path: "~/.SapBuddy/output/docs/guide.md", content: "example" } }] },
+    { role: "toolResult", toolCallId: "artifact-ok", isError: false, content: [{ type: "text", text: "ok" }] }] }
+  await page.evaluate(() => window.SapBuddy.loadHistory("fixture.jsonl"))
+  await page.locator(".artifact-card").waitFor()
+  assert.equal(await page.locator(".artifact-name").textContent(), "docs/guide.md")
+  assert.match(await page.locator(".artifact-card a").getAttribute("href"), /download=1/)
+  await page.locator(".artifact-card").getByRole("button", { name: "预览", exact: true }).click()
+  await page.waitForFunction(() => document.querySelector("#preview-overlay").classList.contains("open"))
+  await page.locator("#preview-close").click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true)
+  // Every saved desktop fold state must keep the chat full width on narrow screens.
+  for (const width of [390, 720, 840, 900]) {
+    await page.setViewportSize({ width, height: 844 })
+    for (const left of [false, true]) for (const right of [false, true]) {
+      await page.evaluate(({ left, right }) => {
+        const app = document.querySelector("#app")
+        app.classList.toggle("left-collapsed", left)
+        app.classList.toggle("right-collapsed", right)
+      }, { left, right })
+      await page.locator("#left-toggle").click()
+      await page.waitForFunction(() => !document.querySelector("#sidebar").inert)
+      assert.ok(await page.locator("#chat").evaluate(el => el.getBoundingClientRect().width >= window.innerWidth - 2))
+      assert.ok(await page.locator("#input-card").evaluate(el => el.getBoundingClientRect().width > 250))
+      await page.locator(".panel-backdrop").click({ position: { x: width - 10, y: 400 } })
+      assert.equal(await page.locator("#left-toggle").getAttribute("aria-expanded"), "false")
+      await page.locator("#right-toggle").click()
+      await page.waitForFunction(() => !document.querySelector("#right-panel").inert)
+      assert.ok(await page.locator("#chat").evaluate(el => el.getBoundingClientRect().width >= window.innerWidth - 2))
+      await page.keyboard.press("Escape")
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.locator("#left-toggle").click()
+  await page.waitForFunction(() => !document.querySelector("#sidebar").inert)
+  assert.ok(await page.locator("#chat").evaluate(el => el.getBoundingClientRect().width > 600))
   assert.deepEqual(errors, [])
 })
