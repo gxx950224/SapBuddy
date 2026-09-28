@@ -5,6 +5,8 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
+if (process.env.SAPBUDDY_REQUIRE_BROWSER_TESTS && !process.env.SAPBUDDY_PLAYWRIGHT) throw new Error("Release checks require Playwright; run npm run test:release")
+
 test("question submission retries, retires the card and preserves composer draft", { skip: !process.env.SAPBUDDY_PLAYWRIGHT }, async t => {
   const { chromium } = await import(pathToFileURL(process.env.SAPBUDDY_PLAYWRIGHT))
   const root = fileURLToPath(new URL("../src/web/public/", import.meta.url))
@@ -18,7 +20,7 @@ test("question submission retries, retires the card and preserves composer draft
   })
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve))
   t.after(() => { server.closeAllConnections(); server.close() })
-  const browser = await chromium.launch({ headless: true, channel: "msedge" })
+  const browser = await chromium.launch({ headless: true, ...(process.env.SAPBUDDY_CHROMIUM_PATH ? { executablePath: process.env.SAPBUDDY_CHROMIUM_PATH } : {}) })
   t.after(() => browser.close())
   const page = await browser.newPage()
   let fail = true

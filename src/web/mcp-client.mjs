@@ -8,6 +8,7 @@ import http from "node:http"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { createHash } from "node:crypto"
 
 export const PROJECT_MCP_FILE = path.join(os.homedir(), ".SapBuddy", "mcp.json")
 export const GLOBAL_MCP_FILE = path.join(os.homedir(), ".pi", "agent", "mcp.json")
@@ -54,77 +55,96 @@ export function saveMcpServers(servers) {
   } catch { /* 全局不可写时忽略（项目配置已保存） */ }
 }
 
-/** 一次 JSON-RPC 请求（兼容 JSON 与 SSE 响应）
- *  timeoutMs：建立连接 + 等首个响应头的超时。连不上的服务器（内网 SAP 离线等）快速失败，
- *  避免阻塞 agent 初始化 / 对话。收到响应头后取消计时，不误杀慢的数据流。 */
-function rpcRequest(urlStr, server, method, params, id, timeoutMs = 5000) {
+const sessions = new Map()
+function serverKey(server) { return createHash("sha256").update(JSON.stringify(server)).digest("hex") }
+
+/** Absolute deadline includes DNS, headers and response body. SSE resolves on the matching RPC id. */
+export function rpcRequest(urlStr, server, method, params, id, { signal, timeoutMs = 5000 } = {}) {
   return new Promise((resolve, reject) => {
     let u
-    try { u = new URL(urlStr) } catch { reject(new Error(`无效的 URL: ${urlStr}`)); return }
-    const headers = {
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    }
-    for (const [k, v] of Object.entries(server.headers ?? {})) headers[k] = String(v)
+    try { u = new URL(urlStr); signal?.throwIfAborted() } catch (error) { reject(error); return }
+    if (!["http:", "https:"].includes(u.protocol)) { reject(new Error("无效的 MCP URL 协议")); return }
+    const key = serverKey(server)
+    const headers = { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...server.headers }
+    if (method !== "initialize" && sessions.has(key)) headers["Mcp-Session-Id"] = sessions.get(key)
+    if (method !== "initialize") headers["MCP-Protocol-Version"] = "2025-03-26"
     const body = JSON.stringify({ jsonrpc: "2.0", id, method, params })
-    const mod = u.protocol === "http:" ? http : https
-    const req = mod.request(
-      {
-        hostname: u.hostname,
-        port: u.port || (u.protocol === "http:" ? 80 : 443),
-        path: u.pathname + u.search,
-        method: "POST",
-        headers: { ...headers, "Content-Length": Buffer.byteLength(body) },
-        // 默认信任自签名证书（内网 SAP 服务器常见），配置 tls.rejectUnauthorized=true 才严格校验
-        rejectUnauthorized: server.tls?.rejectUnauthorized === true,
-      },
-      (res) => {
-        req.setTimeout(0) // 已收到响应头，连接阶段结束，取消计时
-        let data = ""
-        res.setEncoding("utf8")
-        res.on("data", (c) => { data += c })
-        res.on("end", () => {
-          try {
-            const ct = String(res.headers["content-type"] || "")
-            if (ct.includes("text/event-stream")) {
-              // SSE：逐行解析 data: {...}
-              let json = ""
-              for (const line of data.split("\n")) {
-                const m = line.match(/^data:\s*(.*)$/)
-                if (m) json += m[1]
-              }
-              if (json) resolve({ status: res.statusCode, body: JSON.parse(json) })
-              else resolve({ status: res.statusCode, body: null })
-            } else {
-              resolve({ status: res.statusCode, body: data ? JSON.parse(data) : null })
-            }
-          } catch (e) {
-            reject(new Error(`响应解析失败 (HTTP ${res.statusCode}): ${data.slice(0, 200)}`))
-          }
-        })
+    let settled = false, response, timer
+    const finish = (error, value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      signal?.removeEventListener("abort", abort)
+      if (error) reject(error)
+      else resolve(value)
+      response?.destroy()
+      req.destroy()
+    }
+    const abort = () => finish(signal?.reason ?? new Error("MCP 请求已取消"))
+    const req = (u.protocol === "http:" ? http : https).request(u, {
+      method: "POST", headers: { ...headers, "Content-Length": Buffer.byteLength(body) },
+      rejectUnauthorized: server.tls?.rejectUnauthorized === true,
+    }, res => {
+      response = res
+      if (res.headers["mcp-session-id"]) sessions.set(key, String(res.headers["mcp-session-id"]))
+      if (id === undefined && [200, 202, 204].includes(res.statusCode)) { finish(null, { status: res.statusCode, body: null }); return }
+      const sse = String(res.headers["content-type"]).includes("text/event-stream")
+      let data = "", bytes = 0
+      const accept = json => {
+        if (json?.id !== id) return false
+        finish(null, { status: res.statusCode, body: json })
+        return true
       }
-    )
-    req.on("error", (e) => reject(new Error(`连接失败: ${e.message}`)))
-    req.setTimeout(timeoutMs, () => req.destroy(new Error(`连接超时（${timeoutMs}ms）`)))
-    req.write(body)
-    req.end()
+      res.setEncoding("utf8")
+      res.on("data", chunk => {
+        bytes += Buffer.byteLength(chunk)
+        if (bytes > 16 * 1024 * 1024) { finish(new Error("MCP 响应超过 16 MB 限制")); return }
+        data += chunk
+        if (!sse) return
+        data = data.replace(/\r\n/g, "\n")
+        let boundary
+        while ((boundary = data.indexOf("\n\n")) >= 0) {
+          const event = data.slice(0, boundary); data = data.slice(boundary + 2)
+          const payload = event.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trimStart()).join("\n")
+          if (!payload) continue
+          try { if (accept(JSON.parse(payload))) return } catch { finish(new Error("MCP SSE 响应解析失败")); return }
+        }
+      })
+      res.on("end", () => {
+        if (settled) return
+        try {
+          if (sse) throw new Error("MCP 流结束但未收到对应请求的结果")
+          finish(null, { status: res.statusCode, body: data ? JSON.parse(data) : null })
+        } catch (error) { finish(error) }
+      })
+      res.on("error", error => finish(error))
+      res.on("aborted", () => finish(new Error("MCP 响应连接中断")))
+    })
+    req.on("error", error => finish(error))
+    timer = setTimeout(() => finish(new Error(`MCP 请求超时（${timeoutMs}ms）`)), timeoutMs)
+    signal?.addEventListener("abort", abort, { once: true })
+    if (signal?.aborted) abort()
+    else req.end(body)
   })
 }
 
 /** 连接测试：initialize + tools/list，返回状态摘要 */
-export async function testServer(name, server) {
+export async function testServer(name, server, options = {}) {
+  const deadline = AbortSignal.timeout(15_000)
+  options = { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline }
   try {
     const init = await rpcRequest(server.url, server, "initialize", {
       protocolVersion: "2025-03-26",
       capabilities: {},
       clientInfo: { name: "sapbuddy", version: "2.0.0" },
-    }, 1)
+    }, 1, options)
     if (init.status !== 200 && init.status !== 202) {
       return { name, url: server.url, connected: false, tools: [], error: `HTTP ${init.status}` }
     }
     // 通知已初始化（无 id）
-    await rpcRequest(server.url, server, "notifications/initialized", {}, undefined).catch(() => undefined)
-    const tl = await rpcRequest(server.url, server, "tools/list", {}, 2)
+    await rpcRequest(server.url, server, "notifications/initialized", {}, undefined, options).catch(() => undefined)
+    const tl = await rpcRequest(server.url, server, "tools/list", {}, 2, options)
+    if (tl.body?.error || !Array.isArray(tl.body?.result?.tools)) throw new Error("MCP tools/list 失败")
     const tools = (tl.body?.result?.tools ?? []).map((t) => ({
       name: String(t.name ?? ""),
       description: String(t.description ?? "").slice(0, 200),
@@ -137,11 +157,11 @@ export async function testServer(name, server) {
 }
 
 /** 调用 MCP 工具 */
-export async function callMcpTool(server, toolName, args) {
+export async function callMcpTool(server, toolName, args, options = {}) {
   const res = await rpcRequest(server.url, server, "tools/call", {
     name: toolName,
     arguments: args ?? {},
-  }, Date.now())
+  }, Date.now(), { timeoutMs: 120_000, ...options })
   const r = res.body?.result
   if (!r) throw new Error(`MCP 工具 ${toolName} 无结果 (HTTP ${res.status})`)
   if (r.isError) {

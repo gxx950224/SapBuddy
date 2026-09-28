@@ -1,3 +1,5 @@
+import { installHarnessMetrics } from "./harness-metrics.mjs"
+import { runtimeSettings, budgetedModel, installToolDiscovery, installModelBudget } from "./runtime-policy.mjs"
 /**
  * Agent 内核：pi SDK 会话管理 + 注册 41 个 SAP 工具
  */
@@ -224,7 +226,7 @@ export function ensureRuntimeFiles() {
 export async function createAgent(opts = {}) {
   ensureRuntimeFiles()
   // 动态 import 工具注册层（编译产物 dist/sap-tools/register.js）
-  const { registerSapTools } = await import(
+  const { registerSapTools, listToolNames } = await import(
     pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href
   )
   const { installWriteGate } = await import(
@@ -253,19 +255,25 @@ export async function createAgent(opts = {}) {
     model = undefined
   }
 
+  model = budgetedModel(settings, model)
+  const sdkSettings = SettingsManager.inMemory(runtimeSettings(settings, model))
   // 系统提示/记忆：主目录 ~/.SapBuddy/prompts 优先（用户定制），不存在回退包内默认
   const promptFile = (name) => { const f = path.join(CONFIG_DIR, "prompts", name); return fs.existsSync(f) ? f : path.join(ROOT, name) }
   const loader = new DefaultResourceLoader({
     cwd: ROOT,
     agentDir: CONFIG_DIR,
-    settingsManager: SettingsManager.inMemory(),
+    settingsManager: sdkSettings,
     appendSystemPrompt: [promptFile("SYSTEM.md"), promptFile("Memory.md")], // 与 CLI 一致：主目录优先，回退包内
     extensionFactories: [
       (pi) => {
         registerQuestionTool(pi)
+        installModelBudget(pi, settings)
+        installHarnessMetrics(pi, { file: path.join(CONFIG_DIR, "metrics", "runs.jsonl"), profile: settings.toolProfile || "all" })
         // 加载期直接注册（不能调 getAllTools 等 action method，registerTool 本身可用）
         try {
           const n = registerSapTools(pi)
+          const sapToolNames = listToolNames().map(t => t.name)
+          installToolDiscovery(pi, { ...settings, sapToolNames })
           console.log(`[sapbuddy] 已注册 ${n} 个 SAP 工具`)
           // 写操作人工确认：Web 模式 block 后通过回调通知 server 广播确认浮层
           installWriteGate(pi, {
@@ -312,7 +320,7 @@ export async function createAgent(opts = {}) {
     model,
     thinkingLevel: settings.defaultThinkingLevel ?? "off",
     sessionManager,
-    settingsManager: SettingsManager.inMemory(),
+    settingsManager: sdkSettings,
   })
   return { session, settings, modelRuntime }
 }

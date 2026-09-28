@@ -48,10 +48,12 @@ export const searchObjectLinesTool = {
       const regex = args.isRegexp ? new RegExp(args.searchTerm, "i") : null
 
       const hits: string[] = []
-      for (let i = 0; i < lines.length && hits.length < max; i++) {
+      let matches = 0
+      for (let i = 0; i < lines.length && matches < max; i++) {
         const line = lines[i]
         const matched = regex ? regex.test(line) : line.toUpperCase().includes(args.searchTerm.toUpperCase())
         if (!matched) continue
+        matches++
         const start = Math.max(0, i - context)
         const end = Math.min(lines.length - 1, i + context)
         hits.push(`--- 第 ${i + 1} 行 ---`)
@@ -64,7 +66,7 @@ export const searchObjectLinesTool = {
         return `在 ${args.objectName} 中未找到 "${args.searchTerm}"${args.isRegexp ? "（正则）" : ""}。` +
           `可尝试：更短的关键词、或改用 isRegexp=true。`
       }
-      const limited = hits.length >= max ? `（达到上限 ${max}，建议细化搜索词）` : ""
+      const limited = matches >= max ? `（达到上限 ${max}，建议细化搜索词）` : ""
       return `在 ${args.objectName}（${lines.length} 行）中找到 ${hits.filter((h) => h.startsWith("---")).length} 处匹配${limited}:\n\n${hits.join("\n")}`
     } catch (err) {
       return toToolError(err)
@@ -85,7 +87,7 @@ export const getBatchLinesTool = {
           objectName: z.string().describe("对象名称"),
           objectType: z.string().optional().describe("对象类型，推荐提供以精确定位"),
           startLine: z.number().int().min(1).optional(),
-          lineCount: z.number().int().min(1).optional(),
+          lineCount: z.number().int().min(1).max(5000).optional().describe("默认 200 行，按返回提示继续分页"),
         })
       )
       .min(1)
@@ -105,6 +107,7 @@ export const getBatchLinesTool = {
             const { header, content } = sliceLines(source, req.startLine, req.lineCount)
             return `===== ${obj["adtcore:type"]} ${obj["adtcore:name"]}（${header}）=====\n${content}`
           } catch (err) {
+            toToolError(err)
             return `===== ${req.objectName} =====\n读取失败: ${err instanceof Error ? err.message : err}`
           }
         })
@@ -125,7 +128,7 @@ export const getObjectByUriTool = {
   inputSchema: z.object({
     uri: z.string().describe("ADT 对象 URI，如 /sap/bc/adt/oo/classes/zcl_my_class/source/main"),
     startLine: z.number().int().min(1).optional(),
-    lineCount: z.number().int().min(1).optional(),
+    lineCount: z.number().int().min(1).max(5000).optional().describe("默认 200 行，按返回提示继续分页"),
     connectionId: connectionIdSchema,
   }),
   async execute(args: { uri: string; startLine?: number; lineCount?: number; connectionId?: string }): Promise<string> {

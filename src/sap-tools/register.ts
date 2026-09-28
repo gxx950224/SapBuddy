@@ -1,3 +1,5 @@
+import { runToolExecution, classifyFailure } from "./execution.js"
+import { boundToolResult } from "./result.js"
 /**
  * 工具注册适配层：把 41 个 SAP 工具（zod schema）注册为 pi 的 customTools
  * 直接函数调用，不依赖 MCP 框架
@@ -582,6 +584,10 @@ function jsonSchemaToTypeboxCompact(schema: z.ZodType): unknown {
 /** 注册全部 SAP 工具到 pi（扩展加载期即可调用 registerTool） */
 export function registerSapTools(pi: ExtensionAPI): number {
   let registered = 0
+  // SDK ignores execute().isError; tool_result is the supported final status hook.
+  pi.on?.("tool_result", event => {
+    if ((event.details as { error?: unknown })?.error) return { isError: true }
+  })
   // 加载期不能调 getAllTools（action method），直接注册（同名前缀工具极少冲突）
   for (const t of tools) {
     pi.registerTool({
@@ -591,7 +597,7 @@ export function registerSapTools(pi: ExtensionAPI): number {
 connectionId 仅允许当前启用连接；省略时使用当前连接。禁止自动切换其他系统。`,
       promptSnippet: "SAP ABAP 工具（搜索/读取/分析/编辑 SAP 对象、执行 ATC/单测/SQL 等）",
       parameters: jsonSchemaToTypeboxCompact(t.inputSchema) as never,
-      async execute(_toolCallId, params) {
+      async execute(_toolCallId, params, signal): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, unknown>; isError?: boolean }> {
         try {
           const p = (params ?? {}) as Record<string, unknown>
           // 连接变更强制重确认：连接配置被修改后，除 get_connected_systems 外一律拒绝，
@@ -599,7 +605,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           if (t.name !== "get_connected_systems" && isConnectionDirty()) {
             return {
               content: [{ type: "text" as const, text: `⛔ SAP 连接配置已变更，必须先调用 get_connected_systems 确认当前连接，然后再重试本操作。` }],
-              details: {},
+              details: { error: { code: "CONNECTION_CHANGED", retryable: false } },
               isError: true,
             }
           }
@@ -615,7 +621,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
                     type: "text" as const,
                     text: `⛔ 代码级规则拦截（不依赖 AI 自觉，写前硬校验）：\n${violations.join("\n")}\n\n请修正后重试：硬编码中文 → 消息类/文本元素；自建结构/表字段裸内置类型 → DDIC 数据元素（找不到则创建 Z 元素 + 域）。`,
                   }],
-                  details: {},
+                  details: { error: { code: "VALIDATION", retryable: false } },
                   isError: true,
                 }
               }
@@ -627,18 +633,21 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           // - 读工具直接执行，由客户端包装层的读闸门限制每连接并发读 ≤ READ_CONCURRENCY
           //   （防止一次分析几十个对象时对 SAP 打出请求洪峰）
           const connId = await resolveConnectionId(p.connectionId as string | undefined)
-          const text = t.write
+          const outcome = await runToolExecution(signal, async () => t.write
             ? await withConnMutex(connId, async () => {
                 // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
                 await assertDevClient(connId)
                 return t.execute({ ...p, connectionId: connId })
               })
-            : await t.execute({ ...p, connectionId: connId })
+            : await t.execute({ ...p, connectionId: connId }))
+          const text = outcome.value
+          const failure = outcome.failures[0] ?? (/^(⛔|未找到 ABAP 对象|工具执行失败|SAP 工具 .*执行失败)/.test(text) ? classifyFailure(text) : undefined)
           // 写操作成功执行 → 记审计（谁/何时/改了哪个对象）
-          if (t.write) {
+          if (t.write && !failure) {
             appendAudit({ event: "executed", tool: t.name, objects: extractObjectNames(p), connectionId: connId })
           }
-          return { content: [{ type: "text" as const, text }], details: {} }
+          const bounded = await boundToolResult(text)
+          return { content: [{ type: "text" as const, text: bounded.text }], details: { ...bounded.details, ...(failure ? { error: { ...failure, retryable: !t.write && failure.retryable } } : {}) }, ...(failure ? { isError: true } : {}) }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           if (t.write) {
@@ -646,7 +655,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           }
           return {
             content: [{ type: "text" as const, text: `SAP 工具 ${t.name} 执行失败: ${msg}` }],
-            details: {},
+            details: { error: { ...classifyFailure(err), retryable: !t.write && classifyFailure(err).retryable } },
             isError: true,
           }
         }

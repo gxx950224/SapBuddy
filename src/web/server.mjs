@@ -1,3 +1,5 @@
+import { EventBroadcaster, sendSse } from "./event-broadcaster.mjs"
+import { ContextStats } from "./context-stats.mjs"
 /**
  * SapBuddy Web Server — 本地 Web 版（完整 API）
  *
@@ -72,15 +74,7 @@ let lastUpdateError = null
 /** MCP 服务器状态缓存（POST 保存时更新，GET 轮询复用） */
 let mcpStatusCache = null
 
-/** 工具定义实际 token 估算（启动时算一次，替代硬编码 8000）
- * zod 对象 JSON 约 38KB → 紧凑 JSON Schema 约 15.3KB（×0.4）→ /3.5 ≈ token */
-let EXT_TOKENS = 8000
-try {
-  const { tools } = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "tools", "index.js")).href)
-  const schemaChars = tools.reduce((a, t) => a + JSON.stringify(t.inputSchema || {}).length, 0)
-  const descChars = tools.reduce((a, t) => a + String(t.description || "").length + String(t.title || "").length, 0)
-  EXT_TOKENS = Math.max(1000, Math.round(schemaChars * 0.4 / 3.5 + descChars / 3.5))
-} catch { /* 保持 8000 */ }
+const contextStats = new ContextStats()
 
 /** pi SDK 懒加载（对话占用用 buildSessionContext/estimateTokens 做真实估算） */
 let _sdkModule = null
@@ -98,6 +92,8 @@ let liveAssistant = null
 let retryState = null
 let busy = false
 let abortPromise = null
+let initializationPromise = null
+let stopRequested = false
 let rebuildPromise = null  // 在途重建任务（新建/切换懒重建，防并发双开 agent）
 
 function sanitizeWriteValue(value, depth = 0) {
@@ -132,12 +128,14 @@ async function ensureAgent() {
   // 有后台重建在途 → 等它完成（新建/切换后立即发消息的场景）
   if (rebuildPromise) return rebuildPromise
   if (agent) return agent
-  const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
-  // 启动后首次对话：默认新建会话（不自动续最近历史会话；用户主动点历史会话才切换）
-  agent = await createAgent({ onWriteBlocked: (info) => notifyWriteBlocked(info) })
-  session = agent.session
-  attachStreaming(session)
-  return agent
+  if (!initializationPromise) initializationPromise = (async () => {
+    const { createAgent } = await import(pathToFileURL(path.join(ROOT, "src", "agent-core.mjs")).href)
+    agent = await createAgent({ onWriteBlocked: info => notifyWriteBlocked(info) })
+    session = agent.session
+    attachStreaming(session)
+    return agent
+  })().finally(() => { initializationPromise = null })
+  return initializationPromise
 }
 
 /** 重建 agent 到指定会话文件。懒重建：新建/切换时后台触发，发消息时才真正等待完成。
@@ -204,12 +202,11 @@ function attachStreaming(s) {
 // ─── SSE ────────────────────────────────────────────────────────────────────
 const sseClients = new Set()
 let streamSequence = 0
-function broadcast(payload) {
+const eventBroadcaster = new EventBroadcaster(payload => {
   const data = `data: ${JSON.stringify({ ...payload, sequence: ++streamSequence, streamId: START_TS })}\n\n`
-  for (const res of sseClients) {
-    try { res.write(data) } catch { sseClients.delete(res) }
-  }
-}
+  sendSse(sseClients, data)
+})
+function broadcast(payload) { eventBroadcaster.publish(payload) }
 
 // ─── 工具函数 ───────────────────────────────────────────────────────────────
 function json(res, code, obj) {
@@ -390,12 +387,14 @@ const server = http.createServer(async (req, res) => {
       if (!text?.trim() && imgs.length === 0) return json(res, 400, { error: "text 不能为空" })
       if (busy || abortPromise) return json(res, 409, { error: "上一轮仍在处理中" })
       busy = true
+      stopRequested = false
       json(res, 200, { ok: true, ts: Date.now() })
       try {
         const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
         // 授权窗口：确认词/拒绝词统一处理（与扩展层 before_agent_start 同规则）
         if (text?.trim()) r.handleUserMessage?.(text.trim())
         const a = await ensureAgent()
+        if (stopRequested) return
         // 不自动切换模型：尊重用户手动选择的模型。发图时若当前模型不支持看图，
         // pi 会把图片降级占位（模型回复会体现看不到图），用户可在设置里主动换支持图片的模型。
         if (imgs.length > 0) {
@@ -423,10 +422,17 @@ const server = http.createServer(async (req, res) => {
     // Acknowledge only after the agent has actually stopped.
     if (p === "/api/abort" && req.method === "POST") {
       try {
-        if (!abortPromise) abortPromise = Promise.resolve().then(() => session?.abort?.()).then(() => {
-          busy = false
-          broadcast({ kind: "agent", event: { type: "agent_abort" }, ts: Date.now(), sessionFile: session?.sessionFile })
-        }).finally(() => { abortPromise = null })
+        if (!abortPromise) {
+          stopRequested = true
+          abortPromise = Promise.resolve().then(async () => {
+            if (initializationPromise) await initializationPromise.catch(() => {})
+            if (rebuildPromise) await rebuildPromise.catch(() => {})
+            await session?.abort?.()
+          }).then(() => {
+            busy = false
+            broadcast({ kind: "agent", event: { type: "agent_abort" }, ts: Date.now(), sessionFile: session?.sessionFile })
+          }).finally(() => { abortPromise = null })
+        }
         await abortPromise
         return json(res, 200, { ok: true })
       } catch (error) { return json(res, 500, { error: error.message }) }
@@ -437,11 +443,13 @@ const server = http.createServer(async (req, res) => {
       const { approved } = await readBody(req)
       if (busy || abortPromise) return json(res, 409, { error: "上一轮仍在处理中" })
       busy = true
+      stopRequested = false
       json(res, 200, { ok: true })
       try {
         const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
         if (approved) r.setWriteApprovalWindow() // 60 秒批准窗口：AI 重放写工具放行
         const a = await ensureAgent()
+        if (stopRequested) return
         await a.session.prompt(
           approved
             ? "用户已在界面确认允许执行本次写操作，请继续完成（重试刚才被拦截的写工具调用）。"
@@ -481,11 +489,9 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         const msg = String(e?.message || e)
         if (msg.includes("Nothing to compact")) {
-          // 保留最近 20000 tokens，超出部分才可压缩；对话太短时给出提示
-          const conv = (session?.agent?.state?.messages ?? []).reduce((a, m) => a + (m.usage?.input ?? 0) + (m.usage?.output ?? 0), 0)
           return json(res, 200, {
             success: false,
-            error: `对话内容太少（约 ${conv} tokens），无法压缩。需超过 20000 tokens（约 3-4 万字对话）才有可压缩的历史。`,
+            error: "当前可压缩的历史不足；系统会按当前上下文预算保留最近消息，请继续对话。",
           })
         }
         if (msg.includes("Already compacted")) {
@@ -500,78 +506,11 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { success: true, thinkingLevel: level })
     }
 
-    // 上下文统计（3s 缓存，避免每次悬浮重复读文件估算 tokens）
-    let ctxStatsCache = { ts: 0, body: null }
     if (p === "/api/context-stats" && req.method === "GET") {
-      if (Date.now() - ctxStatsCache.ts < 3000 && ctxStatsCache.body) {
-        // 对话消息数变化时仍需刷新：消息数不一致则重算
-        const msgsNow = session?.agent?.state?.messages?.length ?? 0
-        if (ctxStatsCache.msgs === msgsNow) return json(res, 200, ctxStatsCache.body)
-      }
-      const msgs = session?.agent?.state?.messages ?? []
-      // 历史累计消耗（input/output 含重复计数的历史输入，仅作参考；当前占用看 conversation）
-      const usage = msgs.reduce((a, m) => ({ input: a.input + (m.usage?.input ?? 0), output: a.output + (m.usage?.output ?? 0) }), { input: 0, output: 0 })
-      const t = (txt) => Math.max(1, Math.ceil(String(txt ?? "").length / 3))
-      let agents = 0, systemMd = 0, memory = 0, skills = 0
-      const readPrompt = (name) => { try { return t(fs.readFileSync(path.join(USER_PI, "prompts", name), "utf8")) } catch { try { return t(fs.readFileSync(path.join(ROOT, name), "utf8")) } catch { return 0 } } }
-      try { agents = readPrompt("AGENTS.md") } catch {}
-      try { systemMd = readPrompt("SYSTEM.md") } catch {}
-      // 记忆：用户真实记忆（主目录优先，回退项目根）
-      try { memory = t(fs.readFileSync(path.join(USER_PI, "prompts", "Memory.md"), "utf8")) } catch { try { memory = t(fs.readFileSync(path.join(ROOT, "Memory.md"), "utf8")) } catch {} }
-      // 技能：只统计各技能目录的 SKILL.md（框架实际注入上下文的部分），用户目录优先，同名去重
-      {
-        const seen = new Set()
-        for (const base of [path.join(USER_PI, "skills"), path.join(ROOT, "defaults", "skills")]) {
-          let names = []
-          try { names = fs.readdirSync(base).filter((x) => { try { return fs.statSync(path.join(base, x)).isDirectory() } catch { return false } }) } catch { continue }
-          for (const name of names) {
-            if (seen.has(name)) continue
-            seen.add(name)
-            try { skills += t(fs.readFileSync(path.join(base, name, "SKILL.md"), "utf8")) } catch {}
-          }
-        }
-      }
-      // MCP 工具占用：注册时累计的 schema 估算
-      let mcp = 0
-      try {
-        const { getMcpTokensEstimate } = await import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
-        mcp = getMcpTokensEstimate()
-      } catch { /* 未注册则 0 */ }
-      // 对话占用：当前可见消息的真实 token 估算（非 usage 累加，避免历史重复计数虚高）
-      let conversation = 0
-      try {
-        const sm = agent?.session?.sessionManager
-        if (sm) {
-          const sdk = await loadPiSdk()
-          const ctx = sdk.buildSessionContext(sm.getEntries())
-          conversation = ctx.messages.reduce((a, m) => a + sdk.estimateTokens(m), 0)
-        }
-      } catch { /* 会话未就绪则 0 */ }
-      const piAgent = 1500
-      const extensions = EXT_TOKENS
-      // 设置读取（主目录优先 → 项目根 .SapBuddy 兼容旧版）
-      let cfg = {}
-      for (const f of [path.join(USER_PI, "settings.json"), path.join(ROOT, ".SapBuddy", "settings.json")]) {
-        try { cfg = JSON.parse(fs.readFileSync(f, "utf8").toString()); break } catch { /* 继续 */ }
-      }
-      const max0 = cfg.contextTokens ?? 200000
-      const max = Number(max0) || 200000
-      const total = piAgent + extensions + mcp + agents + systemMd + memory + skills + conversation
-      const pct = Math.min(999, Math.round(total / max * 100))
-      const cache = 0
-      const statsBody = { success: true, data: {
-        usage, messageCount: msgs.length,
-        total, max, pct, remaining: Math.max(0, max - total),
-        cache, pctCache: 0,
-        piAgent, extensions, mcp, agents, systemMd, memory, skills, conversation,
-        pctPiAgent: Math.round(piAgent / max * 100), pctExtensions: Math.round(extensions / max * 100), pctMcp: 0,
-        pctAgents: Math.round(agents / max * 100), pctSystemMd: Math.round(systemMd / max * 100), pctMemory: Math.round(memory / max * 100), pctSkills: Math.round(skills / max * 100), pctConv: Math.round(conversation / max * 100),
-      } }
-      ctxStatsCache = { ts: Date.now(), body: statsBody, msgs: msgs.length }
-      return json(res, 200, statsBody)
+      const sdk = await loadPiSdk()
+      return json(res, 200, contextStats.get(session, sdk.estimateTokens))
     }
 
-    // 会话状态（status.js 契约）
     if (p === "/api/state" && req.method === "GET") {
       const a = agent
       let model = a?.session?.model
@@ -931,6 +870,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === "/api/settings" && req.method === "POST") {
       const body = await readBody(req)
+      if (busy || abortPromise) return json(res, 409, { error: "请等待当前回答结束后再修改模型设置" })
       try {
         const cur = JSON.parse(fs.readFileSync(settingsFile, "utf8"))
         if (Object.hasOwn(body, "deleteProvider")) {
@@ -1033,7 +973,11 @@ const server = http.createServer(async (req, res) => {
         const next = { ...cur }
         if (body.provider) next.defaultProvider = body.provider
         if (body.model) next.defaultModel = body.model
-        if (body.contextTokens) next.contextTokens = Number(body.contextTokens)
+        if (body.contextTokens !== undefined) {
+          const value = Number(body.contextTokens)
+          if (!Number.isInteger(value) || value < 8192 || value > 2_000_000) return json(res, 400, { error: "上下文预算须为 8192 至 2000000 的整数" })
+          next.contextTokens = value
+        }
         if (body.thinkingLevel) next.defaultThinkingLevel = body.thinkingLevel
         fs.writeFileSync(settingsFile, JSON.stringify(next, null, 2))
         if (body.apiKey) {
@@ -1042,7 +986,8 @@ const server = http.createServer(async (req, res) => {
           auth[next.defaultProvider ?? "deepseek"] = { type: "api_key", key: body.apiKey }
           fs.writeFileSync(authFile, JSON.stringify(auth, null, 2))
         }
-        maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, next.defaultProvider, next.defaultModel)
+        if (cur.contextTokens !== next.contextTokens && session?.sessionFile) await rebuildAgent(session.sessionFile)
+        else maybeRebuildAgent(cur.defaultProvider, cur.defaultModel, next.defaultProvider, next.defaultModel)
         return json(res, 200, { success: true })
       } catch (e) { return json(res, 500, { error: e.message }) }
     }
@@ -1139,6 +1084,7 @@ const ids = models.map((m) => m.id)
     if (p === "/api/mcp") {
       const { loadMcpServersAll, saveMcpServers, testServer } = await import(pathToFileURL(path.join(ROOT, "src", "web", "mcp-client.mjs")).href)
       if (req.method === "POST") {
+        if (busy || abortPromise) return json(res, 409, { error: "请等待当前操作结束后修改 MCP 配置" })
         const body = await readBody(req)
         const servers = (body && (body.mcpServers ?? body.config ?? body)) || {}
         saveMcpServers(servers)
@@ -1152,7 +1098,7 @@ const ids = models.map((m) => m.id)
         // 配置变化 → 清预热缓存并重新预热 + 重建 agent（MCP 工具动态注册生效）
         try {
           const mr = await import(pathToFileURL(path.join(ROOT, "src", "sap-tools", "mcp-register.mjs")).href)
-          mr.resetMcpCache?.()
+          await mr.resetMcpCache?.(status.filter(st => servers[st.name]?.disabled !== true))
         } catch {}
         try { await rebuildAgent(session?.sessionFile) } catch {}
         return json(res, 200, { success: true, config: servers, status })

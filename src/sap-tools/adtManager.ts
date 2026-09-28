@@ -1,3 +1,5 @@
+import { executionSignal, checkCancelled, runCleanup, waitForReady } from "./execution.js"
+import { createManagedAdtClient } from "./http-client.js"
 /**
  * ADT 客户端池：按连接 ID 懒创建 ADTClient，复用连接，统一错误处理
  * 认证：basic（用户名/密码）| oauth（S/4HANA OAuth client credentials）
@@ -51,7 +53,7 @@ function pump(g: ConnGate): void {
     g.waitingWrites.shift()!()
     return
   }
-  while (!g.writer && g.readers < READ_CONCURRENCY && g.waitingReads.length > 0) {
+  while (!g.writer && g.waitingWrites.length === 0 && g.readers < READ_CONCURRENCY && g.waitingReads.length > 0) {
     g.readers++
     g.waitingReads.shift()!()
   }
@@ -60,31 +62,35 @@ function pump(g: ConnGate): void {
 /** 闸门默认超时（与 ClientOptions.timeout 对齐），超时未获锁直接报错，避免永久挂死 */
 const GATE_TIMEOUT_MS = 120_000
 
-function acquireRead(id: string, timeoutMs = GATE_TIMEOUT_MS): Promise<void> {
+function acquire(id: string, write: boolean, timeoutMs: number): Promise<void> {
+  const signal = executionSignal()
+  signal?.throwIfAborted()
   const g = gateFor(id)
-  if (!g.writer && g.readers < READ_CONCURRENCY) {
-    g.readers++
+  if (!g.writer && (write ? g.readers === 0 : g.readers < READ_CONCURRENCY && g.waitingWrites.length === 0)) {
+    if (write) g.writer = true
+    else g.readers++
     return Promise.resolve()
   }
   return new Promise((resolve, reject) => {
-    let settled = false
-    const onResolve = () => {
-      if (settled) return
-      settled = true
-      if (timer) clearTimeout(timer)
-      resolve()
+    const queue = write ? g.waitingWrites : g.waitingReads
+    const cleanup = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort) }
+    const ready = () => { cleanup(); resolve() }
+    const cancel = (error: unknown) => {
+      const index = queue.indexOf(ready)
+      if (index < 0) return
+      queue.splice(index, 1)
+      cleanup()
+      reject(error)
+      pump(g)
     }
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      // 从等待队列中移除自己，避免僵尸 resolve
-      const idx = g.waitingReads.indexOf(onResolve)
-      if (idx >= 0) g.waitingReads.splice(idx, 1)
-      reject(new Error(`读锁等待超时（${Math.round(timeoutMs / 1000)}s）：连接 ${id} 繁忙，请稍后重试`))
-    }, timeoutMs)
-    g.waitingReads.push(onResolve)
+    const abort = () => cancel(signal?.reason ?? new Error("操作已取消"))
+    const timer = setTimeout(() => cancel(new Error(`连接 ${id} 锁等待超时`)), timeoutMs)
+    queue.push(ready)
+    signal?.addEventListener("abort", abort, { once: true })
+    if (signal?.aborted) abort()
   })
 }
+function acquireRead(id: string, timeoutMs = GATE_TIMEOUT_MS): Promise<void> { return acquire(id, false, timeoutMs) }
 
 function releaseRead(id: string): void {
   const g = gateFor(id)
@@ -92,31 +98,7 @@ function releaseRead(id: string): void {
   pump(g)
 }
 
-function acquireWrite(id: string, timeoutMs = GATE_TIMEOUT_MS): Promise<void> {
-  const g = gateFor(id)
-  if (!g.writer && g.readers === 0) {
-    g.writer = true
-    return Promise.resolve()
-  }
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const onResolve = () => {
-      if (settled) return
-      settled = true
-      if (timer) clearTimeout(timer)
-      resolve()
-    }
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      // 从等待队列中移除自己，避免僵尸 resolve
-      const idx = g.waitingWrites.indexOf(onResolve)
-      if (idx >= 0) g.waitingWrites.splice(idx, 1)
-      reject(new Error(`写锁等待超时（${Math.round(timeoutMs / 1000)}s）：连接 ${id} 繁忙，请稍后重试`))
-    }, timeoutMs)
-    g.waitingWrites.push(onResolve)
-  })
-}
+function acquireWrite(id: string, timeoutMs = GATE_TIMEOUT_MS): Promise<void> { return acquire(id, true, timeoutMs) }
 
 function releaseWrite(id: string): void {
   const g = gateFor(id)
@@ -142,7 +124,7 @@ export function withConnMutex<T>(connId: string, fn: () => Promise<T>): Promise<
           .then(resolve, reject)
           .finally(() => releaseWrite(id))
       })
-    })
+    }, reject)
   })
 }
 
@@ -157,7 +139,7 @@ export function withReadLock<T>(connId: string, fn: () => Promise<T>): Promise<T
         .then(fn)
         .then(resolve, reject)
         .finally(() => releaseRead(id))
-    })
+    }, reject)
   })
 }
 
@@ -323,6 +305,7 @@ function wrapSelfHeal(client: ADTClient, connId: string): ADTClient {
       const m = String(prop)
       return (...args: unknown[]) => {
         const run = () => {
+          checkCancelled()
           try {
             const result = value.apply(target, args)
             if (result && typeof (result as Promise<unknown>).then === "function") {
@@ -338,6 +321,7 @@ function wrapSelfHeal(client: ADTClient, connId: string): ADTClient {
           }
         }
         // 读走并发闸门，写走独占闸门（写锁内再调读/写均可重入，不死锁）
+        if (["unLock", "dropSession", "logout"].includes(m)) return runCleanup(() => withConnMutex(connId, run))
         if (READ_METHODS.has(m)) return withReadLock(connId, run)
         return withConnMutex(connId, run)
       }
@@ -451,6 +435,7 @@ function createAdtClient(conf: ConnectionConfig): ADTClient {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: params,
+        signal: executionSignal() ?? AbortSignal.timeout(30_000),
       })
       if (!res.ok) {
         throw new Error(`OAuth token 获取失败: HTTP ${res.status} ${await res.text().catch(() => "")}`)
@@ -458,10 +443,10 @@ function createAdtClient(conf: ConnectionConfig): ADTClient {
       const json = (await res.json()) as { access_token: string }
       return json.access_token
     }
-    return new ADTClient(conf.url, conf.username, fetchBearer, conf.client, conf.language, options)
+    return createManagedAdtClient(conf.url, conf.username, fetchBearer, conf.client, conf.language, options)
   }
 
-  return new ADTClient(conf.url, conf.username, conf.password, conf.client, conf.language, options)
+  return createManagedAdtClient(conf.url, conf.username, conf.password, conf.client, conf.language, options)
 }
 
 export function getConnection(id: string): ConnectionConfig {
@@ -477,6 +462,7 @@ export function getConnection(id: string): ConnectionConfig {
 
 /** 获取（并懒初始化）ADTClient，自动 login */
 export function getClient(connId: string): Promise<ADTClient> {
+  checkCancelled()
   const conf = getConnection(connId)
 
   let managed = pool.get(conf.id)
@@ -491,7 +477,7 @@ export function getClient(connId: string): Promise<ADTClient> {
     pool.set(conf.id, managed)
   }
   // 包自愈代理：连接级故障自动标记不健康 → 下次调用重新 login
-  return managed.ready.then(() => wrapSelfHeal(managed!.client, conf.id))
+  return waitForReady(managed.ready).then(() => { checkCancelled(); return wrapSelfHeal(managed!.client, conf.id) })
 }
 
 /** 释放指定连接（用于测试/连接重置） */

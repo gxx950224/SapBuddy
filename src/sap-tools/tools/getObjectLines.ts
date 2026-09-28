@@ -3,6 +3,7 @@ import { z } from "zod"
 import { getClient } from "../adtManager.js"
 import {
   findObject,
+  sliceLines,
   readSourceSmart,
   resolveConnectionId,
   toToolError,
@@ -14,7 +15,7 @@ export const getObjectLinesTool = {
   name: "get_abap_object_lines",
   title: "Get ABAP Object Lines",
   description:
-    "读取 ABAP 对象的完整源码或指定行区间。支持类、报表、函数组、表等所有 ADT 对象。" +
+    "分页读取 ABAP 对象源码或指定行区间。支持类、报表、函数组、表等所有 ADT 对象。" +
     "函数组内部程序（SAPL<函数组> 主程序 / L<函数组><后缀> 如 LSDTXTOP、LZMYFGUXX、LCORU_SFD1）可直接按程序名读取，自动解析到函数组。" +
     "通过对象名称+类型定位（对象不存在时会先给出搜索建议）。" +
     "读取类时可用 methodName 只提取某个方法，节省上下文。",
@@ -27,7 +28,7 @@ export const getObjectLinesTool = {
       .optional()
       .describe("类对象专用：只提取该方法的实现代码（METHOD xxx. 到 ENDMETHOD.）"),
     startLine: z.number().int().min(1).optional().describe("起始行号（1 起），省略则从头开始"),
-    lineCount: z.number().int().min(1).max(5000).optional().describe("读取行数，省略则读取全部"),
+    lineCount: z.number().int().min(1).max(5000).optional().describe("读取行数，默认 200，最多 5000；结果提示下一页起始行"),
   }),
   async execute(args: {
     objectName: string
@@ -68,14 +69,10 @@ export const getObjectLinesTool = {
         const methodLines = lines.slice(startIdx, endIdx + 1)
         header = `方法 ${upper} 的源码（第 ${startIdx + 1}-${endIdx + 1} 行，共 ${methodLines.length} 行）:\n\n`
         content = methodLines.join("\n")
-      } else if (args.startLine !== undefined) {
-        const start = Math.max(1, args.startLine)
-        const count = args.lineCount ?? lines.length - start + 1
-        const slice = lines.slice(start - 1, start - 1 + count)
-        header = `${args.objectName} 源码（第 ${start}-${start + slice.length - 1} 行，共 ${lines.length} 行）:\n\n`
-        content = slice.join("\n")
       } else {
-        header = `${args.objectName}（${obj["adtcore:type"]}）完整源码，共 ${lines.length} 行:\n\n`
+        const page = sliceLines(source, args.startLine, args.lineCount)
+        header = `${args.objectName}（${obj["adtcore:type"]}）${page.header}:\n\n`
+        content = page.content
       }
 
       return header + content

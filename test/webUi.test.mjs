@@ -6,6 +6,8 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 
 // Optional browser suite: point SAPBUDDY_PLAYWRIGHT at playwright/index.mjs.
+if (process.env.SAPBUDDY_REQUIRE_BROWSER_TESTS && !process.env.SAPBUDDY_PLAYWRIGHT) throw new Error("Release checks require Playwright; run npm run test:release")
+
 test("Web streaming, pagination and message identity in a real browser", { skip: !process.env.SAPBUDDY_PLAYWRIGHT }, async t => {
   const { chromium } = await import(pathToFileURL(process.env.SAPBUDDY_PLAYWRIGHT).href)
   const root = fileURLToPath(new URL("../src/web/public/", import.meta.url))
@@ -44,6 +46,7 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
     }
     if (url.pathname.startsWith("/api/")) {
       let data = {}
+      if (url.pathname === "/api/context-stats") data = { ready: true, autoCompactPct: 80, total: 10000, max: 64000, pct: 16, remaining: 54000, piAgent: 1000, extensions: 2000, mcp: 0, agents: 1000, systemMd: 1000, memory: 1000, skills: 1000, conversation: 3000 }
       if (url.pathname === "/api/settings" && req.method === "GET") {
         data = { provider: "deepseek", model: "deepseek-flash", apiKey: "fixture-secret-key", providers: [{ name: "deepseek", hasKey: true, models: ["deepseek-flash", "deepseek-chat"] }] }
       }
@@ -157,6 +160,24 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
   await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "domcontentloaded" })
   measurementsMs.domContentLoaded = Number((performance.now() - firstScreenStarted).toFixed(2))
   await page.waitForSelector(".chat-welcome")
+  await page.locator("#compress-btn").hover()
+  await page.waitForSelector("#ctx-tooltip.visible")
+  const tipText = await page.locator("#ctx-tooltip").innerText()
+  for (const label of ["系统基础", "PI Agent 内置", "PI Extensions", "项目配置", "AGENTS.md", "SYSTEM.md", "Memory.md", "技能", "历史消息", "80%"] ) assert.ok(tipText.includes(label), label)
+  const tipBox = await page.locator("#ctx-tooltip").boundingBox()
+  assert.ok(tipBox.y >= 0 && tipBox.y + tipBox.height <= page.viewportSize().height)
+  await page.mouse.move(400, 100)
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("resource").some(e => e.name.includes("mermaid.min.js"))), false, "plain chat must not load Mermaid")
+  await page.evaluate(async () => {
+    const node = document.createElement("div")
+    node.id = "lazy-mermaid-fixture"
+    node.innerHTML = window.SapBuddy.renderMarkdown("```mermaid\nflowchart LR\n A-->B\n```", { streaming: false })
+    document.body.appendChild(node)
+    await Promise.all([window.SapBuddy.renderMermaid(node), window.SapBuddy.renderMermaid(node)])
+  })
+  await page.waitForSelector("#lazy-mermaid-fixture .mermaid svg")
+  assert.equal(await page.evaluate(() => performance.getEntriesByType("resource").filter(e => e.name.includes("mermaid.min.js")).length), 1)
+  await page.evaluate(() => document.querySelector("#lazy-mermaid-fixture").remove())
   measurementsMs.welcomeRendered = Number((performance.now() - firstScreenStarted).toFixed(2))
   await page.waitForFunction(() => document.querySelectorAll(".session-item").length === 50)
   measurementsMs.firstScreenWithFirstSessionPage = Number((performance.now() - firstScreenStarted).toFixed(2))

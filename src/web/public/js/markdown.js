@@ -154,11 +154,29 @@
    * 渲染容器内所有未渲染的 .mermaid 节点
    * 首次调用初始化 mermaid（theme 跟随页面主题），渲染失败降级显示源码
    */
+  let mermaidLoad = null;
+  App.loadMermaid = function() {
+    if (window.mermaid) return Promise.resolve(window.mermaid);
+    if (mermaidLoad) return mermaidLoad;
+    mermaidLoad = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "vendor/mermaid.min.js";
+      script.async = true;
+      script.onload = () => window.mermaid ? resolve(window.mermaid) : reject(new Error("Mermaid 未初始化"));
+      script.onerror = () => { script.remove(); reject(new Error("图表组件加载失败")); };
+      document.head.appendChild(script);
+    }).catch(error => { mermaidLoad = null; throw error; });
+    return mermaidLoad;
+  };
+
   App.renderMermaid = async function(container) {
     if (!container) return;
-    if (typeof window.mermaid === "undefined") return;
     const nodes = container.querySelectorAll(".mermaid[data-code]:not([data-rendered])");
     if (!nodes.length) return;
+    try { await App.loadMermaid(); } catch (error) {
+      for (const el of nodes) { el.title = error.message; }
+      return;
+    }
     try {
       // v10+：统一初始化并设置主题（跟随页面深色/浅色）
       if (window.mermaid.initialize) {
@@ -166,6 +184,8 @@
       }
     } catch { /* 忽略 */ }
     for (const el of nodes) {
+      if (el.dataset.rendered || el.dataset.rendering || !el.isConnected) continue;
+      el.dataset.rendering = "1";
       const raw = decodeURIComponent(el.dataset.code || "");
       const code = fixMermaid(raw);
       let err = null;
@@ -173,7 +193,7 @@
         // v10 parse 返回 Promise，必须 await 才能真正捕获语法错误
         await window.mermaid.parse(code);
       } catch (e) { err = e; }
-      if (err) { markMermaidError(el, raw, err); continue; }
+      if (err) { markMermaidError(el, raw, err); delete el.dataset.rendering; continue; }
       try {
         const id = "mermaid-" + Math.random().toString(36).slice(2, 8);
         const { svg } = await window.mermaid.render(id, code);
@@ -190,7 +210,7 @@
         attachMermaidToolbar(el, raw);
       } catch (e) {
         markMermaidError(el, raw, e);
-      }
+      } finally { delete el.dataset.rendering; }
     }
   };
 

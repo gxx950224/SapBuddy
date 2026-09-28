@@ -1,3 +1,4 @@
+import { recordFailure, checkCancelled } from "../execution.js"
 /** 工具公共辅助：搜索结果格式化、错误处理 */
 import { z } from "zod"
 import { SearchResult } from "abap-adt-api"
@@ -48,12 +49,23 @@ export function sanitizeErrMsg(err: unknown, max = 300): string {
 
 /** 格式化工具错误为 LLM 可读、可自愈的文本 */
 export function toToolError(err: unknown): string {
+  const failure = recordFailure(err)
   const message = sanitizeErrMsg(err)
-  return `工具执行失败: ${message}\n\n可能的原因：\n- 连接 ID 错误（先用 get_connected_systems 查看可用连接）\n- SAP 账号无权限或密码过期\n- 对象不存在或名称拼写错误（可先用 search_abap_objects 确认）`
+  const advice: Record<string, string> = {
+    PERMISSION: "请检查当前连接的账号权限；重复同一请求或切换系统不能解决此问题。",
+    NOT_FOUND: "请核对对象名称和类型，必要时执行一次精确搜索。",
+    CONNECTION: "当前连接暂不可用。只读请求可有限重试；写入结果不明确时先检查状态，不要重放写操作。禁止切换系统。",
+    TIMEOUT: "请求超时。先确认当前系统状态；写操作不得直接重放。",
+    CANCELLED: "操作已取消，停止后续请求。",
+    INVALID_ARGUMENT: "请修正参数后再执行。",
+  }
+  return `工具执行失败 [${failure.code}]: ${message}\n\n${advice[failure.code] || "请根据具体错误修正请求，不要重复相同的失败操作。"}`
+
 }
 
 /** 校验 connectionId 或取默认（当前启用连接，无标记则第一个） */
 export async function resolveConnectionId(connectionId?: string): Promise<string> {
+  checkCancelled()
   const { getConfig, activeConnectionId } = await import("../config.js")
   if (getConfig().connections.length === 0) throw new Error("没有配置任何 SAP 连接")
   const active = activeConnectionId()
@@ -343,14 +355,20 @@ export function sliceLines(
   lineCount?: number
 ): { header: string; content: string } {
   const lines = source.split("\n")
-  if (startLine === undefined) {
-    return { header: `完整源码，共 ${lines.length} 行`, content: source }
+  const start = Math.max(1, startLine ?? 1)
+  const count = Math.min(5000, Math.max(1, lineCount ?? 200))
+  const slice: string[] = []
+  let chars = 0
+  for (const line of lines.slice(start - 1, start - 1 + count)) {
+    if (slice.length && chars + line.length > 24_000) break
+    slice.push(line)
+    chars += line.length + 1
   }
-  const start = Math.max(1, startLine)
-  const count = lineCount ?? lines.length - start + 1
-  const slice = lines.slice(start - 1, start - 1 + count)
+  const end = start + slice.length - 1
+  const complete = start === 1 && end >= lines.length
   return {
-    header: `第 ${start}-${start + slice.length - 1} 行（共 ${lines.length} 行）`,
+    header: complete ? `完整源码，共 ${lines.length} 行`
+      : `第 ${start}-${end} 行（共 ${lines.length} 行）${end < lines.length ? `；继续读取请传 startLine=${end + 1}` : ""}`,
     content: slice.join("\n"),
   }
 }

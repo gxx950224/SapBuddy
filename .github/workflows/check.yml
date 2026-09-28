@@ -1,0 +1,20 @@
+name: Release checks
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  regression:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:release
+      - run: npm run bench:harness
+      - run: npm run bench:web
+      - run: npm pack --dry-run --ignore-scripts

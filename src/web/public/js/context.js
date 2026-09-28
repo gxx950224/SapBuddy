@@ -103,27 +103,32 @@
       const barW = d.pct > 100 ? 100 : d.pct;
       const barColor = d.pct > 90 ? "var(--err)" : d.pct > 70 ? "var(--warn,#f0ad4e)" : "var(--accent)";
       const tip = ensureCtxTooltip();
+      const hasBreakdown = Number.isFinite(d.piAgent) && Number.isFinite(d.extensions);
+      const row = (label, value) => {
+        const known = Number.isFinite(value);
+        const pct = d.max ? value / d.max * 100 : 0;
+        const share = pct > 0 && pct < 1 ? "<1%" : `${Math.round(pct)}%`;
+        return `<div class="ctx-row"><span class="ctx-label indent">${label}</span><span class="ctx-val">${known ? App.formatTokens(value) : "—"} ${known ? `<span class="ctx-pct">${share}</span>` : ""}</span></div>`;
+      };
       tip.innerHTML = `
-        <div class="ctx-header">上下文用量 <strong>${d.pct}%</strong>（${App.formatTokens(d.total)} / ${App.formatTokens(d.max)}）${d.cache ? `  <span class="ctx-cache">缓存 ${App.formatTokens(d.cache)}（${d.pctCache}%）</span>` : ""}</div>
+        <div class="ctx-header">上下文用量 <strong>${d.pct}%</strong>（${App.formatTokens(d.total)} / ${App.formatTokens(d.max)}）</div>
         <div class="ctx-bar"><div class="ctx-bar-fill" style="width:${barW}%;background:${barColor}"></div></div>
         <div class="ctx-section-title">系统基础</div>
         <div class="ctx-rows">
-          <div class="ctx-row"><span class="ctx-label indent">PI Agent 内置</span><span class="ctx-val">${App.formatTokens(d.piAgent)} <span class="ctx-pct">${d.pctPiAgent}%</span></span></div>
-          <div class="ctx-row"><span class="ctx-label indent">PI Extensions</span><span class="ctx-val">${App.formatTokens(d.extensions)} <span class="ctx-pct">${d.pctExtensions}%</span></span></div>
-          <div class="ctx-row"><span class="ctx-label indent">MCP 工具</span><span class="ctx-val">${App.formatTokens(d.mcp)} <span class="ctx-pct">${d.pctMcp}%</span></span></div>
+          ${row("PI Agent 内置", d.piAgent)}
+          ${row("PI Extensions", d.extensions)}
+          ${row("MCP 工具", d.mcp)}
         </div>
         <div class="ctx-section-title">项目配置</div>
         <div class="ctx-rows">
-          <div class="ctx-row"><span class="ctx-label indent">AGENTS.md</span><span class="ctx-val">${App.formatTokens(d.agents)} <span class="ctx-pct">${d.pctAgents}%</span></span></div>
-          <div class="ctx-row"><span class="ctx-label indent">SYSTEM.md</span><span class="ctx-val">${App.formatTokens(d.systemMd)} <span class="ctx-pct">${d.pctSystemMd}%</span></span></div>
-          <div class="ctx-row"><span class="ctx-label indent">Memory.md</span><span class="ctx-val">${App.formatTokens(d.memory)} <span class="ctx-pct">${d.pctMemory}%</span></span></div>
-          <div class="ctx-row"><span class="ctx-label indent">技能</span><span class="ctx-val">${App.formatTokens(d.skills)} <span class="ctx-pct">${d.pctSkills}%</span></span></div>
+          ${row("AGENTS.md", d.agents)}
+          ${row("SYSTEM.md", d.systemMd)}
+          ${row("Memory.md", d.memory)}
+          ${row("技能", d.skills)}
         </div>
         <div class="ctx-section-title">对话</div>
-        <div class="ctx-rows">
-          <div class="ctx-row"><span class="ctx-label indent">历史消息</span><span class="ctx-val">${App.formatTokens(d.conversation)} <span class="ctx-pct">${d.pctConv}%</span></span></div>
-        </div>
-        <div class="ctx-footer">剩余 ${App.formatTokens(d.remaining)} tokens</div>`;
+        <div class="ctx-rows">${row("历史消息", d.conversation)}</div>
+        <div class="ctx-footer">${d.ready ? `剩余 ${App.formatTokens(d.remaining)} tokens（估算）` : "会话启动后显示实际预算"}${!hasBreakdown ? "<br>后台版本未更新，请重启 SapBuddy 加载用量明细" : ""}${d.autoCompactPct === 80 ? "<br>上下文达到 80% 时自动压缩" : ""}</div>`;
       // 数据就绪后再显示（鼠标已移开则不弹）
       if (!_ctxHoverActive) return;
       showCtxTooltipAt(anchorRect || _ctxAnchorRect);
@@ -137,11 +142,11 @@
 
   function showCtxTooltipAt(anchorRect) {
     const tip = ensureCtxTooltip();
-    const H = 330; // tooltip 完整高度估算
-    let top = anchorRect.top - H - 8 >= 8 ? anchorRect.top - H - 8 : anchorRect.bottom + 8;
-    tip.style.left = Math.min(Math.max(8, anchorRect.left - 100), window.innerWidth - 260) + "px";
-    tip.style.top = Math.min(top, window.innerHeight - 16) + "px";
     tip.classList.add("visible");
+    const { width, height } = tip.getBoundingClientRect();
+    const top = anchorRect.top - height - 8 >= 8 ? anchorRect.top - height - 8 : anchorRect.bottom + 8;
+    tip.style.left = Math.max(8, Math.min(anchorRect.left - 100, window.innerWidth - width - 8)) + "px";
+    tip.style.top = Math.max(8, Math.min(top, window.innerHeight - height - 8)) + "px";
   }
 
   $("#compress-btn").addEventListener("mouseenter", (e) => {

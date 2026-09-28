@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { runtimeSettings } from "./src/runtime-policy.mjs"
 /**
  * SapBuddy CLI — SAP ABAP AI 助手（跨平台）
  *
@@ -269,7 +270,10 @@ async function cmdChat() {
   try {
     const sf = path.join(CONFIG_DIR, "settings.json")
     const sc = fs.existsSync(sf) ? JSON.parse(fs.readFileSync(sf, "utf8")) : {}
-    if (!sc.quietStartup) { sc.quietStartup = true; fs.writeFileSync(sf, JSON.stringify(sc, null, 2)) }
+    let selected = {}
+    try { selected = JSON.parse(fs.readFileSync(path.join(CONFIG_DIR, "models.json"), "utf8")).providers?.[sc.defaultProvider]?.models?.find(m => m.id === sc.defaultModel) || {} } catch {}
+    const effective = runtimeSettings(sc, selected)
+    fs.writeFileSync(sf, JSON.stringify({ ...sc, quietStartup: true, retry: effective.retry, compaction: effective.compaction }, null, 2))
   } catch {}
 
   // ── 自动附带 Web 服务（子进程隔离，避免同进程干扰 pi CLI 的 TTY/进程生命周期）──

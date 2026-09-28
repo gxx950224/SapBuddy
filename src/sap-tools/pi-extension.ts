@@ -6,7 +6,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { createRequire } from "node:module"
-import { registerSapTools, installWriteGate, handleUserMessage } from "./register.js"
+import { registerSapTools, installWriteGate, handleUserMessage, listToolNames } from "./register.js"
 import { SAPBUDDY_BANNER } from "./banner.js"
 
 const require = createRequire(import.meta.url)
@@ -33,6 +33,17 @@ export default async function (pi: ExtensionAPI): Promise<void> {
   } catch (e) {
     console.log(`  [sapbuddy] MCP 工具注册失败: ${e instanceof Error ? e.message : e}`)
   }
+  // Same context budget and optional tool discovery as Web.
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
+  const policy = await import(pathToFileURL(path.join(root, "src", "runtime-policy.mjs")).href)
+  const { readFileSync } = await import("node:fs")
+  const { homedir } = await import("node:os")
+  let settings: Record<string, unknown> = {}
+  try { settings = JSON.parse(readFileSync(path.join(homedir(), ".SapBuddy", "settings.json"), "utf8")) } catch {}
+  const { installHarnessMetrics } = await import(pathToFileURL(path.join(root, "src", "harness-metrics.mjs")).href)
+  installHarnessMetrics(pi, { file: path.join(homedir(), ".SapBuddy", "metrics", "runs.jsonl"), profile: settings.toolProfile || "all" })
+  policy.installToolDiscovery(pi, { ...settings, sapToolNames: listToolNames().map(t => t.name) })
+  policy.installModelBudget(pi, settings)
   // 写操作人工确认：CLI/TUI 模式原生弹窗
   try {
     installWriteGate(pi)
