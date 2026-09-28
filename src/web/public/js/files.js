@@ -9,17 +9,6 @@
   const $ = App.$;
   const escapeHtml = App.escapeHtml;
 
-  // ── 文件图标 SVG ──
-  function fileIconSvg(name) {
-    const n = (name || "").toLowerCase();
-    let color = "var(--accent)";
-    if (n.endsWith(".html") || n.endsWith(".htm")) color = "#e34c26";
-    else if (n.endsWith(".json")) color = "#f59e0b";
-    else if (n.endsWith(".txt") || n.endsWith(".log")) color = "#8a90a0";
-    else if (n.endsWith(".xml") || n.endsWith(".abap")) color = "#2f9e6f";
-    return `<svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>`;
-  }
-
   // ── 二进制文件（不提供网页预览，提示打开位置查看）──
   const BINARY_RE = /\.(xlsx|xls|docx|doc|pptx|ppt|pdf|zip|rar|7z|gz|tar|png|jpe?g|gif|bmp|ico|mp4|mp3|exe|msi|bin|dll|iso)$/i;
 
@@ -57,7 +46,7 @@
       el.style.paddingLeft = (depth * 16) + "px";
       el.className = "skill-tree-dir";
       if (outputExpanded.has(node.path)) el.classList.add("open");
-      el.innerHTML = `<span class="skill-tree-arrow">▶</span><span class="skill-tree-icon">📁</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
+      el.innerHTML = `<span class="skill-tree-arrow">${App.treeIcons.chevron}</span><span class="skill-tree-icon">${App.treeIcons.folder}</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
       const childrenWrap = document.createElement("div");
       childrenWrap.className = "skill-tree-children";
       for (const child of (node.children || [])) {
@@ -79,7 +68,7 @@
       el.className = "skill-tree-file output-file-item";
       el.dataset.name = node.path;
       el.title = node.path;
-      el.innerHTML = `<span class="skill-tree-arrow" style="visibility:hidden">▶</span><span class="skill-tree-icon">${fileIconSvg(node.name)}</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>
+      el.innerHTML = `<span class="skill-tree-arrow" style="visibility:hidden">${App.treeIcons.chevron}</span><span class="skill-tree-icon">${App.treeIcons.file}</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>
         <span class="file-actions" style="display:none">
           <button class="file-more" title="更多操作" aria-label="更多操作">
             <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>

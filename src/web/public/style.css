@@ -1047,13 +1047,14 @@ input, textarea, select {
 .skill-tree-arrow {
   width: 12px;
   flex-shrink: 0;
-  font-size: 9px;
   color: var(--text-faint);
   transition: transform var(--ease);
   text-align: center;
 }
-.skill-tree-icon { flex-shrink: 0; display: inline-flex; }
+.skill-tree-arrow svg { width: 12px; height: 12px; display: block; }
+.skill-tree-icon { flex-shrink: 0; display: inline-flex; color: var(--text-dim); }
 .skill-tree-icon svg { width: 15px; height: 15px; display: block; }
+.skill-tree-file.active .skill-tree-icon { color: var(--accent); }
 .skill-tree-name {
   flex: 1;
   min-width: 0;
@@ -1528,6 +1529,7 @@ input, textarea, select {
   transition: background var(--ease), color var(--ease);
 }
 .settings-tab svg { flex-shrink: 0; color: var(--text-faint); transition: color var(--ease); }
+#settings-tabs svg { stroke-width: 1.8; }
 .settings-tab:hover { background: var(--bg-hover); color: var(--text); }
 .settings-tab:hover svg { color: var(--text-dim); }
 .settings-tab.active {
@@ -2370,19 +2372,21 @@ input, textarea, select {
 }
 
 @media (max-width: 720px) {
-  /* 设置弹窗：Tab 改为顶部横向滚动 */
+  /* 设置弹窗：两行显示全部入口，避免隐藏在横向滚动区。 */
   #settings-dialog { width: 100vw; height: 100vh; max-width: none; max-height: none; border-radius: 0; }
   #settings-body { flex-direction: column; }
   #settings-tabs {
     width: 100%;
-    flex-direction: row;
-    padding: 8px 10px;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 8px;
     border-right: none;
     border-bottom: 1px solid var(--border);
-    overflow-x: auto;
+    overflow: visible;
     gap: 4px;
   }
-  .settings-tab { width: auto; height: 40px; padding: 0 12px; flex-shrink: 0; }
+  .settings-tab { width: 100%; height: 40px; padding: 0 6px; justify-content: center; gap: 5px; font-size: 12px; white-space: nowrap; }
+  .settings-tab svg { width: 15px; height: 15px; }
   .settings-tab.active::before { display: none; }
   #settings-panels { padding: 16px; }
   .chat-header-center { align-items: flex-start; padding-left: 4px; }

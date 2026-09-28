@@ -1,6 +1,6 @@
 /* Beautiful UI primitive geometry, translated from upstream Tailwind classes.
    MIT: src/web/public/vendor/beautiful-ui-LICENSE.txt */
-.bui-trace-shell, .bu-tool-group {
+.bui-trace-shell, .bu-tool-group, .bu-process-toggle, .bu-timeline-tools {
   --bui-ink: oklch(.247 .006 258.361);
   --bui-ink-2: oklch(.506 .01 264.477);
   --bui-ink-3: oklch(.695 .009 264.505);
@@ -12,14 +12,21 @@
   line-height: 1.5;
 }
 .bui-icon { display: block; flex: 0 0 auto; color: inherit; }
+.bu-process-toggle { display: flex; align-items: center; gap: 7px; max-width: 100%; margin: 7px 0 9px -6px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--bui-ink-2); font: 500 12.5px/1.5 Inter, Arial, "Microsoft YaHei", sans-serif; text-align: left; cursor: pointer; }
+.bu-process-toggle:hover { background: var(--bui-hover); }
+.bu-process-toggle .bui-icon { width: 13px; height: 13px; }
+.bu-process-toggle[aria-expanded="false"] .bu-process-chevron { transform: rotate(-90deg); }
+.bu-process-toggle small { color: var(--bui-ink-3); font-size: 11.5px; font-weight: 400; }
 .bui-trace-shell { width: 100%; max-width: none; margin: 12px 0 6px; }
+.msg.agent .body .bui-trace-shell { margin: 3px 0 5px; }
 .bu-thinking.bui-thinking { margin: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
 .bu-thinking.bui-thinking > summary { width: fit-content; max-width: 100%; display: flex; align-items: center; gap: 8px; margin-left: -6px; padding: 4px 6px; border-radius: 6px; color: var(--bui-ink-2); font-size: 13px; font-weight: 500; cursor: pointer; list-style: none; }
 .bu-thinking.bui-thinking > summary:hover { background: var(--bui-hover); }
 .bui-thinking > summary > .bui-icon:first-child { color: var(--bui-ink-3); }
+.bui-trace-preview { min-width: 0; max-width: min(70ch, calc(100vw - 150px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bui-disclosure { width: 14px; height: 14px; color: var(--bui-ink-3); transition: transform 300ms; }
 .bui-thinking[open] .bui-disclosure { transform: rotate(180deg); }
-.bui-trace-body { position: relative; margin: 4px 0 0 8px; padding: 4px 0 4px 16px; border-left: 1px solid var(--bui-line); max-height: 420px; overflow: auto; }
+.bui-trace-body { position: relative; margin: 4px 0 0 8px; padding: 4px 0 4px 16px; border-left: 1px solid var(--bui-line); max-height: 420px; overflow: auto; overflow-anchor: none; }
 .bui-trace-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; margin: 0 0 4px; padding: 2px 6px; border: 0; border-radius: 6px; background: transparent; color: var(--bui-ink); text-align: left; font: 500 12.5px/1.5 Inter, Arial, "Microsoft YaHei", sans-serif; text-decoration: none !important; animation: bui-fade-up 320ms cubic-bezier(.23,1,.32,1) both; }
 .bui-trace-row > span:not(.bui-source-dot) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bui-trace-row small { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; font-weight: 400; color: var(--bui-ink-3); }
@@ -38,6 +45,13 @@ button.bui-trace-row:hover, a.bui-trace-row:hover, .bui-trace-row[aria-pressed=t
 .bui-shimmer { background: linear-gradient(90deg,var(--bui-ink-3) 35%,var(--bui-ink) 50%,var(--bui-ink-3) 65%); background-size: 200% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation: bu-shimmer 1.4s linear infinite; }
 .bui-elapsed { color: var(--bui-ink-3); font: 11.5px var(--font-mono); }
 .bu-tool-group { width: 100%; max-width: none; margin: 14px 0 20px; padding-bottom: 4px; }
+.bu-timeline-tools { display: flex; flex-direction: column; gap: 2px; margin: 1px 0 6px 8px; padding: 0 0 0 17px; border-left: 1px solid var(--bui-line); }
+.bu-timeline-tools .bu-tool { margin: 0; border: 0; box-shadow: none; background: transparent; }
+.bu-timeline-tools .bu-tool > summary { display: flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 3px; margin: 0 -3px; border-radius: 6px; }
+.bu-timeline-tools .bu-tool-name { max-width: calc(100% - 24px); font-size: 12.5px; font-weight: 500; }
+.bu-timeline-tools .bu-tool-detail { display: block; margin: 2px 0 4px 8px; padding: 2px 0 2px 14px; border: 0; border-left: 1px solid var(--bui-line); }
+.bu-timeline-tools .bu-tool-detail pre { padding: 0; border: 0; border-radius: 0; background: transparent; font-size: 11.5px; line-height: 1.6; color: var(--bui-ink-2); }
+.bu-timeline-tools .bu-tool-status { font-size: 11.5px; color: var(--bui-ink-3); }
 .bui-trace-shell + .bu-tool-group { margin-top: 6px; }
 .bu-tool-group > summary { width: fit-content; max-width: 100%; gap: 6px; margin-left: -6px; padding: 4px 6px; border-radius: 6px; color: var(--bui-ink-2); font-size: 12.5px; font-weight: 400; cursor: pointer; }
 .bu-tool-group > summary:hover { background: var(--bui-hover); }

@@ -2,7 +2,7 @@ import React, { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { createRoot } from "react-dom/client"
 import { flushSync } from "react-dom"
 import "./styles.css"
-import { ThinkingTrace, TraceIcon, selectTraceVariant, toolPresentation } from "./ProcessTrace.jsx"
+import { ThinkingTrace, TraceIcon, toolPresentation } from "./ProcessTrace.jsx"
 
 const App = window.SapBuddy
 const listeners = new Set()
@@ -558,23 +558,6 @@ function ToolChip({ tool }) {
   </details>
 }
 
-function ToolChips({ tools, expandedByDefault = false }) {
-  const [open, setOpen] = useState(expandedByDefault)
-  const [more, setMore] = useState(false)
-  useEffect(() => {
-    if (!expandedByDefault) setOpen(false)
-  }, [expandedByDefault])
-  const running = tools.filter(tool => tool.status === "running")
-  const failures = tools.filter(tool => tool.isError || tool.status === "failed").length
-  const visible = more ? tools : running.length && tools.length > 4 ? [...tools.slice(0, 3), running.at(-1)].filter((tool, index, all) => all.findIndex(other => other.id === tool.id) === index) : tools.slice(0, 4)
-  return <details className="bu-tool-group" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <summary><TraceIcon kind="chevron" className="bu-chevron"/><span>{tools.length} 次工具调用{failures > 0 && <span className="bu-tool-error-summary"> · {failures} 次失败</span>}</span></summary>
-    {open && <><div className="bu-tool-list">{visible.map(tool => <ToolChip key={tool.id} tool={tool} />)}</div>
-    {tools.length > 4 && <button type="button" className="bui-more" onClick={() => setMore(!more)}>{more ? "收起" : `+${tools.length - 4} 更多`}</button>}
-    <ToolDiffs tools={tools}/></>}
-  </details>
-}
-
 function ToolDiffs({ tools }) {
   const diffs = tools.flatMap(tool => {
     const diff = tool.result?.details?.diff
@@ -680,7 +663,7 @@ function ActionIcon({ action }) {
     delete: <><path d="M4 7h16M10 11v6M14 11v6M6 7l1 14h10l1-14M9 7V4h6v3"/></>,
     regenerate: <><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></>,
   }
-  return <svg className="msg-action-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[action]}</svg>
+  return <svg className="msg-action-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[action]}</svg>
 }
 
 function MessageActions({ item }) {
@@ -734,29 +717,68 @@ function ArtifactCards({ tools }) {
   </div>)}</div>
 }
 
-const AssistantMessage = memo(function AssistantMessage({ item, active, turnRunning = false }) {
+const AssistantMessage = memo(function AssistantMessage({ item, active }) {
   const streamingHere = active && item.status === "running"
+  const [manualProcessOpen, setManualProcessOpen] = useState(null)
+  const processOpen = manualProcessOpen ?? streamingHere
   const tokens = item.usage?.totalTokens || item.usage?.total_tokens
   const parts = useMemo(() => item.blocks.flatMap(block => block.content.map((part, index) => ({ part, key: `${block.id}:${index}` }))), [item.blocks])
-  const thoughts = parts.filter(({ part }) => part.type === "thinking" && part.thinking).map(({ part }) => part.thinking)
   const toolMap = new Map()
   for (const { part } of parts) {
     if (part.type === "toolCall" && part.id) toolMap.set(String(part.id), item.tools?.[part.id] || { id: part.id, name: part.name, args: part.arguments, status: "running" })
   }
   for (const tool of Object.values(item.tools || {})) toolMap.set(String(tool.id), tool)
   const tools = [...toolMap.values()].filter(tool => tool.name !== "ask_user" || tool.status === "failed")
-  const traceVariant = selectTraceVariant(thoughts, tools)
-  const showThinking = thoughts.length > 0
-  const content = parts.filter(({ part }) => part.type !== "thinking" && part.type !== "toolCall").map(({ part, key }) => renderPart(part, item, streamingHere, key))
+  const segments = []
+  const placedTools = new Set()
+  for (const { part, key } of parts) {
+    if (part.type === "thinking" && part.thinking) {
+      const last = segments.at(-1)
+      if (last?.type === "thinking") last.texts.push(part.thinking)
+      else segments.push({ type: "thinking", key, texts: [part.thinking] })
+    } else if (part.type === "toolCall" && part.id) {
+      const tool = toolMap.get(String(part.id))
+      if (!tool || (tool.name === "ask_user" && tool.status !== "failed")) continue
+      placedTools.add(String(part.id))
+      const last = segments.at(-1)
+      if (last?.type === "tools") last.tools.push(tool)
+      else segments.push({ type: "tools", key, tools: [tool] })
+    } else if (part.type !== "thinking" && part.type !== "toolCall") {
+      segments.push({ type: "content", key, part })
+    }
+  }
+  const orphanTools = tools.filter(tool => !placedTools.has(String(tool.id)))
+  if (orphanTools.length) {
+    const last = segments.at(-1)
+    if (last?.type === "tools") last.tools.push(...orphanTools)
+    else segments.push({ type: "tools", key: `orphan:${orphanTools[0].id}`, tools: orphanTools })
+  }
   const elapsedLabel = item.elapsed != null ? formatElapsed(item.elapsed) : ""
+  const thoughtCount = segments.filter(segment => segment.type === "thinking").length
+  const hasProcess = thoughtCount > 0 || tools.length > 0
+  const firstProcessIndex = segments.findIndex(segment => segment.type !== "content")
+  const failureCount = tools.filter(tool => tool.isError || tool.status === "failed").length
+  const processLabel = thoughtCount && tools.length ? "思考与工具" : thoughtCount ? "思考过程" : "工具调用"
+  const processToggle = hasProcess && <button type="button" className="bu-process-toggle" aria-expanded={processOpen} onClick={() => setManualProcessOpen(!processOpen)}>
+    <TraceIcon kind="chevron" className="bu-process-chevron"/><span>{processLabel}</span>
+    <small>{thoughtCount > 0 && `${thoughtCount} 段思考`}{thoughtCount > 0 && tools.length > 0 && " · "}{tools.length > 0 && `${tools.length} 次调用`}{failureCount > 0 && <span className="bu-tool-error-summary"> · {failureCount} 次失败</span>}</small>
+  </button>
   const questionOnly = parts.length > 0 && parts.every(({ part }) => part.type === "toolCall" && part.name === "ask_user" && item.tools?.[part.id]?.status !== "failed") && !tools.length
   return <div className={`msg agent${item.status === "running" ? " typing" : ""}${questionOnly ? " bu-question-only" : ""}`} data-item-id={item.id}>
     <div className="avatar agent-avatar" aria-hidden="true">S</div>
     <div className="msg-content"><div className="meta">SapBuddy</div>
       <div className="body md" ref={(element) => view.registerBody(item.id, element)}>
-        {showThinking && <ThinkingTrace texts={thoughts} tools={tools} working={streamingHere} />}
-        {tools.length > 0 && <ToolChips tools={tools} expandedByDefault={active && turnRunning} />}
-        {content}
+        {segments.map((segment, index) => <React.Fragment key={segment.key}>
+          {index === firstProcessIndex && processToggle}
+          {segment.type === "content"
+          ? renderPart(segment.part, item, streamingHere, segment.key)
+          : !processOpen ? null : segment.type === "thinking"
+            ? <ThinkingTrace key={segment.key} texts={segment.texts} tools={[]} working={streamingHere && index === segments.length - 1} autoExpand={streamingHere} compact />
+            : <div className="bu-timeline-tools" key={segment.key}>
+                {segment.tools.map(tool => <ToolChip key={tool.id} tool={tool} />)}
+                <ToolDiffs tools={segment.tools}/>
+              </div>}
+        </React.Fragment>)}
         <ArtifactCards tools={tools}/>
       </div>
       <div className="msg-footer"><span className="msg-time">{timeLabel(item.timestamp)}</span>{tokens > 0 && <span className="msg-tokens">消耗 {App.formatTokens(tokens)}</span>}{elapsedLabel && <span className="msg-tokens">本轮 {elapsedLabel}</span>}<MessageActions item={item} /></div>
@@ -921,7 +943,7 @@ function Conversation() {
     {!hasConversation && <Welcome />}
     {items.map((item) => {
       if (item.kind === "user") return <UserMessage key={item.id} item={item} />
-      if (item.kind === "assistant") return <AssistantMessage key={item.id} item={item} active={item.id === activeAssistantId} turnRunning={state.streaming} />
+      if (item.kind === "assistant") return <AssistantMessage key={item.id} item={item} active={item.id === activeAssistantId} />
       if (item.kind === "approval") return <ApprovalCard key={item.id} item={item} />
       return <SystemNotice key={item.id} item={item} />
     })}

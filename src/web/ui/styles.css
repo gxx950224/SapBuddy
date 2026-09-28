@@ -23,7 +23,7 @@
 .msg-time { flex-shrink: 0; }
 .msg-actions { display: flex; flex-shrink: 0; align-items: center; gap: 2px; min-height: 30px; }
 .msg-action-btn { width: 30px; height: 30px; min-width: 30px; flex: 0 0 30px; padding: 0; line-height: 0; white-space: nowrap; }
-.msg-action-icon { width: 15px; height: 15px; flex: 0 0 15px; }
+.msg-action-icon { width: 16px; height: 16px; flex: 0 0 16px; }
 .msg-footer { min-height: 30px; line-height: 30px; }
 .msg-time, .msg-tokens { display: inline-flex; align-items: center; min-height: 30px; line-height: 30px; }
 .bu-stop-icon { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }

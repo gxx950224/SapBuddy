@@ -1,7 +1,7 @@
 // Ported from Beautiful UI ThinkingState / ToolChips (MIT, Shane Levine).
 // Layout and glyphs follow 44a274e598395ab61e7c96c26fda2758780253b7.
 // Demo timers/data are replaced with the persisted pi event stream.
-import React, { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import "./process-trace.css"
 
 export function TraceIcon({ kind = "think", className = "" }) {
@@ -15,7 +15,7 @@ export function TraceIcon({ kind = "think", className = "" }) {
     check: <path d="M20 6L9 17l-5-5"/>,
     chevron: <path d="M6 9l6 6 6-6"/>,
   }
-  return <svg className={`bui-icon ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind] || paths.read}</svg>
+  return <svg className={`bui-icon ${className}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[kind] || paths.read}</svg>
 }
 
 export function toolPresentation(tool) {
@@ -62,13 +62,19 @@ export function selectTraceVariant(texts, tools, sources = traceSources(tools)) 
   return "Reasoning"
 }
 
-export function ThinkingTrace({ texts, tools, working }) {
+export function ThinkingTrace({ texts, tools, working, autoExpand = false, compact = false }) {
   const [manualOpen, setManualOpen] = useState(null)
   const [more, setMore] = useState(false)
   const [selected, setSelected] = useState(null)
   const started = useRef(Date.now())
+  const body = useRef(null)
+  const wasExpanded = useRef(false)
   const [elapsed, setElapsed] = useState(null)
-  const expanded = manualOpen ?? working
+  const expanded = manualOpen ?? (working || autoExpand)
+  useLayoutEffect(() => {
+    if (expanded && !wasExpanded.current && body.current) body.current.scrollTop = 0
+    wasExpanded.current = expanded
+  }, [expanded])
   useEffect(() => {
     if (!working) return
     const timer = setInterval(() => setElapsed((Date.now() - started.current) / 1000), 250)
@@ -83,12 +89,13 @@ export function ThinkingTrace({ texts, tools, working }) {
   const rows = variant === "Reasoning" ? texts : variant === "Search" ? sources : tools
   const visible = more ? rows : rows.slice(0, variant === "Reasoning" ? 2 : 4)
   const heading = variant === "Search" ? (working ? "正在检索" : "检索过程") : variant === "Coding" ? (working ? "正在运行工具" : `已调用 ${tools.length} 个工具`) : (working ? "正在思考" : "思考过程")
+  const preview = compact && !working ? texts.find(text => text.trim())?.trim().replace(/\s+/g, " ").slice(0, 120) || "思考" : heading
   return <section className={`bui-trace-shell bui-trace-${variant.toLowerCase()}`} data-variant={variant} aria-label={`Thinking：${variant}`}>
     <details className="bu-thinking bui-thinking" open={expanded} onToggle={event => { if (event.currentTarget.open !== expanded) setManualOpen(event.currentTarget.open) }}>
       <summary onClick={event => { event.preventDefault(); setManualOpen(!expanded) }}>
-        <TraceIcon/><span className={working ? "bui-shimmer" : ""}>{heading}</span>{elapsed !== null && <span className="bui-elapsed">{elapsed.toFixed(1)} 秒</span>}<TraceIcon kind="chevron" className="bui-disclosure"/>
+        <TraceIcon/><span className={`${working ? "bui-shimmer" : ""}${compact ? " bui-trace-preview" : ""}`}>{compact && working ? heading : preview}</span>{elapsed !== null && <span className="bui-elapsed">{elapsed.toFixed(1)} 秒</span>}<TraceIcon kind="chevron" className="bui-disclosure"/>
       </summary>
-      <div className={`bui-trace-body bui-${variant.toLowerCase()}`}>
+      <div className={`bui-trace-body bui-${variant.toLowerCase()}`} ref={body}>
         {variant === "Search" && query && <div className="bui-trace-row"><TraceIcon kind="search"/><span>{query}</span></div>}
         {visible.map((row, index) => {
           if (variant === "Reasoning") return <p className="bui-reasoning-row" key={index}>{row}</p>

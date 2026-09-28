@@ -569,7 +569,7 @@
       const el = document.createElement("div");
       el.style.paddingLeft = (depth * 16) + "px";
       el.className = "skill-tree-dir";
-      el.innerHTML = `<span class="skill-tree-arrow">▶</span><span class="skill-tree-icon">📁</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
+      el.innerHTML = `<span class="skill-tree-arrow">${App.treeIcons.chevron}</span><span class="skill-tree-icon">${App.treeIcons.folder}</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
       const childrenWrap = document.createElement("div");
       childrenWrap.className = "skill-tree-children";
       for (const child of (node.children || [])) {
@@ -588,7 +588,7 @@
       el.style.paddingLeft = (depth * 16) + "px";
       el.className = "skill-tree-file";
       el.dataset.path = node.path;
-      el.innerHTML = `<span class="skill-tree-arrow" style="visibility:hidden">▶</span><span class="skill-tree-icon">📄</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
+      el.innerHTML = `<span class="skill-tree-arrow" style="visibility:hidden">${App.treeIcons.chevron}</span><span class="skill-tree-icon">${App.treeIcons.file}</span><span class="skill-tree-name">${escapeHtml(node.name)}</span>`;
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         selectSkillFile(node.path, node.name, el);
