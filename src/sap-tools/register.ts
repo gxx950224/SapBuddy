@@ -77,7 +77,8 @@ export function extractObjectNames(input: unknown): string[] {
 
 // ── 用户消息处理（确认词/拒绝词 → 授权窗口；CLI 与 Web 共用同一套规则）──
 // 只认明确批准词（确认/同意/批准…），避免日常应答（好的/可以/ok/行）无意中打开写授权窗口
-const CONFIRM_RE = /确认|同意|允许|批准|就这么办|执行|继续|go ahead/i
+// 批准词必须位于消息开头且作为独立短语；“确认连接”“继续分析”“已确认源码”不能打开写授权。
+const CONFIRM_RE = /^(?:确认|同意|允许|批准|就这么办|执行|继续执行|go ahead)(?=$|[\s，,。.!！:：；;])/i
 const REJECT_RE = /拒绝|不要|取消|算了|不干|停止|换个方案|重新来|推翻|改回|不用了|撤回|不执行|不能执行|先别|暂不|先不做|别急|别继续/i
 
 /** 授权窗口毫秒数：读设置 .SapBuddy/settings.json 的 approvalWindowMinutes（默认 15 分钟） */
@@ -426,6 +427,35 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
   })
 }
 
+/** 跳过 ABAP 与 CDS 注释，同时保留字符串字面量供后续扫描。 */
+function codeWithoutComments(line: string, blockComment: boolean): { code: string; blockComment: boolean } {
+  // ABAP 的 * 注释必须位于首列；CDS DDL 还支持 // 和 /* ... */。
+  if (!blockComment && line.startsWith("*")) return { code: "", blockComment: false }
+  let code = ""
+  let literal: "'" | "`" | null = null
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    const next = line[i + 1]
+    if (blockComment) {
+      if (char === "*" && next === "/") { blockComment = false; i++ }
+      continue
+    }
+    if (literal) {
+      code += char
+      if (char === literal) {
+        if (next === literal) { code += next; i++ } // ABAP 中 '' 和 `` 是字面量内的转义
+        else literal = null
+      }
+      continue
+    }
+    if (char === "'" || char === "`") { literal = char; code += char; continue }
+    if (char === '"' || (char === "/" && next === "/")) break
+    if (char === "/" && next === "*") { blockComment = true; i++; continue }
+    code += char
+  }
+  return { code, blockComment }
+}
+
 /**
  * 扫描 ABAP 代码：硬编码中文文案 + 结构/表定义中的裸内置类型
  * 裸内置类型仅限制「自建表/结构」：ABAP TYPES 定义（含 BEGIN OF 块）与 DDIC DSL define structure/table 的字段；
@@ -447,11 +477,13 @@ export function scanCodeViolations(code: string): string[] {
   ])
   let typeDefDepth = 0 // TYPES: BEGIN OF ... END OF 嵌套深度
   let inDefineBlock = false // define structure/table { ... } DDIC DSL 块内
+  let blockComment = false
 
   for (let i = 0; i < lines.length; i++) {
     const raw = lines[i]
-    // 去掉 ABAP 注释（" 之后到行尾），避免误报注释中的中文/类型
-    const noComment = raw.split('"')[0]
+    const stripped = codeWithoutComments(raw, blockComment)
+    const noComment = stripped.code
+    blockComment = stripped.blockComment
     // CDS 注解行（@EndUserText.label / @AbapCatalog.* 等）：值是 DDIC 元数据文本（视图描述），
     // 不是运行时用户可见文案，且 CDS 源码无 DATA 声明 → 两类扫描都豁免
     const isAnnotationLine = noComment.trim().startsWith("@")
@@ -643,8 +675,8 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           const text = outcome.value
           const failure = outcome.failures[0] ?? (/^(⛔|未找到 ABAP 对象|工具执行失败|SAP 工具 .*执行失败)/.test(text) ? classifyFailure(text) : undefined)
           // 写操作成功执行 → 记审计（谁/何时/改了哪个对象）
-          if (t.write && !failure) {
-            appendAudit({ event: "executed", tool: t.name, objects: extractObjectNames(p), connectionId: connId })
+          if (t.write) {
+            appendAudit({ event: failure ? "failed" : "executed", tool: t.name, objects: extractObjectNames(p), connectionId: connId, ...(failure ? { reason: failure.message.slice(0, 200) } : {}) })
           }
           const bounded = await boundToolResult(text)
           return { content: [{ type: "text" as const, text: bounded.text }], details: { ...bounded.details, ...(failure ? { error: { ...failure, retryable: !t.write && failure.retryable } } : {}) }, ...(failure ? { isError: true } : {}) }

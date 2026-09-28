@@ -2,6 +2,8 @@
 import { z } from "zod"
 import { session_types, type ActivationResult } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
+import { recordFailure } from "../execution.js"
+import { mergeActivationResults, verifyActivation, type ActivationReport } from "./activationResult.js"
 import { getActiveRequest, setActiveRequest } from "../taskTransport.js"
 import { parseFunctionModuleParams, normalizeFunctionModuleParams, normalizeFormIncludeSource, isFmoduleSourceChannel, detectCommentParamBlock, escapeOpenSqlHostVars, FM_KINDS } from "./fmoduleInterface.js"
 import {
@@ -264,6 +266,7 @@ export const createObjectTool = {
             transport = await client.createTransport(parentPath, desc, devClass)
             setActiveRequest(connId, devClass, transport)
           } catch (e) {
+            recordFailure(e)
             return `⚠️ 自动创建传输请求失败：${e instanceof Error ? e.message.slice(0, 120) : e}。请确认对象放到哪个请求。`
           }
         }
@@ -287,6 +290,7 @@ export const createObjectTool = {
           await fillDataElementDomain(client, args.name.toUpperCase(), domainName, devClass, args.description, transport)
           dtelNote = `域: ${domainName}（已写入 typeName，可直接激活）\n`
         } catch (e) {
+          recordFailure(e)
           return (
             `⚠️ 数据元素 ${args.name.toUpperCase()} 已创建，但绑定域 ${domainName} 失败（对象未激活）。\n` +
             `错误: ${e instanceof Error ? e.message.slice(0, 300) : String(e)}\n` +
@@ -306,6 +310,7 @@ export const createObjectTool = {
         `注意: 大型对象（类、函数组）创建后可能需补充 includes 内容。`
       )
     } catch (err) {
+      recordFailure(err)
       return (
         `创建对象失败: ${sanitizeErrMsg(err)}\n\n` +
         `可能的原因：\n- 对象已存在（先 search_abap_objects 确认）\n- 包不存在或无写入权限\n- 名称不符合命名规范`
@@ -344,16 +349,18 @@ export function parseIncludeNames(source: string): string[] {
  * 必须逐个激活 include 对象本体（UXX 是函数库生成文件、服务器报"变更到 L<FG>UXX 被禁止"，跳过；
  * U01 是函数模块持有者，交给函数模块自身激活，跳过）。
  */
-async function activateFunctionGroupFormIncludes(client: ClientLike, fgName: string): Promise<ActivationResult> {
+async function activateFunctionGroupFormIncludes(client: ClientLike, fgName: string): Promise<ActivationReport> {
   const fg = fgName.toUpperCase()
   const mainUri = `/sap/bc/adt/functions/groups/${fg.toLowerCase()}/includes/sapl${fg.toLowerCase()}`
   const results: ActivationResult[] = []
+  const names: string[] = []
   try {
     const source = await readSourceSmart(client, "PROG/P", mainUri)
     for (const incName of parseIncludeNames(source)) {
       const upper = incName.toUpperCase()
       if (upper === `SAPL${fg}` || upper === `L${fg}UXX` || upper === `L${fg}U01`) continue
       const incUri = `/sap/bc/adt/functions/groups/${fg.toLowerCase()}/includes/${upper.toLowerCase()}`
+      names.push(`FORM include ${upper}`)
       try {
         results.push(await client.activate(upper, incUri, undefined, true))
       } catch (err) {
@@ -364,14 +371,11 @@ async function activateFunctionGroupFormIncludes(client: ClientLike, fgName: str
         })
       }
     }
-  } catch {
-    // 读主程序源码失败：跳过（主程序激活仍会进行）
+  } catch (err) {
+    names.push("读取函数组 include 清单")
+    results.push({ success: false, inactive: [], messages: [{ objDescr: "", type: "E", line: 0, href: "", forceSupported: false, shortText: toToolError(err) }] })
   }
-  return {
-    success: results.every((r) => r.success),
-    messages: results.flatMap((r) => r.messages ?? []),
-    inactive: results.flatMap((r) => r.inactive ?? []),
-  }
+  return mergeActivationResults(results, names)
 }
 
 /**
@@ -385,7 +389,7 @@ async function activateFunctionGroupFormIncludes(client: ClientLike, fgName: str
 async function activateWithIncludes(
   client: ClientLike,
   obj: { "adtcore:uri": string; "adtcore:name": string; "adtcore:type"?: string }
-): Promise<ActivationResult> {
+): Promise<ActivationReport> {
   const type = obj["adtcore:type"] ?? ""
   // 函数模块（FUGR/FF）：激活顺序必须——① 先激活函数组 FORM include（把 include 里未激活的 FORM 改动固化，
   // 否则函数模块按"激活态"编译找不到 FORM，报 "FORM ... does not exist"）；② 再激活主程序 SAPL<fg>
@@ -394,7 +398,7 @@ async function activateWithIncludes(
   if (type === "FUGR/FF") {
     const fgMatch = /\/functions\/groups\/([^/]+)\/fmodules\//i.exec(obj["adtcore:uri"])
     const fg = fgMatch ? decodeURIComponent(fgMatch[1]) : ""
-    if (!fg) return client.activate(obj["adtcore:name"], obj["adtcore:uri"], undefined, true)
+    if (!fg) return mergeActivationResults([await client.activate(obj["adtcore:name"], obj["adtcore:uri"], undefined, true)], ["函数模块"])
     const results: ActivationResult[] = []
     try {
       results.push(await activateFunctionGroupFormIncludes(client, fg))
@@ -425,14 +429,10 @@ async function activateWithIncludes(
         inactive: [],
       })
     }
-    return {
-      success: results.every((r) => r.success),
-      messages: results.flatMap((r) => r.messages ?? []),
-      inactive: results.flatMap((r) => r.inactive ?? []),
-    }
+    return mergeActivationResults(results, ["FORM include", `函数组主程序 SAPL${fg.toUpperCase()}`, `函数模块 ${obj["adtcore:name"]}`])
   }
   if (type !== "PROG/P" && type !== "PROG/I") {
-    return client.activate(obj["adtcore:name"], obj["adtcore:uri"], undefined, true)
+    return mergeActivationResults([await client.activate(obj["adtcore:name"], obj["adtcore:uri"], undefined, true)], [obj["adtcore:name"]])
   }
   // 找到主程序：直接激活主程序，或由 INCLUDE 反查主程序
   let mainUri = obj["adtcore:uri"]
@@ -498,18 +498,14 @@ async function activateWithIncludes(
       inactive: [],
     })
   }
-  return {
-    success: results.every(r => r.success),
-    messages: results.flatMap(r => r.messages ?? []),
-    inactive: results.flatMap(r => r.inactive ?? []),
-  }
+  return mergeActivationResults(results, includes.length ? ["批量 INCLUDE", `主程序 ${mainName}`] : [`主程序 ${mainName}`])
 }
 
 export const activateTool = {
   name: "abap_activate",
   title: "Activate ABAP Object",
   description:
-    "激活 ABAP 对象（等价于 SE80 的激活按钮）。激活后返回语法/激活消息列表。写入类代码后必须先激活才能生效。\n" +
+    "激活 ABAP 对象。ABAP 源码对象在同一次调用内串行执行语法检查、激活、active 源码核验；任一步失败即未完成。返回分阶段结果，不能用对象元数据的 active 字段覆盖失败结论。写入后必须激活才能生效。\n" +
     "⚠️ 函数组(FUGR)激活不会自动连带激活其内部的函数模块——函数模块需单独激活：objectName=函数模块名，objectType=FUGR/FF。激活函数模块时工具会自动先激活函数组的 FORM include（把未激活的 FORM 改动固化，否则报 FORM ... does not exist）、再激活主程序(SAPL<fg>，让主程序里新增的 INCLUDE 语句先固化生效)、最后激活函数模块本身，AI 无需手动排顺序。\n" +
     "⚠️ 拆 INCLUDE 的可执行程序（主程序 PROG/P + 其 INCLUDE PROG/I）无法逐个编译——单独激活某个 INCLUDE 会对着兄弟 INCLUDE 的旧版本编译，必报 \"Field/Type unknown\"。激活时工具会自动先批量激活其全部 INCLUDE、再单独激活主程序（两步）；同一对象连续激活失败 3 次会被强制拦截，需停下向用户说明。",
   write: true,
@@ -526,13 +522,13 @@ export const activateTool = {
       // ① 拆 INCLUDE 的可执行程序（PROG/P/PROG/I）无法逐个编译：单激活某个 INCLUDE 会对着兄弟
       //    INCLUDE 的旧版本编译，必报 "Field/Type unknown"。activateWithIncludes 分两步激活：
       //    先批量激活全部 INCLUDE，再单独激活主程序（批量数组带 parentUri=自身会被 ADT 静默跳过）。
-      const result = await activateWithIncludes(client, obj)
+      const result = await verifyActivation(client, obj, () => activateWithIncludes(client, obj))
       // ③ 强制止损：同一对象连续激活失败达阈值 → 拒绝执行，逼 AI 停下向用户求助
-      // ③ 强制止损：同一对象连续激活失败达阈值 → 拒绝执行，逼 AI 停下向用户求助
-      const failKey = `${obj["adtcore:type"]}|${obj["adtcore:name"]}`
+      const failKey = `${connId}|${obj["adtcore:type"]}|${obj["adtcore:name"]}`
       if (result.success) {
         activateFailCount.delete(failKey)
       } else {
+        recordFailure(`激活未完成：${result.stages.filter(s => !s.success).map(s => `${s.name}: ${s.messages.map(m => m.shortText).join("；")}`).join("；")}`)
         const n = (activateFailCount.get(failKey) ?? 0) + 1
         activateFailCount.set(failKey, n)
         if (n >= ACTIVATE_FAIL_LIMIT) {
@@ -546,15 +542,18 @@ export const activateTool = {
       const lines: string[] = []
       if (result.success) {
         lines.push(`✅ ${obj["adtcore:type"]} ${obj["adtcore:name"]} 激活成功`)
+        if (result.verification === "matched") lines.push("已核对 active 源码与本次待激活源码一致。")
       } else {
-        lines.push(`❌ 激活失败（${obj["adtcore:type"]} ${obj["adtcore:name"]}）:`)
+        lines.push(`❌ ${result.verification === "unavailable" ? "激活未确认" : "激活失败"}（${obj["adtcore:type"]} ${obj["adtcore:name"]}）:`)
+        lines.push("本次操作未确认完成；对象元数据的 active 状态不能替代本次激活结果。")
       }
-      for (const m of (result.messages ?? []).slice(0, 50)) {
-        lines.push(`  [${m.type}] 行 ${m.line}: ${m.shortText}`)
+      for (const stage of result.stages) {
+        lines.push(`- ${stage.name}：${stage.success ? "通过" : "未完成"}`)
+        for (const m of stage.messages.slice(0, 10)) lines.push(`  [${m.type}] 行 ${m.line}: ${m.shortText}`)
+        if (stage.messages.length > 10) lines.push(`  ... 其余 ${stage.messages.length - 10} 条省略`)
       }
-      if ((result.messages ?? []).length > 50) lines.push(`  ... 其余 ${result.messages.length - 50} 条省略`)
       if ((result.inactive ?? []).length > 0) {
-        lines.push(`⚠️ 以下对象仍未激活（未激活 = 未完成）：`)
+        lines.push(`⚠️ 激活阶段返回的未激活对象（已去重，需复核）：`)
         for (const rec of result.inactive) {
           const o = rec?.object
           if (o) lines.push(`  - ${o["adtcore:type"]} ${o["adtcore:name"]}`)
@@ -818,6 +817,7 @@ export const replaceStringTool = {
                 }
               }
             } catch (e) {
+              recordFailure(e)
               return `⚠️ 对象无未释放传输请求且自动创建失败（${e instanceof Error ? e.message.slice(0, 120) : e}）。请先创建传输请求或将对象加入现有请求。`
             }
           }
@@ -878,14 +878,16 @@ export const replaceStringTool = {
             if (incUpper !== mainName && incUpper !== `L${fgName}UXX`.toUpperCase() && incUpper !== `L${fgName}U01`.toUpperCase()) {
               const incObjUri = `/sap/bc/adt/functions/groups/${fgName.toLowerCase()}/includes/${incUpper.toLowerCase()}`
               try {
-                const r = await client.activate(incUpper, incObjUri, undefined, true)
+                const r = mergeActivationResults([await client.activate(incUpper, incObjUri, undefined, true)], [`include ${incUpper}`])
                 if (r.success) {
                   incActNote = `\n⚙️ 已自动激活函数组 include ${incUpper}（FORM 需处于激活态才能被函数模块引用）\n`
                 } else {
+                  recordFailure(`include ${incUpper} 已保存但自动激活失败`)
                   const errs = (r.messages ?? []).filter((m) => m.type === "E").map((m) => `行 ${m.line}: ${m.shortText}`)
                   incActNote = `\n⚠️ include ${incUpper} 已保存但自动激活失败：${errs.slice(0, 5).join("；") || "服务器无错误消息"}。请用 abap_activate 单独激活并查看错误。\n`
                 }
               } catch (err) {
+                recordFailure(err)
                 incActNote = `\n⚠️ include ${incUpper} 已保存但自动激活失败：${err instanceof Error ? err.message.slice(0, 200) : String(err)}。请用 abap_activate 单独激活。\n`
               }
             }
@@ -920,6 +922,7 @@ export const replaceStringTool = {
         client.stateful = oldState
       }
     } catch (err) {
+      recordFailure(err)
       return (
         `编辑失败: ${sanitizeErrMsg(err)}\n\n可能的原因：\n- oldString 未唯一匹配（局部替换时，用 get_abap_object_lines 读当前内容核对）\n- fullSource 内容与对象类型不匹配（整段覆盖时）\n- 对象被其他用户锁定\n- SAP 账号无编辑权限` +
         fgIncludeHint
@@ -1023,6 +1026,7 @@ export const createTestIncludeTool = {
       }
       return `✅ 已为 ${args.className} 创建测试 include。可用 get_abap_object_lines 读取并编辑测试代码。`
     } catch (err) {
+      recordFailure(err)
       return `创建测试 include 失败: ${sanitizeErrMsg(err)}`
     }
   },
@@ -1090,7 +1094,8 @@ export const updateDescriptionTool = {
         client.stateful = oldState
       }
       // PUT 后对象变为 inactive，需要激活
-      await client.activate(obj["adtcore:name"], uri)
+      const activated = mergeActivationResults([await client.activate(obj["adtcore:name"], uri)], ["描述修改后激活"])
+      if (!activated.success) return toToolError(`描述已保存，但激活失败：${activated.messages.map(m => m.shortText).join("；") || "存在未激活对象"}`)
       return `✅ 对象描述已更新并激活: ${obj["adtcore:type"]} ${obj["adtcore:name"]} -> \"${args.description}\"`
     } catch (err) {
       return toToolError(err)

@@ -39,9 +39,41 @@ test("scanCodeViolations：硬编码中文文案被拦截", () => {
 })
 
 test("scanCodeViolations：注释中的中文不误报", () => {
-  const code = `* 这是注释 " 含中文\nWRITE: 'OK'.`
+  const code = [
+    `* WRITE '首列注释中文'.`,
+    `WRITE 'OK'. " WRITE '行尾注释中文'.`,
+    `"! ABAP Doc '文档注释中文'`,
+    `// WRITE 'CDS 行注释中文'.`,
+    `/* WRITE 'CDS 块注释中文'.`,
+    `   WRITE '跨行注释中文'. */`,
+  ].join("\n")
   const v = scanCodeViolations(code)
   assert.deepEqual(v, [])
+})
+
+test("scanCodeViolations：注释后的有效代码仍扫描，字符串里的注释符号不截断", () => {
+  const code = [
+    `WRITE '含"号的中文'. " '注释中文'`,
+    `WRITE 'https://example.com/中文'.`,
+    `/* '注释中文' */ WRITE '块注释后的中文'.`,
+    `WRITE \`反引号中的中文//不是注释\`.`,
+  ].join("\n")
+  const v = scanCodeViolations(code)
+  assert.deepEqual(v.map(x => Number(x.match(/第 (\d+) 行/)?.[1])), [1, 2, 3, 4])
+})
+
+test("scanCodeViolations：注释中的 TYPES 不改变结构字段扫描状态", () => {
+  const code = [
+    `* TYPES: BEGIN OF commented, field TYPE string.`,
+    `DATA lv_text TYPE string.`,
+    `TYPES: BEGIN OF ts_real,`,
+    `* END OF ts_real.`,
+    `  field TYPE string,`,
+    `END OF ts_real.`,
+  ].join("\n")
+  const v = scanCodeViolations(code)
+  assert.equal(v.length, 1)
+  assert.match(v[0], /第 5 行：.*TYPE STRING/)
 })
 
 test("scanCodeViolations：程序内局部变量裸类型放行（DATA 变量）", () => {
@@ -134,6 +166,27 @@ test("授权窗口：日常应答词不再打开窗口（好的/可以/ok/行）
 test("授权窗口：普通查询消息不打开窗口", () => {
   clearWriteApproval()
   handleUserMessage("帮我查一下销售订单的数据")
+  assert.equal(isWriteApproved(), false)
+})
+
+test("授权窗口：确认连接或描述已确认状态不构成写入批准", () => {
+  for (const msg of [
+    "请先确认连接，再读取 ZAIR004 的源码",
+    "刚才已确认 active/inactive 源码相同，现在继续分析",
+    "继续测试 ZAIR004，不要修改源码",
+    "请执行只读查询",
+  ]) {
+    clearWriteApproval()
+    handleUserMessage(msg)
+    assert.equal(isWriteApproved(), false, `消息“${msg}”不应授权写操作`)
+  }
+})
+
+test("授权窗口：独立确认词放行，含拒绝约束时仍保持拒绝优先", () => {
+  clearWriteApproval()
+  handleUserMessage("确认")
+  assert.equal(isWriteApproved(), true)
+  handleUserMessage("确认，但不要执行写入")
   assert.equal(isWriteApproved(), false)
 })
 

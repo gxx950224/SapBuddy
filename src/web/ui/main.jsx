@@ -371,6 +371,17 @@ const view = {
     streaming = !!value
     if (!streaming) waiting = null
     if (activeAssistantId) updateItem(activeAssistantId, (item) => ({ ...item, status: streaming ? "running" : item.status }))
+    if (!streaming) {
+      const deferred = [...messageItems.values()].filter((item) => item.kind === "approval" && item.deferred)
+      if (deferred.length) {
+        const next = new Map(messageItems)
+        for (const item of deferred) {
+          next.delete(item.id)
+          next.set(item.id, { ...item, deferred: false })
+        }
+        messageItems = next
+      }
+    }
     publish()
   },
   setCompressing(value) { compressing = !!value; publish() },
@@ -390,7 +401,7 @@ const view = {
       question: payload.question || "需要你确认下一步", options: Array.isArray(payload.options) ? payload.options : [],
       allowCustom: payload.allowCustom === true, toolName: payload.toolName || "", input: payload.input || {},
       requestToolCallId: payload.toolCallId ? String(payload.toolCallId) : null,
-      status: "pending", createdAt: payload.ts || Date.now() }
+      status: "pending", deferred: approvalType === "write" && streaming, createdAt: payload.ts || Date.now() }
     const next = new Map(messageItems)
     next.set(item.id, item)
     messageItems = next
@@ -839,6 +850,8 @@ function ApprovalCard({ item }) {
   const summary = write ? writeApprovalSummary(item.toolName, input) : []
   // 问题已提交后回收卡片，避免答案气泡出现后仍残留旧问题。
   if (!write && (item.status === "submitted" || item.status === "complete")) return null
+  // 写入确认只在等待决定或发送失败可重试时显示；执行结果由对话和工具记录呈现。
+  if (write && !(["pending", "draft"].includes(item.status) || (item.status === "failed" && item.submissionFailed))) return null
   const actionText = write ? "写入操作已拦截，尚未执行" : item.question
   const statusText = write
     ? ({ pending: "等待你确认或拒绝", draft: "准备提交确认", submitted: "确认词已发送，等待 Agent 校验", executing: "后端已放行，工具正在执行", complete: "工具执行完成", failed: "工具执行失败", rejected: "已拒绝", interrupted: "请求已中断，写操作未完成", stale: "请求已结束，未执行写操作" })[item.status] || "等待处理"
@@ -944,7 +957,7 @@ function Conversation() {
     {items.map((item) => {
       if (item.kind === "user") return <UserMessage key={item.id} item={item} />
       if (item.kind === "assistant") return <AssistantMessage key={item.id} item={item} active={item.id === activeAssistantId} />
-      if (item.kind === "approval") return <ApprovalCard key={item.id} item={item} />
+      if (item.kind === "approval") return item.deferred ? null : <ApprovalCard key={item.id} item={item} />
       return <SystemNotice key={item.id} item={item} />
     })}
     {state.waiting && <LoadingState waiting={state.waiting} />}

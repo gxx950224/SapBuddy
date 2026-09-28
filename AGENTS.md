@@ -82,6 +82,7 @@ node cli.mjs tools   # 工具列表
 | 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |
 | 创建：包名/描述必填、$TMP 需用户确认、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically + `register.ts` 写门禁 | 硬强制 |
 | 修改：自动沿用/创建请求、请求描述格式 | `tools/writeTools.ts` replace_string_in_abap_object | 硬强制 |
+| 激活：ABAP 程序/类/接口/函数模块/include 串行语法检查→激活→active 源码比对；失败阶段与未激活对象明确返回，元数据 active 不替代本次结果 | `tools/activationResult.ts` + `tools/writeTools.ts` abap_activate；`register.ts` 失败状态与审计 | 硬强制 |
 | 传输请求：状态码中文、底表 E070/E071、只读放行 | `tools/transportText.ts` manage_transport_requests | 硬强制 |
 | 创建/修改流程、避坑记录、请求描述格式（行为层）| `SYSTEM.md` 铁律 6b / 输出约定 | 提示层（AI 执行，工具已兜底）|
 

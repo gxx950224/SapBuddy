@@ -50,7 +50,10 @@ export const getObjectInfoTool = {
       ]
       if (meta["adtcore:packageName"]) lines.push(`包: ${meta["adtcore:packageName"]}`)
       if (meta["adtcore:responsible"]) lines.push(`责任人: ${meta["adtcore:responsible"]}`)
-      if (meta["adtcore:version"]) lines.push(`版本: ${meta["adtcore:version"]}`)
+      if (meta["adtcore:version"]) {
+        lines.push(`版本: ${meta["adtcore:version"]}`)
+        lines.push("此处为对象元数据版本；不证明本次修改已激活。完成状态以 abap_activate 的阶段结果和源码核验为准。")
+      }
       if (meta["adtcore:changedBy"]) {
         const at = typeof meta["adtcore:changedAt"] === "number"
           ? new Date(meta["adtcore:changedAt"] as number).toISOString()

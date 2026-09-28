@@ -69,12 +69,36 @@ export function ThinkingTrace({ texts, tools, working, autoExpand = false, compa
   const started = useRef(Date.now())
   const body = useRef(null)
   const wasExpanded = useRef(false)
+  const followBottom = useRef(false)
+  const userScroll = useRef(false)
+  const dragging = useRef(false)
   const [elapsed, setElapsed] = useState(null)
   const expanded = manualOpen ?? (working || autoExpand)
   useLayoutEffect(() => {
-    if (expanded && !wasExpanded.current && body.current) body.current.scrollTop = 0
+    if (expanded && !wasExpanded.current && body.current) {
+      body.current.scrollTop = 0
+      followBottom.current = false
+      userScroll.current = false
+    } else if (expanded && followBottom.current && body.current) {
+      body.current.scrollTop = body.current.scrollHeight
+    }
     wasExpanded.current = expanded
-  }, [expanded])
+  }, [expanded, texts, tools])
+  const onBodyScroll = (event) => {
+    if (!userScroll.current && !dragging.current) return
+    const element = event.currentTarget
+    followBottom.current = element.scrollHeight - element.scrollTop - element.clientHeight <= 4
+    userScroll.current = false
+  }
+  useEffect(() => {
+    const stopDragging = () => { dragging.current = false }
+    window.addEventListener("pointerup", stopDragging)
+    window.addEventListener("pointercancel", stopDragging)
+    return () => {
+      window.removeEventListener("pointerup", stopDragging)
+      window.removeEventListener("pointercancel", stopDragging)
+    }
+  }, [])
   useEffect(() => {
     if (!working) return
     const timer = setInterval(() => setElapsed((Date.now() - started.current) / 1000), 250)
@@ -95,7 +119,12 @@ export function ThinkingTrace({ texts, tools, working, autoExpand = false, compa
       <summary onClick={event => { event.preventDefault(); setManualOpen(!expanded) }}>
         <TraceIcon/><span className={`${working ? "bui-shimmer" : ""}${compact ? " bui-trace-preview" : ""}`}>{compact && working ? heading : preview}</span>{elapsed !== null && <span className="bui-elapsed">{elapsed.toFixed(1)} 秒</span>}<TraceIcon kind="chevron" className="bui-disclosure"/>
       </summary>
-      <div className={`bui-trace-body bui-${variant.toLowerCase()}`} ref={body}>
+      <div className={`bui-trace-body bui-${variant.toLowerCase()}`} ref={body}
+        onScroll={onBodyScroll}
+        onWheel={(event) => { userScroll.current = true; if (event.deltaY < 0) followBottom.current = false }}
+        onPointerDown={() => { dragging.current = true; userScroll.current = true }}
+        onTouchStart={() => { userScroll.current = true }}
+        onKeyDown={(event) => { if (["ArrowDown", "ArrowUp", "PageDown", "PageUp", "End", "Home", " "].includes(event.key)) userScroll.current = true }}>
         {variant === "Search" && query && <div className="bui-trace-row"><TraceIcon kind="search"/><span>{query}</span></div>}
         {visible.map((row, index) => {
           if (variant === "Reasoning") return <p className="bui-reasoning-row" key={index}>{row}</p>
