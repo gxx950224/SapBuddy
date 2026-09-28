@@ -788,11 +788,33 @@ function stableJson(value) {
   return JSON.stringify(value)
 }
 
+function writeApprovalSummary(toolName, input) {
+  const actions = {
+    create_object_programmatically: "创建 ABAP 对象",
+    replace_string_in_abap_object: "修改 ABAP 源码",
+    abap_activate: "激活 ABAP 对象",
+    create_test_include: "创建测试 Include",
+    update_object_description: "修改对象描述",
+  }
+  const target = input.name || input.objectName || input.className || input.fileUri
+  const change = input.fullSource ? "整段覆盖源码" : input.oldString != null || input.newString != null ? "局部替换源码" : null
+  return [
+    ["操作", actions[toolName] || toolName || "写入 SAP"],
+    ["对象", target],
+    ["对象类型", input.objectType],
+    ["变更方式", change],
+    ["开发包", input.packageName],
+    ["传输请求", input.requestNumber],
+    ["目标连接", input.connectionId || "当前启用的 SAP 连接"],
+  ].filter(([, value]) => value != null && value !== "")
+}
+
 function ApprovalCard({ item }) {
   const [custom, setCustom] = useState("")
   const [selected, setSelected] = useState("")
   const input = sanitizeApprovalInput(item.input)
   const write = item.approvalType === "write"
+  const summary = write ? writeApprovalSummary(item.toolName, input) : []
   // 问题已提交后回收卡片，避免答案气泡出现后仍残留旧问题。
   if (!write && (item.status === "submitted" || item.status === "complete")) return null
   const actionText = write ? "写入操作已拦截，尚未执行" : item.question
@@ -806,7 +828,8 @@ function ApprovalCard({ item }) {
   }
   return <section className={`confirm-card bu-approval ${write ? "write-approval" : "question-approval"}`} data-cid={item.id} aria-live="polite">
     <div className="bu-approval-heading">{write && <span className="bu-approval-mark" aria-hidden="true">!</span>}<div><h3>{write ? "需要确认写入计划" : item.question}</h3>{write && <p>{actionText}</p>}</div></div>
-    {write && <><div className="bu-approval-tool">{item.toolName}</div>{Object.keys(input).length > 0 && <dl className="bu-approval-fields">{Object.entries(input).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}</dd></div>)}</dl>}
+    {write && <><dl className="bu-approval-summary">{summary.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}</dl>
+      {Object.keys(input).length > 0 && <details className="bu-approval-detail"><summary>查看工具参数</summary><dl className="bu-approval-fields">{Object.entries(input).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}</dd></div>)}</dl></details>}
       <p className="bu-approval-note">确认只会通过正常对话提交，仍由服务端写入门禁和开发客户端检查决定是否执行。</p></>}
     {!write && <div className="bu-approval-options" role="radiogroup" aria-label={item.question}>{item.options.map((option) => <label key={option}><input type="radio" name={`question-${item.id}`} checked={selected === option && !custom} onChange={() => { setSelected(option); setCustom("") }}/><span>{option}</span></label>)}</div>}
     {!write && item.allowCustom && <div className="bu-approval-custom"><input aria-label="补充你的回答" value={custom} onChange={(event) => { setCustom(event.target.value); setSelected("") }} placeholder="其他想法…"/></div>}
