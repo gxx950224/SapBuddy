@@ -37,11 +37,10 @@ disable: false
     Clean ABAP 其余规范（方法短小、OO 优先、错误处理、SQL 规范、注释、单测等）仍然适用。
 - **方法**：短小单一职责；3 个以内导入参数；超过 3 个用结构；不写超长方法。
 - **数据声明**：尽量使用 `DATA(...)` 行内声明；`SELECT` 显式字段列表（禁止 `SELECT *`）；禁止未检查的 `FOR ALL ENTRIES`。
-- **字段类型（强制，分两类）**：
-  - **自建表/结构字段必须用 DDIC 类型**：`TYPES` 定义的结构/表类型字段、DDIC 表/结构（`define structure/table`）字段，禁止内置基本类型（`c`/`n`/`i`/`p`/`string`/`xstring`/`char1` 等裸类型）。
+- **字段类型建议**：
+  - `TYPES` 定义的结构/表类型字段、DDIC 表/结构（`define structure/table`）字段允许内置基本类型（`c`/`n`/`i`/`p`/`string`/`xstring`/`char1` 等）。使用裸类型时提示可考虑 DDIC 数据元素，不因此阻断写入。
   - 优先使用**标准数据元素**（如 `matnr`、`bukrs`、`dmbtr`、`menge_d`、`datum`、`abap_bool`、`sy-*` 对应元素）。
-  - 找不到合适标准元素时：**创建 Z 数据元素 + 域**（DDIC 工具：`create_object_programmatically` DTEL/DOMA），域定取值范围/长度，数据元素定业务语义（`get_sap_system_info` 可查类型清单）。
-  - 结构字段唯一裸写例外：客户端键（`abap.clnt`/`abap.cust`）。
+  - 需要业务语义或复用约束且找不到合适标准元素时，可创建 Z 数据元素 + 域（DDIC 工具：`create_object_programmatically` DTEL/DOMA）。
   - **程序内局部变量/临时量允许裸类型**：`DATA` 变量、方法/函数参数、循环索引等可用 `string`/`i`/`char10`，不必为中间量建数据元素。
   - 内表行类型优先用 DDIC 结构（如 `lvc_s_fcat`、自定义 `Z*_S_*`）。
 - **错误处理**：用异常（`RAISE EXCEPTION`）而非返回码；异常语义化命名；`CATCH` 只捕可处理异常。

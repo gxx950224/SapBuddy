@@ -10,7 +10,7 @@ import { boundToolResult } from "./result.js"
  * 代码级强制规则（不依赖 LLM 遵守，写工具内容写入前硬校验）：
  * 1. 开发客户端守卫：非开发类客户端拒绝一切写操作（assertDevClient）
  * 2. 硬编码中文扫描：写入代码含用户可见中文字面量 → 拒绝（必须走消息类/文本元素）
- * 3. 裸内置类型扫描：自建结构/表（TYPES 定义、DDIC DSL 字段）用 string/i/char1 等 → 拒绝（程序内局部变量允许裸类型）
+ * 3. 裸内置类型扫描：自建结构/表字段仅提示，不阻断写入。
  */
 import { z } from "zod"
 import { Type } from "typebox"
@@ -419,7 +419,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
   })
 }
 
-export { scanCodeViolations } from "./code-policy.js"
+export { scanCodeIssues, scanCodeViolations } from "./code-policy.js"
 
 /** JSON Schema → TypeBox（供 register.ts 与 MCP 工具注册共用） */
 export function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined): unknown {
@@ -528,7 +528,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
               isError: true,
             }
           }
-          // 内容级强制规则：写入代码前硬校验（硬编码中文 / 裸内置类型）——纯本地检查，不触连接
+          // 内容级强制规则：写入代码前硬校验硬编码中文；裸类型在保存后作为提示返回。
           // 局部替换用 newString、整段覆盖用 fullSource，两者都检查（fullSource 是写函数模块的推荐路径，不能漏）
           if (t.name === "replace_string_in_abap_object") {
             validateSourceMode(p)
@@ -539,7 +539,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
                 return {
                   content: [{
                     type: "text" as const,
-                    text: `⛔ 代码级规则拦截（不依赖 AI 自觉，写前硬校验）：\n${violations.join("\n")}\n\n请修正后重试：硬编码中文 → 消息类/文本元素；自建结构/表字段裸内置类型 → DDIC 数据元素（找不到则创建 Z 元素 + 域）。`,
+                    text: `⛔ 代码级规则拦截（写前硬校验）：\n${violations.join("\n")}\n\n请将硬编码中文改为消息类或文本元素后重试。`,
                   }],
                   details: { error: { code: "VALIDATION", retryable: false } },
                   isError: true,

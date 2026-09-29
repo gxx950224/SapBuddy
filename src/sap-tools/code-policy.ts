@@ -38,17 +38,16 @@ function codeWithoutComments(line: string, blockComment: boolean): { code: strin
 }
 
 /**
- * 扫描 ABAP 代码：硬编码中文文案 + 结构/表定义中的裸内置类型
- * 裸内置类型仅限制「自建表/结构」：ABAP TYPES 定义（含 BEGIN OF 块）与 DDIC DSL define structure/table 的字段；
- * 程序内局部变量/临时量（DATA、方法参数、函数接口等）允许裸类型（Clean ABAP 对技术临时量本就允许）
- * @returns 违规列表（空 = 通过）
+ * 扫描 ABAP 代码：硬编码中文文案是阻断项；结构/表字段的裸内置类型只提示。
+ * 程序内局部变量/临时量（DATA、方法参数、函数接口等）不需要提示。
  */
-export function scanCodeViolations(code: string): string[] {
+export function scanCodeIssues(code: string): { violations: string[]; warnings: string[] } {
   const violations: string[] = []
-  if (!code) return violations
+  const warnings: string[] = []
+  if (!code) return { violations, warnings }
   const lines = code.split(/\r?\n/)
 
-  const banned = new Set([
+  const bareTypes = new Set([
     "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
     "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
     "char10", "char12", "char20", "char30", "char40", "char50", "char60",
@@ -83,8 +82,7 @@ export function scanCodeViolations(code: string): string[] {
       }
     }
 
-    // 2) 结构/表类型定义中的裸内置类型：TYPES 声明（含 BEGIN OF 块）属"自建表/结构" → 必须用 DDIC 类型；
-    //    程序内 DATA/方法参数/函数接口等 → 放行裸类型
+    // 2) 自建结构/表类型字段的裸类型只提示，不阻断保存。
     const hasTypesKw = /\bTYPES\b/i.test(noComment)
     if (/\bBEGIN\s+OF\b/i.test(noComment) && hasTypesKw) typeDefDepth++
     if (/\bEND\s+OF\b/i.test(noComment)) typeDefDepth = Math.max(0, typeDefDepth - 1)
@@ -93,13 +91,13 @@ export function scanCodeViolations(code: string): string[] {
       const typeTokens = noComment.matchAll(/TYPE\s+([a-z]\w*)/gi)
       for (const m of typeTokens) {
         const t = m[1].toLowerCase()
-        if (banned.has(t)) {
-          violations.push(`第 ${i + 1} 行：自建结构/表类型字段用裸内置类型 TYPE ${t.toUpperCase()}（结构字段必须用 DDIC 数据元素/结构，找不到标准元素时创建 Z 数据元素 + 域；程序内局部变量不受限）`)
+        if (bareTypes.has(t)) {
+          warnings.push(`第 ${i + 1} 行：结构/表类型字段使用裸类型 TYPE ${t.toUpperCase()}；有合适的 DDIC 数据元素时可优先使用。`)
         }
       }
     }
 
-    // 3) DDIC DSL 结构字段：define structure/table 内直接 `字段 : abap.<内置类型>;` 属裸类型
+    // 3) DDIC DSL 结构/表字段的 abap.<内置类型> 同样只提示。
     //    （abap.clnt / abap.cust 是客户端键特殊标记，放行；数据元素按名字引用、reference to 均不在此列）
     const defineKw = /\bdefine\s+(?:append\s+)?(structure|table)\b/i.test(noComment)
     if (defineKw) inDefineBlock = true
@@ -107,10 +105,15 @@ export function scanCodeViolations(code: string): string[] {
     if (dslField && (inDefineBlock || defineKw)) {
       const at = dslField[1].toLowerCase()
       if (at !== "clnt" && at !== "cust") {
-        violations.push(`第 ${i + 1} 行：DDIC 结构字段用裸内置类型 abap.${at.toUpperCase()}（结构字段必须用 DDIC 数据元素，如 matnr/bukrs/dmbtr；找不到标准元素时创建 Z 数据元素 + 域）`)
+        warnings.push(`第 ${i + 1} 行：DDIC 结构/表字段使用裸类型 abap.${at.toUpperCase()}；有合适的 DDIC 数据元素时可优先使用。`)
       }
     }
     if (noComment.includes("}")) inDefineBlock = false
   }
-  return violations
+  return { violations, warnings }
+}
+
+/** 兼容已有调用者：只返回会阻断写入的规则。 */
+export function scanCodeViolations(code: string): string[] {
+  return scanCodeIssues(code).violations
 }

@@ -33,7 +33,7 @@ cli.mjs ──► src/agent-core.mjs ──► pi SDK (AgentSession)
    │    │     ├─ isWriteApproved()?         → 放行（授权窗口内）
    │    │     ├─ TUI/CLI：ctx.ui.confirm    → 原生弹窗
    │    │     └─ Web：block + 提示 AI 展示计划 → 用户手动输入「确认」
-   │    └─ replace_string 额外：scanCodeViolations（硬编码中文/自建表结构字段裸内置类型）
+   │    └─ replace_string 额外：scanCodeViolations（硬编码中文）；自建表/结构裸类型仅提示
    │
    ├─ ② execute 层（每个写工具）
    │    └─ assertDevClient（T000.CCCATEGORY）→ 非开发客户端拒绝一切写
@@ -44,7 +44,7 @@ cli.mjs ──► src/agent-core.mjs ──► pi SDK (AgentSession)
         └─ 中性/继续消息 → 窗口保持
 ```
 
-**规则唯一出处**：`handleUserMessage`/`installWriteGate` 在 register.ts；`scanCodeViolations` 在 code-policy.ts，由 register.ts 兼容导出；路径与固定本地操作分别在 local-file-policy.ts、local-operations.ts；
+**规则唯一出处**：`handleUserMessage`/`installWriteGate` 在 register.ts；`scanCodeIssues` 在 code-policy.ts 分出阻断项与提示项，`scanCodeViolations` 由 register.ts 兼容导出；路径与固定本地操作分别在 local-file-policy.ts、local-operations.ts；
 agent-core（Web）与 pi-extension（CLI）只做挂载调用，不重复实现 → 双端行为永远一致。
 
 **其他安全**：
@@ -78,7 +78,7 @@ node cli.mjs tools   # 工具列表
 | 外部 MCP 写工具拦截（**仅 `mcp_abap_wiki_*` 知识库**：append/create/update/patch/delete/rename 等命名，**一律直接拦截，不可人工确认放行**（知识库只读）；其他 MCP 服务器工具不拦截）| `register.ts` `installWriteGate`（ABAP_WIKI_WRITE_RE）| 硬强制 |
 | 敏感配置禁止 AI 读写（connections/auth/settings/models/mcp；bash 命令含敏感路径/文件名也拦）| `register.ts` `installWriteGate` + `local-file-policy.ts`（实际路径归一化、符号链接及递归范围校验）；`local-operations.ts` 将 bash 限制为固定的打开产物、读取上传文本、HTTPS GET，不执行任意脚本；Office 上传沿用文本提取通道| 硬强制 |
 | SapBuddy 自身源码/规则文件禁止 AI 读写（src/、cli.mjs、test/、AGENTS.md、SYSTEM.md 等）| `register.ts` `installWriteGate`（保留 Memory.md、.SapBuddy/skills、output/ 可编辑区）| 硬强制 |
-| 代码规则扫描（硬编码中文（含反引号字面量）/自建表结构字段裸内置类型；程序内局部变量放行）| `code-policy.ts`（由 `register.ts` 导出）；注册层检查参数互斥，`writeTools.ts` 保存前扫描最终源码 | 硬强制 |
+| 代码规则扫描（硬编码中文阻断；自建表/结构字段裸类型提示；程序内局部变量放行）| `code-policy.ts`；注册层检查参数互斥，`writeTools.ts` 保存前扫描最终源码并返回提示 | 中文硬强制，裸类型非阻断 |
 | 开发客户端守卫（T000 类别）| `src/sap-tools/adtManager.ts` `assertDevClient` | 硬强制 |
 | 创建：包名/描述必填、$TMP 需用户确认、requestText 建请求 | `tools/writeTools.ts` create_object_programmatically + `register.ts` 写门禁 | 硬强制 |
 | 修改：自动沿用/创建请求、请求描述格式 | `tools/writeTools.ts` replace_string_in_abap_object | 硬强制 |

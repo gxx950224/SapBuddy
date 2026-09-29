@@ -3,7 +3,7 @@ import { z } from "zod"
 import { session_types, type ActivationResult } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
 import { recordFailure } from "../execution.js"
-import { scanCodeViolations, validateSourceMode } from "../code-policy.js"
+import { scanCodeIssues, validateSourceMode } from "../code-policy.js"
 import { mergeActivationResults, verifyActivation, type ActivationReport } from "./activationResult.js"
 import { getActiveRequest, setActiveRequest } from "../taskTransport.js"
 import { parseFunctionModuleParams, normalizeFunctionModuleParams, normalizeFormIncludeSource, isFmoduleSourceChannel, detectCommentParamBlock, escapeOpenSqlHostVars, FM_KINDS } from "./fmoduleInterface.js"
@@ -789,7 +789,7 @@ export const replaceStringTool = {
           // ② 用户指定 requestNumber → 用用户指定的，并作为本需求共享请求；
           // ③ 否则复用本需求共享请求（同需求多对象放同一请求）；
           // ④ 都没有才自动新建一个，并记为共享请求。
-          const violations = scanCodeViolations(updated)
+          const { violations, warnings } = scanCodeIssues(updated)
           if (violations.length) throw new Error(`代码级规则拦截（最终待写入源码）：\n${violations.join("\n")}`)
           const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
           const isLocal = lockInfo.IS_LOCAL === "X"
@@ -898,6 +898,7 @@ export const replaceStringTool = {
             fmNote +
             incNormNote +
             incActNote +
+            (warnings.length ? `\n⚠️ 类型提示（不影响保存）：\n${warnings.join("\n")}\n` : "") +
             (savedByNorm
               ? `\n⚙️ 读回为服务器规范化格式，已按关键内容核对确认写入（DDIC 结构等对象的源码会被归一化显示）\n`
               : "") +

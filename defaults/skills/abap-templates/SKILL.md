@@ -12,7 +12,7 @@ agent_created: true
 
 # ABAP 开发模板库（报表 + 函数模块）
 
-> 命名与编码规则、字段类型（禁裸内置类型）、消息类等一律以 `dev-write` 技能为唯一权威；本文件只提供具体代码模板与写法参考。
+> 命名与编码规则、字段类型、消息类等一律以 `dev-write` 技能为唯一权威；本文件只提供具体代码模板与写法参考。
 
 # 一、ABAP 报表（Report）
 
@@ -134,7 +134,7 @@ PARAMETERS: p_detail AS CHECKBOX DEFAULT 'X'.
 PARAMETERS: p_alv  RADIOBUTTON GROUP g1 DEFAULT 'X',
             p_list RADIOBUTTON GROUP g1.
 
-" 下拉列表（状态/选项：用 xfeld 等标准数据元素，禁裸 TYPE char1）
+" 下拉列表（状态/选项：可用 xfeld 等标准数据元素，也允许 TYPE char1）
 PARAMETERS: p_type TYPE xfeld AS LISTBOX VISIBLE LENGTH 20.
 ```
 
@@ -234,7 +234,7 @@ SORT lt_kna1 BY kunnr.
 ### 导出 CSV（应用服务器）
 
 ```abap
-" 文件路径：无标准数据元素时需创建 Z 数据元素（如 zz_path），禁裸 TYPE string
+" 文件路径：可用合适的数据元素；无合适元素时也允许 TYPE string
 DATA: lv_file TYPE zz_path VALUE '/tmp/export.csv'.
 
 OPEN DATASET lv_file FOR OUTPUT IN TEXT MODE ENCODING UTF-8.
@@ -301,8 +301,7 @@ agent_created: true
 # ABAP 函数模块开发参考
 
 > 命名与编码规则以 `dev-write` 技能（默认 SAP 官方 Clean ABAP）为唯一权威；本文件只提供代码模板与写法参考。
-> **字段类型规范（强制）**：自建表/结构字段必须使用 DDIC 数据元素或结构，**禁止裸内置类型**（`i`/`c`/`n`/`p`/`string`/`char1` 等）；
-> 找不到标准元素时创建 Z 数据元素 + 域；程序内局部变量/参数允许裸类型（见 dev-write 技能）。
+> **字段类型建议**：自建表/结构字段允许裸内置类型（`i`/`c`/`n`/`p`/`string`/`char1` 等），保存时仅提示；有合适的 DDIC 数据元素可优先使用。程序内局部变量/参数也允许裸类型（见 dev-write 技能）。
 > **函数模块接口参数命名**：`IV_`/`EV_`/`ET_`/`ES_` 前缀是 SAP 函数模块接口的通行惯例（SE37 界面/社区代码广泛使用），
 > 与类方法的 Clean ABAP 无前缀规则**不同场景不同规则**，接口参数沿用 IV_/EV_ 惯例；函数体内局部变量仍遵循 Clean ABAP（行内声明、无前缀）。
 > 函数模块命名：`Z_<模块>_FM_<描述>`；函数组命名：`Z<模块>G<3位编号>`。
@@ -393,7 +392,7 @@ ENDFUNCTION.
 ### EXPORTING 参数
 ```abap
 *"  EXPORTING
-*"     VALUE(EV_COUNT) TYPE  MENGE_D          " 计数：数量类数据元素（禁裸 TYPE i）
+*"     VALUE(EV_COUNT) TYPE  MENGE_D          " 计数：可用数量类数据元素，也允许 TYPE i
 *"     VALUE(ES_HEADER) TYPE  ZFIS_HEADER
 *"     REFERENCE(ET_DATA) TYPE  ZFITT_DATA
 ```

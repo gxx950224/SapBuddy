@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url)
 const register = require("../dist/sap-tools/register.js")
 const shared = require("../dist/sap-tools/tools/shared.js")
 
-const { scanCodeViolations, handleUserMessage, clearWriteApproval, isWriteApproved, namespaceViolation, installWriteGate } = register
+const { scanCodeIssues, scanCodeViolations, handleUserMessage, clearWriteApproval, isWriteApproved, namespaceViolation, installWriteGate } = register
 const { escapeXmlAttr } = shared
 
 before(() => clearWriteApproval())
@@ -62,7 +62,7 @@ test("scanCodeViolations：注释后的有效代码仍扫描，字符串里的�
   assert.deepEqual(v.map(x => Number(x.match(/第 (\d+) 行/)?.[1])), [1, 2, 3, 4])
 })
 
-test("scanCodeViolations：注释中的 TYPES 不改变结构字段扫描状态", () => {
+test("scanCodeIssues：注释中的 TYPES 不改变结构字段扫描状态", () => {
   const code = [
     `* TYPES: BEGIN OF commented, field TYPE string.`,
     `DATA lv_text TYPE string.`,
@@ -71,9 +71,10 @@ test("scanCodeViolations：注释中的 TYPES 不改变结构字段扫描状态"
     `  field TYPE string,`,
     `END OF ts_real.`,
   ].join("\n")
-  const v = scanCodeViolations(code)
-  assert.equal(v.length, 1)
-  assert.match(v[0], /第 5 行：.*TYPE STRING/)
+  const { violations, warnings } = scanCodeIssues(code)
+  assert.deepEqual(violations, [])
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /第 5 行：.*TYPE STRING/)
 })
 
 test("scanCodeViolations：程序内局部变量裸类型放行（DATA 变量）", () => {
@@ -88,16 +89,30 @@ test("scanCodeViolations：方法/函数参数裸类型放行", () => {
   assert.deepEqual(v, [], `方法参数裸类型应放行，实际: ${v.join("|")}`)
 })
 
-test("scanCodeViolations：自建结构 TYPES 块字段裸类型被拦截", () => {
+test("scanCodeIssues：自建结构 TYPES 块字段裸类型仅提示", () => {
   const code = [
     `TYPES: BEGIN OF ts_line,`,
     `  field1 TYPE string,`,
     `  field2 TYPE i,`,
     `END OF ts_line.`,
   ].join("\n")
-  const v = scanCodeViolations(code)
-  assert.ok(v.some((x) => x.includes("TYPE STRING")), `应报 TYPE STRING，实际: ${v.join("|")}`)
-  assert.ok(v.some((x) => x.includes("TYPE I")), `应报 TYPE I，实际: ${v.join("|")}`)
+  const { violations, warnings } = scanCodeIssues(code)
+  assert.deepEqual(violations, [])
+  assert.ok(warnings.some((x) => x.includes("TYPE STRING")), `应提示 TYPE STRING，实际: ${warnings.join("|")}`)
+  assert.ok(warnings.some((x) => x.includes("TYPE I")), `应提示 TYPE I，实际: ${warnings.join("|")}`)
+  assert.deepEqual(scanCodeViolations(code), [], "裸类型不应进入阻断列表")
+})
+
+test("scanCodeIssues：裸类型提示不掩盖硬编码中文阻断", () => {
+  const code = [
+    `TYPES: BEGIN OF ts_line, field TYPE c LENGTH 1, END OF ts_line.`,
+    `WRITE '中文文案'.`,
+  ].join("\n")
+  const { violations, warnings } = scanCodeIssues(code)
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /TYPE C/)
+  assert.equal(violations.length, 1)
+  assert.match(violations[0], /硬编码中文/)
 })
 
 test("scanCodeViolations：TYPES 引用 DDIC 表/元素不误报", () => {
@@ -106,7 +121,7 @@ test("scanCodeViolations：TYPES 引用 DDIC 表/元素不误报", () => {
   assert.deepEqual(v, [], `引用 DDIC 表不应误报，实际: ${v.join("|")}`)
 })
 
-test("scanCodeViolations：DDIC DSL 结构字段 abap.* 裸类型被拦截（clnt 放行）", () => {
+test("scanCodeIssues：DDIC DSL 结构字段 abap.* 裸类型仅提示（clnt 放行）", () => {
   const code = [
     `define structure zss_demo {`,
     `  key client : abap.clnt not null;`,
@@ -115,10 +130,24 @@ test("scanCodeViolations：DDIC DSL 结构字段 abap.* 裸类型被拦截（cln
     `  id    : zdemo_abap_dtel;`,
     `}`,
   ].join("\n")
-  const v = scanCodeViolations(code)
-  assert.ok(v.some((x) => x.includes("abap.CHAR")), `应报 abap.CHAR，实际: ${v.join("|")}`)
-  assert.ok(v.some((x) => x.includes("abap.INT4")), `应报 abap.INT4，实际: ${v.join("|")}`)
-  assert.ok(!v.some((x) => x.includes("CLNT")), `abap.clnt 客户端键不应误报，实际: ${v.join("|")}`)
+  const { violations, warnings } = scanCodeIssues(code)
+  assert.deepEqual(violations, [])
+  assert.ok(warnings.some((x) => x.includes("abap.CHAR")), `应提示 abap.CHAR，实际: ${warnings.join("|")}`)
+  assert.ok(warnings.some((x) => x.includes("abap.INT4")), `应提示 abap.INT4，实际: ${warnings.join("|")}`)
+  assert.ok(!warnings.some((x) => x.includes("CLNT")), `abap.clnt 客户端键不应误报，实际: ${warnings.join("|")}`)
+})
+
+test("scanCodeIssues：DDIC 表字段裸类型仅提示", () => {
+  const code = [
+    `define table ztest_demo {`,
+    `  key client : abap.clnt not null;`,
+    `  status : abap.char(1);`,
+    `}`,
+  ].join("\n")
+  const { violations, warnings } = scanCodeIssues(code)
+  assert.deepEqual(violations, [])
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /abap.CHAR/)
 })
 
 test("scanCodeViolations：DDIC 元素/复合类型不误报", () => {
