@@ -3,6 +3,7 @@ import { z } from "zod"
 import { session_types, type ActivationResult } from "abap-adt-api"
 import { getClient } from "../adtManager.js"
 import { recordFailure } from "../execution.js"
+import { scanCodeViolations, validateSourceMode } from "../code-policy.js"
 import { mergeActivationResults, verifyActivation, type ActivationReport } from "./activationResult.js"
 import { getActiveRequest, setActiveRequest } from "../taskTransport.js"
 import { parseFunctionModuleParams, normalizeFunctionModuleParams, normalizeFormIncludeSource, isFmoduleSourceChannel, detectCommentParamBlock, escapeOpenSqlHostVars, FM_KINDS } from "./fmoduleInterface.js"
@@ -602,6 +603,7 @@ export const replaceStringTool = {
   async execute(args: { fileUri: string; oldString?: string; newString?: string; fullSource?: string; requestText?: string; requestNumber?: string; connectionId?: string }): Promise<string> {
     let fgIncludeHint = ""
     try {
+      validateSourceMode(args)
       // 解析 URI -> 连接与对象 URI
       let connId = args.connectionId
       let adtUri = args.fileUri
@@ -645,10 +647,7 @@ export const replaceStringTool = {
         try {
           const content = await client.getObjectSource(sourceUri)
           const { findAndReplace } = await import("./replaceLogic.js")
-          const newContent = args.fullSource ?? args.newString
-          if (!newContent || (!args.fullSource && (!args.oldString || !args.newString))) {
-            throw new Error("参数缺失：整段覆盖请传 fullSource（完整新源码）；局部替换请同时传 oldString 与 newString。")
-          }
+          const newContent = (args.fullSource ?? args.newString)!
           let updated = args.fullSource ?? findAndReplace(content, args.oldString!, args.newString!)
           // ── 函数模块参数段强控：检测到往源码里写 IMPORTING/TABLES 等参数段 → 规范化为服务器接受格式后放行 ──
           // 关键事实：ADT 服务器会从 /source/main 的源码 PUT 里自动提取函数模块接口参数进元数据（FUPARAREF），
@@ -790,6 +789,8 @@ export const replaceStringTool = {
           // ② 用户指定 requestNumber → 用用户指定的，并作为本需求共享请求；
           // ③ 否则复用本需求共享请求（同需求多对象放同一请求）；
           // ④ 都没有才自动新建一个，并记为共享请求。
+          const violations = scanCodeViolations(updated)
+          if (violations.length) throw new Error(`代码级规则拦截（最终待写入源码）：\n${violations.join("\n")}`)
           const lockInfo = lock as { CORRNR?: string; IS_LOCAL?: string }
           const isLocal = lockInfo.IS_LOCAL === "X"
           let transport = isLocal ? undefined : (lockInfo.CORRNR || undefined)

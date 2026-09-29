@@ -9,6 +9,7 @@ import path from "node:path"
 import fs from "node:fs"
 import os from "node:os"
 import { registerQuestionTool } from "./question-tool.mjs"
+import { registerWriteApprovalTool } from "./write-approval-tool.mjs"
 
 const require = createRequire(import.meta.url)
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -267,6 +268,7 @@ export async function createAgent(opts = {}) {
     extensionFactories: [
       (pi) => {
         registerQuestionTool(pi)
+        registerWriteApprovalTool(pi, opts.onWriteBlocked)
         installModelBudget(pi, settings)
         installHarnessMetrics(pi, { file: path.join(CONFIG_DIR, "metrics", "runs.jsonl"), profile: settings.toolProfile || "all" })
         // 加载期直接注册（不能调 getAllTools 等 action method，registerTool 本身可用）
@@ -293,6 +295,7 @@ export async function createAgent(opts = {}) {
             try {
               const r = await import(pathToFileURL(path.join(ROOT, "dist", "sap-tools", "register.js")).href)
               r.handleUserMessage?.(event?.prompt || "")
+              return { systemPrompt: `${event.systemPrompt}\n\n当前写授权状态：${r.isWriteApproved?.() ? "已授权；只能按用户已审核的计划和代码 diff 调用写工具；新增改动须重新展示 diff 并确认。" : "未授权；所有代码修改须先在回复中展示完整计划，再将覆盖全部修改的 unified diff 传入 request_write_approval，由页面在计划后展示差异和确认弹窗。不要在回复中重复粘贴 diff。收到确认前禁止调用任何写工具。"}` }
             } catch { /* 忽略 */ }
           })
         } catch (e) {

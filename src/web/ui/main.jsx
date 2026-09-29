@@ -399,7 +399,7 @@ const view = {
     const id = String(payload.id || payload.toolCallId || newId("approval"))
     const item = { id: `approval:${id}`, kind: "approval", approvalType, sessionFile: payload.sessionFile || App.state.currentPath || "",
       question: payload.question || "需要你确认下一步", options: Array.isArray(payload.options) ? payload.options : [],
-      allowCustom: payload.allowCustom === true, toolName: payload.toolName || "", input: payload.input || {},
+      allowCustom: payload.allowCustom === true, toolName: payload.toolName || "", input: payload.input || {}, preflight: payload.preflight === true,
       requestToolCallId: payload.toolCallId ? String(payload.toolCallId) : null,
       status: "pending", deferred: approvalType === "write" && streaming, createdAt: payload.ts || Date.now() }
     const next = new Map(messageItems)
@@ -484,7 +484,7 @@ const view = {
   toolStarted(id, name, args, sessionFile = App.state.currentPath) {
     const owner = toolOwners.get(String(id))
     const candidates = [...messageItems.values()].filter((item) => item.kind === "approval" && item.approvalType === "write" &&
-      item.status === "submitted" && item.toolName === name &&
+      item.status === "submitted" && (item.toolName === name || item.preflight) &&
       (!item.sessionFile || !sessionFile || item.sessionFile === sessionFile))
     const executionArgs = stableJson(sanitizeApprovalInput(args || {}))
     const approval = candidates.find((item) => item.requestToolCallId === String(id)) ||
@@ -586,8 +586,9 @@ function PixelLoader() {
 }
 
 function CodeBlock({ code, language, streaming }) {
-  const [mode, setMode] = useState("code")
   const isDiff = /^diff(?:-|$)/i.test(language) || /^(?:\+\+\+|---|@@)/m.test(code)
+  const [mode, setMode] = useState(isDiff ? "diff" : "code")
+  useEffect(() => { if (isDiff) setMode("diff") }, [isDiff])
   const lang = language.toLowerCase().replace(/^sap-/, "")
   const highlighted = useMemo(() => {
     if (streaming || !window.hljs || !lang || !window.hljs.getLanguage?.(lang)) return code.split("\n").map(App.escapeHtml)
@@ -797,15 +798,18 @@ const AssistantMessage = memo(function AssistantMessage({ item, active }) {
   </div>
 })
 
-function sanitizeApprovalValue(value, depth = 0) {
-  if (typeof value === "string") return value.length > 600 ? `${value.slice(0, 600)}…（已截断）` : value
+function sanitizeApprovalValue(value, depth = 0, key = "") {
+  if (typeof value === "string") {
+    const limit = key === "diff" ? 60000 : 600
+    return value.length > limit ? `${value.slice(0, limit)}…（已截断）` : value
+  }
   if (!value || typeof value !== "object") return value
   if (depth >= 3) return "[嵌套内容已省略]"
   if (Array.isArray(value)) return value.slice(0, 32).map((entry) => sanitizeApprovalValue(entry, depth + 1))
   return Object.fromEntries(Object.entries(value)
     .filter(([key]) => !/(password|secret|token|api.?key|credential|authorization)/i.test(key))
     .slice(0, 16)
-    .map(([key, entry]) => [key, sanitizeApprovalValue(entry, depth + 1)]))
+    .map(([key, entry]) => [key, sanitizeApprovalValue(entry, depth + 1, key)]))
 }
 
 function sanitizeApprovalInput(input) {
@@ -828,12 +832,14 @@ function writeApprovalSummary(toolName, input) {
     abap_activate: "激活 ABAP 对象",
     create_test_include: "创建测试 Include",
     update_object_description: "修改对象描述",
+    request_write_approval: "申请 SAP 写入授权",
   }
   const target = input.name || input.objectName || input.className || input.fileUri
   const change = input.fullSource ? "整段覆盖源码" : input.oldString != null || input.newString != null ? "局部替换源码" : null
   return [
     ["操作", actions[toolName] || toolName || "写入 SAP"],
     ["对象", target],
+    ["改动摘要", input.summary],
     ["对象类型", input.objectType],
     ["变更方式", change],
     ["开发包", input.packageName],
@@ -845,14 +851,18 @@ function writeApprovalSummary(toolName, input) {
 function ApprovalCard({ item }) {
   const [custom, setCustom] = useState("")
   const [selected, setSelected] = useState("")
+  const confirmDialog = useRef(null)
   const input = sanitizeApprovalInput(item.input)
   const write = item.approvalType === "write"
+  const diff = item.preflight && typeof input.diff === "string" ? input.diff : ""
+  const codeWrite = new Set(["create_object_programmatically", "replace_string_in_abap_object", "create_test_include", "abap_activate", "manage_text_elements", "translate_text_pool", "translate_message_class", "translate_screen_text", "fix_ddic_text"]).has(item.toolName)
+  const missingCodeDiff = write && codeWrite && !diff
   const summary = write ? writeApprovalSummary(item.toolName, input) : []
   // 问题已提交后回收卡片，避免答案气泡出现后仍残留旧问题。
   if (!write && (item.status === "submitted" || item.status === "complete")) return null
   // 写入确认只在等待决定或发送失败可重试时显示；执行结果由对话和工具记录呈现。
   if (write && !(["pending", "draft"].includes(item.status) || (item.status === "failed" && item.submissionFailed))) return null
-  const actionText = write ? "写入操作已拦截，尚未执行" : item.question
+  const actionText = write ? (missingCodeDiff ? "缺少可审核的代码差异，暂不能确认执行" : item.preflight ? "尚未调用写工具，等待你审核计划和代码差异" : "写入操作已拦截，尚未执行") : item.question
   const statusText = write
     ? ({ pending: "等待你确认或拒绝", draft: "准备提交确认", submitted: "确认词已发送，等待 Agent 校验", executing: "后端已放行，工具正在执行", complete: "工具执行完成", failed: "工具执行失败", rejected: "已拒绝", interrupted: "请求已中断，写操作未完成", stale: "请求已结束，未执行写操作" })[item.status] || "等待处理"
     : ({ pending: "等待你的回答", draft: "准备提交回答", submitted: "回答已发送", complete: "回答已发送", failed: "发送失败", interrupted: "本轮已中断" })[item.status] || "等待处理"
@@ -864,12 +874,14 @@ function ApprovalCard({ item }) {
   return <section className={`confirm-card bu-approval ${write ? "write-approval" : "question-approval"}`} data-cid={item.id} aria-live="polite">
     <div className="bu-approval-heading">{write && <span className="bu-approval-mark" aria-hidden="true">!</span>}<div><h3>{write ? "需要确认写入计划" : item.question}</h3>{write && <p>{actionText}</p>}</div></div>
     {write && <><dl className="bu-approval-summary">{summary.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{String(value)}</dd></div>)}</dl>
-      {Object.keys(input).length > 0 && <details className="bu-approval-detail"><summary>查看工具参数</summary><dl className="bu-approval-fields">{Object.entries(input).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}</dd></div>)}</dl></details>}
+      {diff && <div className="bu-approval-diff"><h4>拟执行的代码差异</h4><CodeBlock code={diff} language="diff" streaming={false}/></div>}
+      {Object.keys(input).length > 0 && <details className="bu-approval-detail"><summary>查看工具参数</summary><dl className="bu-approval-fields">{Object.entries(input).filter(([key]) => key !== "diff").map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "object" ? JSON.stringify(value) : String(value ?? "")}</dd></div>)}</dl></details>}
       <p className="bu-approval-note">确认只会通过正常对话提交，仍由服务端写入门禁和开发客户端检查决定是否执行。</p></>}
     {!write && <div className="bu-approval-options" role="radiogroup" aria-label={item.question}>{item.options.map((option) => <label key={option}><input type="radio" name={`question-${item.id}`} checked={selected === option && !custom} onChange={() => { setSelected(option); setCustom("") }}/><span>{option}</span></label>)}</div>}
     {!write && item.allowCustom && <div className="bu-approval-custom"><input aria-label="补充你的回答" value={custom} onChange={(event) => { setCustom(event.target.value); setSelected("") }} placeholder="其他想法…"/></div>}
     {!write && <div className="bu-question-footer"><button type="button" className="btn-sm btn-primary" disabled={!(custom.trim() || selected)} onClick={() => submit(custom.trim() || selected)}>发送答案</button></div>}
-    {write && (item.status === "pending" || item.status === "draft" || (item.status === "failed" && item.submissionFailed)) && <div className="bu-approval-actions"><button type="button" className="btn-sm btn-primary" onClick={() => submit("确认")}>确认并发送</button><button type="button" className="btn-sm" onClick={() => submit("拒绝")}>拒绝并发送</button></div>}
+    {write && (item.status === "pending" || item.status === "draft" || (item.status === "failed" && item.submissionFailed)) && <div className="bu-approval-actions">{!missingCodeDiff && <button type="button" className="btn-sm btn-primary" onClick={() => diff ? confirmDialog.current?.showModal() : submit("确认")}>{diff ? "审核完成，确认执行" : "确认并发送"}</button>}<button type="button" className="btn-sm" onClick={() => submit("拒绝")}>拒绝并发送</button></div>}
+    {diff && <dialog ref={confirmDialog} className="bu-approval-dialog" aria-labelledby={`confirm-title-${item.id}`}><h3 id={`confirm-title-${item.id}`}>确认执行代码修改？</h3><p>对象：{input.name || "当前对象"}</p><p>{input.summary}</p><p>确认后，Agent 将按上方差异方案调用 SAP 写工具。</p><div className="bu-approval-dialog-actions"><button type="button" className="btn-sm" onClick={() => confirmDialog.current?.close()}>返回查看差异</button><button type="button" className="btn-sm btn-primary" onClick={() => { confirmDialog.current?.close(); submit("确认") }}>确认执行</button></div></dialog>}
     {(write || item.status === "failed" || item.status === "interrupted") && <div className={`bu-approval-status ${item.status}`}>{write && item.status === "failed" && item.submissionFailed ? "发送失败，请重试" : statusText}</div>}
   </section>
 }

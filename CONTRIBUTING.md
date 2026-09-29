@@ -60,4 +60,4 @@ npm run doctor     # 环境自检
 
 1. 更新版本号（`npm version patch|minor|major`）
 2. `git push && git push --tags`
-3. GitHub Actions 自动构建测试，tag `v*` 触发 npm 发布
+3. GitHub Actions 自动构建测试；检查通过后，维护者执行 `npm publish` 并创建对应的 GitHub Release

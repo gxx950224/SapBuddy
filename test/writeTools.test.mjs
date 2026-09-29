@@ -85,7 +85,7 @@ test("normalizeFunctionGroupIncludeUri：已是函数组通道 URI 不改写", a
 test("normalizeFunctionGroupIncludeUri：函数组形态需连接验证（无连接时报错而非静默猜错）", async () => {
   await assert.rejects(
     () => normalizeFunctionGroupIncludeUri("none", "/sap/bc/adt/programs/includes/lzbcg014f01"),
-    /未找到|连接|none|ABAP|ENOTFOUND/i
+    /未找到|连接|none|ABAP|ENOTFOUND|EAI_AGAIN/i
   )
 })
 

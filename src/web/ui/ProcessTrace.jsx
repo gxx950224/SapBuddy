@@ -76,14 +76,14 @@ export function ThinkingTrace({ texts, tools, working, autoExpand = false, compa
   const expanded = manualOpen ?? (working || autoExpand)
   useLayoutEffect(() => {
     if (expanded && !wasExpanded.current && body.current) {
-      body.current.scrollTop = 0
-      followBottom.current = false
+      body.current.scrollTop = working ? body.current.scrollHeight : 0
+      followBottom.current = working
       userScroll.current = false
     } else if (expanded && followBottom.current && body.current) {
       body.current.scrollTop = body.current.scrollHeight
     }
     wasExpanded.current = expanded
-  }, [expanded, texts, tools])
+  }, [expanded, texts, tools, working])
   const onBodyScroll = (event) => {
     if (!userScroll.current && !dragging.current) return
     const element = event.currentTarget

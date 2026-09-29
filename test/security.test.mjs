@@ -315,20 +315,20 @@ test("bash 命令门禁：路径穿越 ../ 不因 output 前缀被放行", async
   assert.equal(r?.block, true, "含 ../ 的 open 命令应拦截")
 })
 
-test("bash 命令门禁：python 读 uploads 上传的 Excel 放行（分析上传文件场景）", async () => {
+test("bash 命令门禁：uploads 目录不授予任意 Python 脚本执行权限", async () => {
   const r = await triggerWriteGate(
     { command: 'cd /c/Users/24990/.SapBuddy/uploads && python -c "import openpyxl; wb = openpyxl.load_workbook(\'越南翻译文本清单.xlsx\')"' },
     "bash"
   )
-  assert.equal(r?.block, undefined, "引用仅限 uploads 子树的命令不应被拦截")
+  assert.equal(r?.block, true, "任意脚本不能因为引用 uploads 而获得放行")
 })
 
-test("bash 命令门禁：python 内联路径引用 uploads 文件也放行", async () => {
+test("bash 命令门禁：内联脚本引用 uploads 仍须拦截", async () => {
   const r = await triggerWriteGate(
     { command: "python -c \"import openpyxl; wb = openpyxl.load_workbook('.SapBuddy/uploads/zits004.xlsx')\"" },
     "bash"
   )
-  assert.equal(r?.block, undefined, "uploads 子树引用不应被拦截")
+  assert.equal(r?.block, true, "任意内联脚本不在允许操作内")
 })
 
 test("bash 命令门禁：uploads 引用带路径穿越 ../ 仍拦截", async () => {

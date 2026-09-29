@@ -1,3 +1,6 @@
+import { scanCodeViolations, validateSourceMode } from "./code-policy.js"
+import { canonicalPath, bashCommandAllowed } from "./local-file-policy.js"
+import { installLocalOperations } from "./local-operations.js"
 import { runToolExecution, classifyFailure } from "./execution.js"
 import { boundToolResult } from "./result.js"
 /**
@@ -12,7 +15,8 @@ import { boundToolResult } from "./result.js"
 import { z } from "zod"
 import { Type } from "typebox"
 import { readFileSync } from "node:fs"
-import { join } from "node:path"
+import { join, relative, isAbsolute, sep, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 import { homedir } from "node:os"
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent"
 import { tools } from "./tools/index.js"
@@ -29,7 +33,10 @@ let writeApprovalUntil = 0
 const WRITE_TOOL_NAMES = new Set(
   tools.filter((t) => t.write).map((t) => t.name),
 )
-export function isWriteTool(name: string): boolean {
+export function isWriteTool(name: string, input?: unknown): boolean {
+  const action = String((input as Record<string, unknown> | undefined)?.action ?? "")
+  if (name === "manage_transport_requests" && ["list_user_transports", "get_transport_details", "get_object_transport"].includes(action)) return false
+  if (name === "manage_text_elements" && action === "read") return false
   return WRITE_TOOL_NAMES.has(name)
 }
 export function setWriteApprovalWindow(ms = 60_000): void {
@@ -185,39 +192,33 @@ function inferProgramDir(basename: string): string {
  * @param onBlocked Web 模式回调（通知 server 广播确认浮层）
  */
 export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: { toolCallId?: string; toolName: string; input: unknown }) => void }): void {
+  if (typeof pi.registerTool === "function") installLocalOperations(pi)
   pi.on("tool_call" as never, async (event: { toolCallId?: string; toolName?: string; input?: unknown }, ctx: { hasUI?: boolean; ui?: { confirm?: (title: string, msg: string) => Promise<boolean> } }) => {
     const name = event?.toolName
     if (!name) return
     const input = (event.input ?? {}) as Record<string, unknown>
-    const p = String(input.path ?? input.file ?? input.filePath ?? input.pattern ?? "").replace(/\\/g, "/")
-    const lower = p.toLowerCase()
+    const p = String(input.path ?? input.file ?? input.filePath ?? "").replace(/\\/g, "/")
+    let lower: string
+    try { lower = canonicalPath(p).replace(/\\/g, "/").toLowerCase() }
+    catch { return { block: true, reason: "⛔ 无法确认文件实际路径，已按安全策略拦截。" } }
     // ── 敏感配置保护：.SapBuddy 配置目录（连接凭据/API 密钥/模型/MCP 等）禁止由 AI 读写 ──
     const PROTECTED_CONFIG = ["connections.json", "auth.json", "settings.json", "models.json", "models-store.json", "mcp.json"]
     const READ_TOOLS = ["read", "glob", "grep", "find", "ls"]
+    // Recursive searches must not start above protected roots; omitting path means cwd.
+    if (["glob", "grep", "find"].includes(name)) {
+      const root = join(dirname(fileURLToPath(import.meta.url)), "../..")
+      const protectedRoots = [join(homedir(), ".SapBuddy"), ...["src", "dist", "test", "config", "docs"].map(d => join(root, d))]
+      if (protectedRoots.some(dir => {
+        const rel = relative(lower, canonicalPath(dir).toLowerCase())
+        return !rel || (!isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`))
+      })) return { block: true, reason: "⛔ 搜索范围包含敏感配置或自身源码，请指定允许读取的具体子目录。" }
+    }
     // bash 命令行工具不在 read/glob/grep 名单，输入字段是 command 而非 path —— 单独拦截涉及敏感路径/文件名的命令
     if (name === "bash") {
       const cmd = String((input as Record<string, unknown>).command ?? "").toLowerCase()
-      // 仅两类命令可触碰 .SapBuddy：
-      //  ① 打开产物：start/explorer/open + .SapBuddy/output/（自动打开 HTML 流程图等）
-      //  ② 分析上传文件：命令中对 .SapBuddy 的引用仅限 uploads/ 子树（如 python 读用户上传的 Excel，与读工具一致放行）
-      // 两者都禁止路径穿越（..）与敏感配置文件名，防止借白名单目录逃逸读取 auth/connections 等。
-      const isOpenArtifact =
-        /^(start|explorer|open)(\s|$)/.test(cmd) &&
-        /\.sapbuddy[\/\\]output[\/\\]/.test(cmd)
-      let uploadsOnly = false
-      if (cmd.includes(".sapbuddy")) {
-        uploadsOnly = true
-        const RE = /\.sapbuddy[\\/]?/gi
-        let m: RegExpExecArray | null
-        while ((m = RE.exec(cmd)) !== null) {
-          const tail = cmd.slice(m.index + m[0].length).replace(/^[\\/]+/, "")
-          if (!/^uploads([\\/]|[\s;&|]|$)/.test(tail)) { uploadsOnly = false; break }
-        }
-      }
       const traversal = cmd.includes("..")
       const refsProtected = PROTECTED_CONFIG.some((f) => cmd.includes(f))
-      const allowed = (isOpenArtifact || uploadsOnly) && !traversal && !refsProtected
-      if (!allowed && (cmd.includes(".sapbuddy") || refsProtected)) {
+      if (!bashCommandAllowed(String(input.command ?? ""))) {
         const artifactCheck = !traversal && !refsProtected &&
           /\.sapbuddy[\\/]output([\\/]|[\s"']|$)/.test(cmd) &&
           [...cmd.matchAll(/\.sapbuddy[\\/]?([^\s"';&|]*)/g)].every(m => /^output([\\/]|$)/.test(m[1]))
@@ -229,8 +230,8 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
         return {
           block: true,
           reason:
-            `⛔ 命令行操作被安全拦截（涉及敏感配置）：${String(input.command ?? "").slice(0, 120)}\n` +
-            `安全配置（连接凭据 / API 密钥 / 模型 / MCP）仅限你本人手动查看 .SapBuddy/ 目录。`,
+            `⛔ 命令行操作被安全拦截（不属于允许操作）：${String(input.command ?? "").slice(0, 120)}\n` +
+            `仅允许打开产物、cat 读取上传文本、curl 查询 HTTPS；不执行任意脚本或复合命令。上传 Office 文件请读取已提取的 .txt 文件。`,
         }
       }
     }
@@ -238,14 +239,14 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     // 不再依赖"文件名含 connections.json"这类字符串匹配——grep(path=".SapBuddy") 可绕过文件名匹配整目录扫描。
     // prompts/ 放行：SYSTEM.md 避坑记录要求 AI 读 ~/.SapBuddy/prompts/Memory.md 追加经验（非密钥）。
     // uploads/ 放行：用户上传的文件（如 zits004.xlsx.txt）AI 必须能读取用于分析，不能拦。
-    if (READ_TOOLS.includes(name) && /\.sapbuddy(\/|$)/.test(lower)) {
+    if ([...READ_TOOLS, "write", "edit"].includes(name) && /\.sapbuddy(\/|$)/.test(lower)) {
       const rest = (lower.split(".sapbuddy").pop() ?? "").replace(/^[\\/]+/, "")
       const allowed = /^(output|skills|sessions|prompts|uploads)(\/|$)/.test(rest)
       if (!allowed) {
         return {
           block: true,
           reason:
-            `⛔ .SapBuddy 配置目录禁止由 AI 读取（已拦截）：${p}\n` +
+            `⛔ .SapBuddy 配置目录${name === "write" || name === "edit" ? "禁止由 AI 直接修改" : "禁止由 AI 读取"}（已拦截）：${p}\n` +
             `安全配置（连接凭据 / API 密钥 / 模型 / MCP）仅限你本人手动查看 .SapBuddy/ 目录。`,
         }
       }
@@ -272,14 +273,14 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
     // ── SapBuddy 自身源码/规则文件禁止由 AI 读写：运行中的助手不得改自己的代码 ──
     // 保留可编辑区：Memory.md（避坑记录）、.SapBuddy/（skills/output/sessions）、output/ 产物
     const SELF_CODE = [
-      /(^|\/)src[\/$]/, /(^|\/)dist[\/$]/, /(^|\/)test[\/$]/, /(^|\/)docs[\/$]/,
-      /(^|\/)config[\/$]/, /(^|\/)\.claude[\/$]/,
-      /(^|\/)cli\.mjs$/, /(^|\/)package\.(json|lock)$/, /(^|\/)tsconfig[^/]*\.json$/,
+      /(^|\/)src(?:\/|$)/, /(^|\/)dist(?:\/|$)/, /(^|\/)test(?:\/|$)/, /(^|\/)docs(?:\/|$)/,
+      /(^|\/)config(?:\/|$)/, /(^|\/)\.claude(?:\/|$)/,
+      /(^|\/)cli\.mjs$/, /(^|\/)package(?:-lock)?\.json$/, /(^|\/)tsconfig[^/]*\.json$/,
       /(^|\/)agents\.md$/, /(^|\/)system\.md$/, /(^|\/)readme\.md$/, /(^|\/)license$/,
       /(^|\/)credits\.md$/, /(^|\/)contributing\.md$/, /(^|\/)\.gitignore$/,
     ]
-    if (!lower.includes("/node_modules/") && SELF_CODE.some((re) => re.test(lower))) {
-      if (["read", "glob", "grep", "write", "edit"].includes(name)) {
+    if (SELF_CODE.some((re) => re.test(lower))) {
+      if ([...READ_TOOLS, "write", "edit"].includes(name)) {
         return {
           block: true,
           reason:
@@ -350,16 +351,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
           `如需新增或修改知识库分析，请提示用户手动在 Obsidian 中编辑，不要再次尝试写入。`,
       }
     }
-    if (!isWriteTool(name)) return
-    // 混合工具：只读 action 不拦截（manage_transport_requests 的查询、manage_text_elements 的 read）
-    if (name === "manage_transport_requests") {
-      const act = String((event.input as Record<string, unknown>)?.action || "")
-      if (["list_user_transports", "get_transport_details", "get_object_transport"].includes(act)) return
-    }
-    if (name === "manage_text_elements") {
-      const act = String((event.input as Record<string, unknown>)?.action || "")
-      if (act === "read") return
-    }
+    if (!isWriteTool(name, input)) return
     // 命名空间强制：只允许 Z*/Y*（代码级兜底，不依赖 LLM 遵守）
     const nsv = namespaceViolation(event.input)
     if (nsv) {
@@ -427,113 +419,7 @@ export function installWriteGate(pi: ExtensionAPI, opts?: { onBlocked?: (info: {
   })
 }
 
-/** 跳过 ABAP 与 CDS 注释，同时保留字符串字面量供后续扫描。 */
-function codeWithoutComments(line: string, blockComment: boolean): { code: string; blockComment: boolean } {
-  // ABAP 的 * 注释必须位于首列；CDS DDL 还支持 // 和 /* ... */。
-  if (!blockComment && line.startsWith("*")) return { code: "", blockComment: false }
-  let code = ""
-  let literal: "'" | "`" | null = null
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-    const next = line[i + 1]
-    if (blockComment) {
-      if (char === "*" && next === "/") { blockComment = false; i++ }
-      continue
-    }
-    if (literal) {
-      code += char
-      if (char === literal) {
-        if (next === literal) { code += next; i++ } // ABAP 中 '' 和 `` 是字面量内的转义
-        else literal = null
-      }
-      continue
-    }
-    if (char === "'" || char === "`") { literal = char; code += char; continue }
-    if (char === '"' || (char === "/" && next === "/")) break
-    if (char === "/" && next === "*") { blockComment = true; i++; continue }
-    code += char
-  }
-  return { code, blockComment }
-}
-
-/**
- * 扫描 ABAP 代码：硬编码中文文案 + 结构/表定义中的裸内置类型
- * 裸内置类型仅限制「自建表/结构」：ABAP TYPES 定义（含 BEGIN OF 块）与 DDIC DSL define structure/table 的字段；
- * 程序内局部变量/临时量（DATA、方法参数、函数接口等）允许裸类型（Clean ABAP 对技术临时量本就允许）
- * @returns 违规列表（空 = 通过）
- */
-export function scanCodeViolations(code: string): string[] {
-  const violations: string[] = []
-  if (!code) return violations
-  const lines = code.split(/\r?\n/)
-
-  const banned = new Set([
-    "c", "n", "i", "p", "string", "xstring", "d", "t", "decfloat16", "decfloat34",
-    "int1", "int2", "int4", "int8", "char1", "char2", "char3", "char4",
-    "char10", "char12", "char20", "char30", "char40", "char50", "char60",
-    "char80", "char100", "char120", "char132", "char133", "char200", "char255",
-    "numc2", "numc3", "numc4", "numc5", "numc6", "numc8", "numc10",
-    "dats", "tims", "tstmp", "raw", "rawstring", "unit", "curr", "quan",
-  ])
-  let typeDefDepth = 0 // TYPES: BEGIN OF ... END OF 嵌套深度
-  let inDefineBlock = false // define structure/table { ... } DDIC DSL 块内
-  let blockComment = false
-
-  for (let i = 0; i < lines.length; i++) {
-    const raw = lines[i]
-    const stripped = codeWithoutComments(raw, blockComment)
-    const noComment = stripped.code
-    blockComment = stripped.blockComment
-    // CDS 注解行（@EndUserText.label / @AbapCatalog.* 等）：值是 DDIC 元数据文本（视图描述），
-    // 不是运行时用户可见文案，且 CDS 源码无 DATA 声明 → 两类扫描都豁免
-    const isAnnotationLine = noComment.trim().startsWith("@")
-    if (isAnnotationLine) continue
-
-    // 1) 硬编码中文：单引号字符串字面量含中文（MESSAGE WITH '中文'、VALUE #( message = '中文' ) 等）
-    //    + ABAP 反引号文本字面量（`中文`，不限长字符串）也属于用户可见文案，一并扫描
-    const cnMatches = noComment.match(/'([^']*[一-龥][^']*)'/g) || []
-    const btMatches = noComment.match(/`([^`]*[一-龥][^`]*)`/g) || []
-    const allCn = [...cnMatches, ...btMatches]
-    if (allCn.length) {
-      for (const m of allCn) {
-        const text = m.slice(1, -1)
-        // 允许中文变量名/字段名等非常规场景极少，一律视为文案违规（规范要求走消息类/文本元素）
-        violations.push(`第 ${i + 1} 行：硬编码中文文案 ${text.length > 20 ? text.slice(0, 20) + "…" : text}（必须改为消息类 MESSAGE e001(zxxx) 或文本元素 TEXT-xxx）`)
-      }
-    }
-
-    // 2) 结构/表类型定义中的裸内置类型：TYPES 声明（含 BEGIN OF 块）属"自建表/结构" → 必须用 DDIC 类型；
-    //    程序内 DATA/方法参数/函数接口等 → 放行裸类型
-    const hasTypesKw = /\bTYPES\b/i.test(noComment)
-    if (/\bBEGIN\s+OF\b/i.test(noComment) && hasTypesKw) typeDefDepth++
-    if (/\bEND\s+OF\b/i.test(noComment)) typeDefDepth = Math.max(0, typeDefDepth - 1)
-    if (hasTypesKw || typeDefDepth > 0) {
-      // 一行内可能有多个 TYPE（如 a TYPE i, b TYPE string.）→ 全部检查
-      const typeTokens = noComment.matchAll(/TYPE\s+([a-z]\w*)/gi)
-      for (const m of typeTokens) {
-        const t = m[1].toLowerCase()
-        if (banned.has(t)) {
-          violations.push(`第 ${i + 1} 行：自建结构/表类型字段用裸内置类型 TYPE ${t.toUpperCase()}（结构字段必须用 DDIC 数据元素/结构，找不到标准元素时创建 Z 数据元素 + 域；程序内局部变量不受限）`)
-        }
-      }
-    }
-
-    // 3) DDIC DSL 结构字段：define structure/table 内直接 `字段 : abap.<内置类型>;` 属裸类型
-    //    （abap.clnt / abap.cust 是客户端键特殊标记，放行；数据元素按名字引用、reference to 均不在此列）
-    const defineKw = /\bdefine\s+(?:append\s+)?(structure|table)\b/i.test(noComment)
-    if (defineKw) inDefineBlock = true
-    const dslField = noComment.match(/^\s*(?:key\s+)?[A-Za-z_][\w]*\s*:\s*abap\.([A-Za-z0-9_]+)/)
-    if (dslField && (inDefineBlock || defineKw)) {
-      const at = dslField[1].toLowerCase()
-      if (at !== "clnt" && at !== "cust") {
-        violations.push(`第 ${i + 1} 行：DDIC 结构字段用裸内置类型 abap.${at.toUpperCase()}（结构字段必须用 DDIC 数据元素，如 matnr/bukrs/dmbtr；找不到标准元素时创建 Z 数据元素 + 域）`)
-      }
-    }
-    if (noComment.includes("}")) inDefineBlock = false
-  }
-  return violations
-}
-
+export { scanCodeViolations } from "./code-policy.js"
 
 /** JSON Schema → TypeBox（供 register.ts 与 MCP 工具注册共用） */
 export function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined): unknown {
@@ -630,6 +516,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
       promptSnippet: "SAP ABAP 工具（搜索/读取/分析/编辑 SAP 对象、执行 ATC/单测/SQL 等）",
       parameters: jsonSchemaToTypeboxCompact(t.inputSchema) as never,
       async execute(_toolCallId, params, signal): Promise<{ content: Array<{ type: "text"; text: string }>; details: Record<string, unknown>; isError?: boolean }> {
+        const write = isWriteTool(t.name, params)
         try {
           const p = (params ?? {}) as Record<string, unknown>
           // 连接变更强制重确认：连接配置被修改后，除 get_connected_systems 外一律拒绝，
@@ -644,7 +531,8 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           // 内容级强制规则：写入代码前硬校验（硬编码中文 / 裸内置类型）——纯本地检查，不触连接
           // 局部替换用 newString、整段覆盖用 fullSource，两者都检查（fullSource 是写函数模块的推荐路径，不能漏）
           if (t.name === "replace_string_in_abap_object") {
-            const code = p.newString ?? p.fullSource
+            validateSourceMode(p)
+            const code = p.fullSource ?? p.newString
             if (typeof code === "string") {
               const violations = scanCodeViolations(code)
               if (violations.length > 0) {
@@ -665,7 +553,7 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           // - 读工具直接执行，由客户端包装层的读闸门限制每连接并发读 ≤ READ_CONCURRENCY
           //   （防止一次分析几十个对象时对 SAP 打出请求洪峰）
           const connId = await resolveConnectionId(p.connectionId as string | undefined)
-          const outcome = await runToolExecution(signal, async () => t.write
+          const outcome = await runToolExecution(signal, async () => write
             ? await withConnMutex(connId, async () => {
                 // 写操作安全守卫：非开发客户端（T000.CCCATEGORY）拒绝一切代码修改
                 await assertDevClient(connId)
@@ -675,19 +563,19 @@ connectionId 仅允许当前启用连接；省略时使用当前连接。禁止�
           const text = outcome.value
           const failure = outcome.failures[0] ?? (/^(⛔|未找到 ABAP 对象|工具执行失败|SAP 工具 .*执行失败)/.test(text) ? classifyFailure(text) : undefined)
           // 写操作成功执行 → 记审计（谁/何时/改了哪个对象）
-          if (t.write) {
+          if (write) {
             appendAudit({ event: failure ? "failed" : "executed", tool: t.name, objects: extractObjectNames(p), connectionId: connId, ...(failure ? { reason: failure.message.slice(0, 200) } : {}) })
           }
           const bounded = await boundToolResult(text)
-          return { content: [{ type: "text" as const, text: bounded.text }], details: { ...bounded.details, ...(failure ? { error: { ...failure, retryable: !t.write && failure.retryable } } : {}) }, ...(failure ? { isError: true } : {}) }
+          return { content: [{ type: "text" as const, text: bounded.text }], details: { ...bounded.details, ...(failure ? { error: { ...failure, retryable: !write && failure.retryable } } : {}) }, ...(failure ? { isError: true } : {}) }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
-          if (t.write) {
+          if (write) {
             appendAudit({ event: "failed", tool: t.name, objects: extractObjectNames(params), connectionId: String((params as Record<string, unknown>)?.connectionId ?? "") || undefined, reason: msg.slice(0, 200) })
           }
           return {
             content: [{ type: "text" as const, text: `SAP 工具 ${t.name} 执行失败: ${msg}` }],
-            details: { error: { ...classifyFailure(err), retryable: !t.write && classifyFailure(err).retryable } },
+            details: { error: { ...classifyFailure(err), retryable: !write && classifyFailure(err).retryable } },
             isError: true,
           }
         }

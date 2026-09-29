@@ -82,8 +82,8 @@ export const transportTool = {
               } else {
                 lines.push("  （ADT 与 E071 均无对象记录）")
               }
-            } catch {
-              lines.push("  （E071 查询失败）")
+            } catch (e) {
+              return toToolError(`E071 查询失败，传输对象列表未确认：${e instanceof Error ? e.message : String(e)}`)
             }
           }
           return lines.join("\n")
@@ -109,7 +109,9 @@ export const transportTool = {
             const trkorrs = [...new Set((q1?.values ?? []).map((r) => String(r.TRKORR ?? "").trim()).filter(Boolean))]
             if (trkorrs.length) {
               if (lines.length > 2) lines.push("")
-              const q2 = `SELECT TRKORR, STRKORR, TARSYSTEM, TRSTATUS, AS4USER FROM E070 WHERE TRKORR IN (${trkorrs.map((t) => `'${t.replace(/'/g, "''")}'`).join(",")})`
+              // ADT SQL runner converts the query into ABAP source lines. Keep each
+              // request on its own line; a long IN list can exceed the 255-char line limit.
+              const q2 = `SELECT TRKORR, STRKORR, TARSYSTEM, TRSTATUS, AS4USER\nFROM E070\nWHERE TRKORR IN (\n${trkorrs.map((t) => `'${t.replace(/'/g, "''")}'`).join(",\n")}\n)`
               const st = await client.runQuery(q2, 100, true)
               for (const r of st?.values ?? []) {
                 const code = String(r.TRSTATUS ?? "")
@@ -119,7 +121,7 @@ export const transportTool = {
             }
             if (lines.length <= 2) lines.push("（无传输信息，对象可能无需传输）")
           } catch (e) {
-            lines.push(`（底表查询失败: ${e instanceof Error ? e.message.slice(0, 80) : e}）`)
+            return toToolError(`传输信息查询失败，结果未确认：${e instanceof Error ? e.message : String(e)}`)
           }
           return lines.join("\n")
         }

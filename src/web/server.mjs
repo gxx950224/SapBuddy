@@ -96,20 +96,23 @@ let initializationPromise = null
 let stopRequested = false
 let rebuildPromise = null  // 在途重建任务（新建/切换懒重建，防并发双开 agent）
 
-function sanitizeWriteValue(value, depth = 0) {
-  if (typeof value === "string") return value.length > 600 ? `${value.slice(0, 600)}…（已截断）` : value
+function sanitizeWriteValue(value, depth = 0, key = "", preflight = false) {
+  if (typeof value === "string") {
+    const limit = preflight && key === "diff" ? 60000 : 600
+    return value.length > limit ? `${value.slice(0, limit)}…（已截断）` : value
+  }
   if (!value || typeof value !== "object") return value
   if (depth >= 3) return "[嵌套内容已省略]"
-  if (Array.isArray(value)) return value.slice(0, 32).map((entry) => sanitizeWriteValue(entry, depth + 1))
+  if (Array.isArray(value)) return value.slice(0, 32).map((entry) => sanitizeWriteValue(entry, depth + 1, "", preflight))
   return Object.fromEntries(Object.entries(value)
     .filter(([key]) => !/(password|secret|token|api.?key|credential|authorization)/i.test(key))
     .slice(0, 16)
-    .map(([key, entry]) => [key, sanitizeWriteValue(entry, depth + 1)]))
+    .map(([key, entry]) => [key, sanitizeWriteValue(entry, depth + 1, key, preflight)]))
 }
 
-function summarizeWriteInput(input) {
+function summarizeWriteInput(input, preflight = false) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {}
-  return sanitizeWriteValue(input)
+  return sanitizeWriteValue(input, 0, "", preflight)
 }
 
 function notifyWriteBlocked(info, sessionFile = session?.sessionFile) {
@@ -119,7 +122,8 @@ function notifyWriteBlocked(info, sessionFile = session?.sessionFile) {
     toolCallId: info?.toolCallId ? String(info.toolCallId) : undefined,
     sessionFile,
     toolName: String(info?.toolName || "未知写操作"),
-    input: summarizeWriteInput(info?.input),
+    preflight: info?.preflight === true,
+    input: summarizeWriteInput(info?.input, info?.preflight === true),
     ts: Date.now(),
   })
 }
@@ -1234,7 +1238,10 @@ const ids = models.map((m) => m.id)
           return json(res, 400, { error: "未知操作" })
         }
         existing.connections = conns
-        existing.security = { ...(existing.security ?? {}), readOnly: !!b.readOnly }
+        if (b.readOnly !== undefined && typeof b.readOnly !== "boolean") {
+          return json(res, 400, { error: "readOnly 必须是布尔值" })
+        }
+        existing.security = { ...(existing.security ?? {}), readOnly: b.readOnly ?? (existing.security?.readOnly !== false) }
         fs.writeFileSync(connFile, JSON.stringify(existing, null, 2))
         // 重置配置缓存 + ADT 连接池，使新配置立即生效
         try {
