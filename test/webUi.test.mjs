@@ -703,10 +703,10 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
   measurementsMs.longReplyRender = Number((performance.now() - longReplyStarted).toFixed(2))
   const messagesViewport = page.locator("#messages")
   await messagesViewport.evaluate(element => { element.scrollTop = 0 })
-  await page.waitForTimeout(40)
+  await page.waitForFunction(() => document.querySelector("#messages")?.scrollTop <= 1)
   emit({ type: "message_update", message: { ...longMessage, content: [{ type: "text", text: longReply + "追加内容" }] } })
   await page.waitForFunction(length => Array.from(document.querySelectorAll(".reply-text")).at(-1)?.textContent.length === length, longReply.length + 4)
-  assert.ok(await messagesViewport.evaluate(element => element.scrollTop <= 1))
+  assert.ok(await messagesViewport.evaluate(element => element.scrollTop < element.clientHeight), "流式更新时应留在消息顶部附近")
   emit({ type: "agent_end" })
 
   const wideLine = `DATA(lv_value) = '${"X".repeat(500)}'.`

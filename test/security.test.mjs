@@ -5,16 +5,24 @@
 import { test, before, after } from "node:test"
 import assert from "node:assert/strict"
 import { createRequire } from "node:module"
+import { homedir } from "node:os"
+import { join } from "node:path"
 
 const require = createRequire(import.meta.url)
 const register = require("../dist/sap-tools/register.js")
 const shared = require("../dist/sap-tools/tools/shared.js")
 
-const { scanCodeIssues, scanCodeViolations, handleUserMessage, clearWriteApproval, isWriteApproved, namespaceViolation, installWriteGate } = register
+const { scanCodeIssues, scanCodeViolations, handleUserMessage, clearWriteApproval, isWriteApproved, namespaceViolation, installWriteGate, __setReadOnlyForTest } = register
 const { escapeXmlAttr } = shared
 
-before(() => clearWriteApproval())
-after(() => clearWriteApproval())
+before(() => {
+  __setReadOnlyForTest(false)
+  clearWriteApproval()
+})
+after(() => {
+  clearWriteApproval()
+  __setReadOnlyForTest(undefined)
+})
 
 test("Web 写入拦截回调保留 pi toolCallId", async () => {
   clearWriteApproval()
@@ -301,8 +309,9 @@ test("配置文件拦截：普通 output 文件不受影响", async () => {
 
 // ── bash 命令门禁：放行"打开产物"，仍拦敏感配置/读取 ──
 test("bash 命令门禁：start 打开 .SapBuddy/output 产物放行（自动打开 HTML 流程图场景）", async () => {
+  const artifact = join(homedir(), ".SapBuddy", "output", "ZPPR006_NEW2", "ZPPR006_NEW2_排产引擎流程图.html").replace(/\\/g, "/")
   const r = await triggerWriteGate(
-    { command: 'start "" "C:/Users/Administrator/.SapBuddy/output/ZPPR006_NEW2/ZPPR006_NEW2_排产引擎流程图.html"' },
+    { command: `start "" "${artifact}"` },
     "bash"
   )
   assert.equal(r?.block, undefined, "打开产物命令不应被拦截")
