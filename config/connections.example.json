@@ -16,5 +16,8 @@
       }
     }
   ],
-  "security": { "readOnly": true }
+  "security": {
+    "readOnly": true,
+    "allowedPackages": ["Z*", "Y*"]
+  }
 }

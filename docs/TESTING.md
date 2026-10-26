@@ -76,6 +76,17 @@ node cli.mjs --json "只回复 OK"
 # → {"answer":"OK"}
 ```
 
+### 3.4 Bot session（不连真实 SAP）
+
+```bash
+node --test test/botSession.test.mjs
+node cli.mjs session help
+```
+
+单测覆盖：diff 哈希不一致、服务器源码相对基线已变化、命令点到别的对象、`readOnly`、非开发客户端（`T000.CCCATEGORY=T`）、提案不写 SAP、读回不一致 / 语法错误不算成功、不能创建或释放传输请求。
+
+连真实系统时的人工顺序：`session open` → `read` / `where-used` / `syntax` / `atc` / `table` → `propose` → 人看完整 diff → `apply --diff-hash` → `activate --diff-hash` → 人在 SAP 里释放请求。这条命令不会创建或释放传输。
+
 ## 4. Web 版测试
 
 ```bash

@@ -99,6 +99,7 @@ sapbuddy chat                      # 交互式对话（同上）
 sapbuddy web                       # Web 版（http://127.0.0.1:7400）
 sapbuddy "搜索 ZCL_* 开头的类"      # 单次提问
 sapbuddy tools                     # 列出 41 个 SAP 工具 + 已配置的 MCP 工具
+sapbuddy session help              # 机器人/脚本用的单对象会话（见下文）
 ```
 
 ## 🧩 架构
@@ -117,7 +118,7 @@ sapbuddy tools                     # 列出 41 个 SAP 工具 + 已配置的 MCP
 
 ```
 sapbuddy/
-├── cli.mjs                 # CLI 入口（chat / 单次 / web / tools / doctor）
+├── cli.mjs                 # CLI 入口（chat / 单次 / web / tools / doctor / session）
 ├── src/
 │   ├── agent-core.mjs      # pi SDK 会话管理 + 模型解析 + 运行时初始化
 │   ├── sap-tools/          # 41 个 SAP 工具（TypeScript，基于 abap-adt-api）
@@ -136,6 +137,51 @@ sapbuddy/
 - **开发客户端守卫（默认开启）**：写操作前查询 `T000.CCCATEGORY`，仅开发类客户端（`C` 定制/客户开发）允许修改代码；测试（T）/生产（P）/演示（D）/培训（E）/SAP 参考（S）**一律拒绝**；无法确认时 fail-closed
 - SAP 密码与 API Key 永不入库（模板脱敏，`.gitignore` 排除）
 - 写操作需用户**先审核改动内容**后才执行（Agent 强制门禁）
+
+## 🤖 Bot session（脚本 / 机器人）
+
+交互式对话和 Web 不变。`sapbuddy session` 是另一条入口：给只能跑 shell 的机器人用。会话一旦打开，下面的规则由 **CLI 进程**执行，不靠提示词。
+
+每条命令向 stdout 打一个 JSON 对象。成功退出码为 0；门禁拒绝、写入后核对失败，退出码都不是 0。部分成功不会报成成功。
+
+推荐流程：**open → read → propose → 人工看完整 diff → apply --diff-hash → activate --diff-hash → 人工释放传输**。
+
+```bash
+sapbuddy session open ZCL_ORDER --type CLAS/OC \
+  --transport DEVK900123 --expect DEV.100/DEVELOPER
+sapbuddy session read <SESSION>
+sapbuddy session where-used <SESSION>
+sapbuddy session syntax <SESSION>
+sapbuddy session atc <SESSION>
+sapbuddy session table <SESSION> --table T000 --filter "MANDT = '100'"
+sapbuddy session propose <SESSION> --old-file old.abap --new-file new.abap
+# 或：--method GET_DATA --source-file method.abap
+# 或：仅当会话对象本身是 include 时 --include --source-file include.abap
+sapbuddy session diff <SESSION>
+sapbuddy session apply <SESSION> --diff-hash <提案里的 sha256>
+sapbuddy session activate <SESSION> --diff-hash <同一个 sha256>
+```
+
+写下去之前会检查：
+
+| 门禁 | 行为 |
+|---|---|
+| 单对象 | 一个会话只锁一个对象。命令带了别的对象名或类型就拒绝 |
+| 系统身份 | 锁定打开时读到的 SID、客户端、用户。`--expect SID.CLIENT/USER` 不一致则连会话都不创建。之后每次读/写都再核对 |
+| 包允许列表 | 默认只允许 `Z*`、`Y*`。`security.allowedPackages` 是上限；命令行 `--allow-package` 只能收窄，不能放宽。`$TMP` 默认不在列表里 |
+| 传输 | 没有创建、没有释放。非 `$TMP` 对象必须在 open 时带一个已存在且状态为 D（可修改）的请求号 |
+| propose | 只接受唯一片段替换、单个方法替换，或单个 include 的全文替换。算出统一 diff 和 diff sha256，写入本机会话文件，**不写 SAP** |
+| apply | `--diff-hash` 必须等于已保存提案。服务器当前源码哈希必须仍等于打开时的基线，否则视为被人改过并拒绝。同时检查 `readOnly` 和 `T000.CCCATEGORY` 开发客户端。通过后才 lock → 写 → unlock |
+| 写后核对 | 读回源码、语法检查、列出未激活对象。读回不一致、有语法错误、解锁失败或列不出未激活对象，都算失败 |
+| activate | 单独一步，同样要带对的 diff-hash。激活前再查语法；激活后核对 active 源码，对象仍在未激活清单里则失败 |
+| 审计 | 每次 propose / apply / activate（含拒绝）追加到 `~/.SapBuddy/logs/audit-YYYY-MM-DD.jsonl`，带会话 ID、用户、对象、diff 哈希 |
+| 代码规则 | 与交互式写入相同：硬编码中文拦截。裸类型只提示 |
+
+会话文件在 `~/.SapBuddy/bot-sessions/`（可用 `SAPBUDDY_BOT_SESSION_DIR` 改位置）。里面没有口令。
+
+`activate` 只激活会话锁定的那一个对象。程序若拆成多个 INCLUDE，服务器要求先激活其他 INCLUDE 时，本命令会把失败如实返回，退出码不是 0。SID 从登录 cookie `SAP_SESSIONID_<SID>_<实例>` 读取；读不到时，仅当传输域里只有一个 SAP 系统才采用该 SID，否则拒绝打开会话。
+
+`security.readOnly` 未显式写成 `false` 时，apply 和 activate 会被拒绝。开发客户端守卫与原来的写工具相同，默认只允许 `T000.CCCATEGORY=C`。
 
 ## 🧪 测试
 

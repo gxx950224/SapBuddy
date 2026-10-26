@@ -8,6 +8,7 @@ import { runtimeSettings } from "./src/runtime-policy.mjs"
  *   sapbuddy chat               交互式对话（全屏 TUI）
  *   sapbuddy "提问内容"         单次提问
  *   sapbuddy --json "提问"      单次提问（JSON 输出）
+ *   sapbuddy session ...        面向脚本/机器人的单对象会话（JSON，规则在 CLI 内强制执行）
  *   sapbuddy web                启动 Web 版（浏览器访问 http://127.0.0.1:7400）
  *   sapbuddy tools              列出 41 个 SAP 工具
  *   sapbuddy doctor             环境自检
@@ -337,6 +338,14 @@ function checkDistStale() {
   } catch { /* 检查失败不阻塞启动 */ }
 }
 
+// ===== session：面向脚本/机器人的单对象开发流程，输出一条 JSON =====
+async function cmdSession(argv) {
+  const { runSessionCli } = await import(pathToFileURL(path.join(HERE, "dist", "sap-tools", "bot-session", "cli.js")).href)
+  const { code, result } = await runSessionCli(argv)
+  process.stdout.write(JSON.stringify(result) + "\n")
+  return code
+}
+
 // ===== 入口 =====
 async function main() {
   const first = args[0]
@@ -345,6 +354,10 @@ async function main() {
   if (first === "doctor") return cmdDoctor()
   if (first === "chat") return cmdChat()
   if (first === "web") return cmdWeb()
+  if (first === "session") {
+    const code = await cmdSession(args.slice(1))
+    process.exit(code)
+  }
   if (first === "--json") return cmdPrompt(args.slice(1).join(" "), true)
   if (first && !first.startsWith("-")) return cmdPrompt(args.join(" "), false)
   // 无参数：默认进入全屏对话（TUI）
