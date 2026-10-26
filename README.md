@@ -147,8 +147,10 @@ sapbuddy/
 推荐流程：**open → read → propose → 人工看完整 diff → apply --diff-hash → activate --diff-hash → 人工释放传输**。
 
 ```bash
-sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
-  --transport DEVK900123 --expect DEV.100/DEVELOPER
+# 对象已在一个可修改请求中：省略 --transport，稍后写入会挂到 ADT lock 的那个请求
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC --expect DEV.100/DEVELOPER
+# 对象还不在任何可修改请求中，才指定一个已存在且状态为 D 的请求（不会创建请求）：
+# sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC --transport DEVK900123 --expect DEV.100/DEVELOPER
 sapbuddy session read <SESSION>
 sapbuddy session where-used <SESSION>
 sapbuddy session syntax <SESSION>
@@ -170,7 +172,7 @@ sapbuddy session activate <SESSION> --diff-hash <同一个 sha256>
 | 单对象 | 一个会话只锁一个对象。命令带了别的对象名或类型就拒绝 |
 | 系统身份 | 锁定的是**该连接**打开时读到的 SID、客户端、用户。`--expect SID.CLIENT/USER` 不一致则连会话都不创建。之后每次读/写都再核对 |
 | 包允许列表 | 默认只允许 `Z*`、`Y*`。`security.allowedPackages` 是上限；命令行 `--allow-package` 只能收窄，不能放宽。`$TMP` 默认不在列表里 |
-| 传输 | 没有创建、没有释放。非 `$TMP` 对象必须在 open 时带一个已存在且状态为 D（可修改）的请求号 |
+| 传输 | 没有创建、没有释放。对象已经在一个可修改请求（`E070` 状态 D）里时，open 不要带 `--transport`，apply/activate 自动挂到该请求。以 ADT lock 的 `CORRNR` 为准，不用传输检查返回的候选请求列表。E071 里有多个状态 D 且 lock 不能唯一确定时，直接拒绝并列出这些请求。只有对象还不在任何可修改请求中，才必须用 `--transport` 指定一个已存在的 D 请求 |
 | propose | 只接受唯一片段替换、单个方法替换，或单个 include 的全文替换。算出统一 diff 和 diff sha256，写入本机会话文件，**不写 SAP** |
 | apply | `--diff-hash` 必须等于已保存提案。服务器当前源码哈希必须仍等于打开时的基线，否则视为被人改过并拒绝。同时检查 `readOnly` 和 `T000.CCCATEGORY` 开发客户端。通过后才 lock → 写 → unlock |
 | 写后核对 | 读回源码、语法检查、列出未激活对象。读回不一致、有语法错误、解锁失败或列不出未激活对象，都算失败 |

@@ -100,7 +100,7 @@ export function parseSessionArgs(argv: string[], readFile: (path: string) => str
   const target = parsed.positionals[1]
   if (parsed.positionals.length > 2) throw new BotGateError("usage", "多余的位置参数")
   if (command === "create-transport" || command === "release" || command === "transport" || command === "create") {
-    throw new BotGateError("transport_command", "bot session 不能创建或释放传输请求。打开会话时用 --transport 挂接已有可修改请求，释放由人工完成。")
+    throw new BotGateError("transport_command", "bot session 不能创建或释放传输请求。对象已在可修改请求中时打开会话不必带 --transport；否则用 --transport 挂接已有请求。释放由人工完成。")
   }
   if (command === "help") {
     accept(parsed, [])

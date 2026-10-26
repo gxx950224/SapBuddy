@@ -38,6 +38,7 @@ import type {
   BotSession,
   ProposalRecord,
   SyntaxMessage,
+  TransportSource,
 } from "./types.js"
 
 type AuditInput = Omit<AuditEntry, "ts">
@@ -89,7 +90,7 @@ function helpResult(): BotResult {
   return {
     ok: true,
     command: "help",
-    message: "bot session 是独立的 CLI 流程。打开会话后，规则由 CLI 强制执行。本流程不能创建或释放传输请求。每个会话锁定自己的连接，不修改 connections.json 的 active。",
+    message: "bot session 是独立的 CLI 流程。打开会话后，规则由 CLI 强制执行。本流程不能创建或释放传输请求。对象已在唯一可修改请求中时省略 --transport，apply 会挂到 ADT lock 给出的那个请求。每个会话锁定自己的连接，不修改 connections.json 的 active。",
     workflow: ["open", "read", "propose", "human reviews diff", "apply --diff-hash", "activate --diff-hash", "human releases the transport"],
     connection: "open 用 --connection <id 或 name>，或环境变量 SAPBUDDY_CONNECTION。两者都省略时用 active:true 的连接，没有 active 则用第一个。之后的命令只使用会话文件里的 connectionId，不再读 active，也不再读该环境变量。不同的 connections.json 仍用已有的 ABAP_MCP_CONFIG 指向文件，session 不写该文件。",
     commands: [
@@ -132,14 +133,13 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
     throw new BotGateError("package_denied", `包 ${object.packageName} 不在允许列表 ${allow.join(", ") || "(空)"} 中`)
   }
   let transport: string | undefined
+  let transportSource: TransportSource | undefined
   if (object.packageName.toUpperCase() === "$TMP") {
     if (command.transport) throw new BotGateError("transport_not_allowed", "$TMP 对象不挂传输请求。本流程也不会为它创建请求。")
   } else {
-    if (!command.transport) {
-      throw new BotGateError("transport_required", "非本地对象必须在打开会话时指定已存在且可修改的传输请求。本流程不会创建或释放请求。")
-    }
-    transport = parseTransport(command.transport)
-    await assertTransportOpen(deps, selected.id, transport, object.name, object.uri)
+    const assigned = await resolveSessionTransport(deps, selected.id, object.name, object.sourceUri, command.transport)
+    transport = assigned.transport
+    transportSource = assigned.source
   }
   const source = await deps.runtime.readSource(selected.id, object.sourceUri)
   const now = deps.now().toISOString()
@@ -154,6 +154,7 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
     system: { sid: live.sid.toUpperCase(), client: live.client, user: live.user.toUpperCase() },
     object,
     transport,
+    transportSource,
     packageAllow: allow,
     baselineSha256: sourceSha256(source),
   }
@@ -168,6 +169,7 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
     system: session.system,
     object: session.object,
     transport: session.transport ?? null,
+    transportSource: session.transportSource ?? null,
     packageAllow: session.packageAllow,
     baselineSha256: session.baselineSha256,
     message: selected.selection === "explicit"
@@ -327,7 +329,7 @@ async function apply(command: Extract<BotCommand, { command: "apply" }>, deps: B
           currentSha256: current,
         })
       }
-      if (session.transport) await assertTransportOpen(deps, session.connectionId, session.transport, session.object.name, session.object.uri)
+      const transport = await ensureSessionTransport(deps, session)
       const updated = applyEdit(source, proposal.edit, session.object.type)
       const diff = unifiedDiff(source, updated, `${session.object.name} (${session.object.type})`)
       const replayHash = diffSha256(diff)
@@ -340,7 +342,7 @@ async function apply(command: Extract<BotCommand, { command: "apply" }>, deps: B
       }
       let outcome
       try {
-        outcome = await deps.runtime.writeSource(session.connectionId, session.object.sourceUri, normalizeSource(updated) + "\n", session.transport)
+        outcome = await deps.runtime.writeSource(session.connectionId, session.object.sourceUri, normalizeSource(updated) + "\n", transport)
       } catch (err) {
         if (err instanceof BotGateError) {
           throw new BotGateError(err.code, err.message, { sessionId: session.id, diffHash: proposal.diffHash, ...(err.details ?? {}) }, err.auditEvent)
@@ -364,7 +366,7 @@ async function apply(command: Extract<BotCommand, { command: "apply" }>, deps: B
         sessionId: session.id,
         object: publicObject(session),
         diffHash: proposal.diffHash,
-        transport: session.transport ?? null,
+        transport: transport ?? null,
         ...verified.body,
       }
     } catch (err) {
@@ -389,6 +391,7 @@ async function activate(command: Extract<BotCommand, { command: "activate" }>, d
       if (sourceSha256(before) !== proposal.expectedSha256) {
         throw new BotGateError("stale_source", "激活前源码与提案结果不一致，已拒绝激活。", { sessionId: session.id, diffHash: proposal.diffHash })
       }
+      await ensureSessionTransport(deps, session)
       const beforeSyntax = await deps.runtime.syntaxCheck(session.connectionId, session.object.sourceUri, before)
       const beforeErrors = beforeSyntax.filter((item) => isSyntaxError(item.severity))
       if (beforeErrors.length) {
@@ -457,6 +460,7 @@ function status(command: Extract<BotCommand, { command: "status" }>, deps: BotDe
     system: session.system,
     object: publicObject(session),
     transport: session.transport ?? null,
+    transportSource: session.transportSource ?? null,
     packageAllow: session.packageAllow,
     baselineSha256: session.baselineSha256,
     diffHash: session.proposal?.diffHash ?? null,
@@ -520,16 +524,94 @@ function requireProposal(session: BotSession, provided: string): ProposalRecord 
   return proposal
 }
 
-async function assertTransportOpen(deps: BotDeps, connectionId: string, transport: string, objectName: string, uri: string): Promise<void> {
+async function ensureSessionTransport(deps: BotDeps, session: BotSession): Promise<string | undefined> {
+  if (session.object.packageName.toUpperCase() === "$TMP") return undefined
+  const assigned = await resolveSessionTransport(
+    deps,
+    session.connectionId,
+    session.object.name,
+    session.object.sourceUri,
+    session.transport,
+  )
+  if (session.transport && assigned.transport !== session.transport) {
+    throw new BotGateError(
+      "transport_conflict",
+      `对象当前应挂接 ${assigned.transport}，与会话记录的 ${session.transport} 不一致，已拒绝。`,
+      { sessionId: session.id, transports: [assigned.transport, session.transport] },
+    )
+  }
+  return assigned.transport
+}
+
+/**
+ * 对象已在一个可修改请求中时直接用它，不要求 --transport。
+ * ADT lock 的 CORRNR 优先于 E071。E071 出现多个状态 D 且 lock 没有唯一结果时拒绝，并列出全部请求。
+ * 只有对象不在任何可修改请求中时，才要求调用方传入一个已存在的 D 请求。不创建、不释放。
+ */
+async function resolveSessionTransport(
+  deps: BotDeps,
+  connectionId: string,
+  objectName: string,
+  sourceUri: string,
+  requested: string | undefined,
+): Promise<{ transport: string; source: TransportSource }> {
+  const requestedNorm = requested ? parseTransport(requested) : undefined
+  const assignment = await deps.runtime.assignedTransport(connectionId, objectName, sourceUri)
+  const lockRaw = assignment.lockRequest.trim()
+  const lock = lockRaw ? parseTransport(lockRaw) : ""
+  if (lock) {
+    const status = await deps.runtime.transportStatus(connectionId, lock)
+    if (!status.found) {
+      throw new BotGateError("transport_unknown", `ADT lock 返回的请求 ${lock} 在 E070 中不存在。本流程不会创建请求。`)
+    }
+    if (status.status === "D") {
+      if (requestedNorm && requestedNorm !== lock) {
+        throw new BotGateError(
+          "transport_conflict",
+          `对象当前在可修改请求 ${lock}（ADT lock）。传入的 ${requestedNorm} 与之不同，已拒绝。`,
+          { transports: [lock, requestedNorm] },
+        )
+      }
+      return { transport: lock, source: "lock" }
+    }
+  }
+  const recorded = [...new Set(assignment.recorded
+    .map((item) => ({ number: item.number.trim().toUpperCase(), status: item.status.trim().toUpperCase() }))
+    .filter((item) => item.status === "D" && item.number)
+    .map((item) => parseTransport(item.number)))]
+  if (recorded.length > 1) {
+    throw new BotGateError(
+      "transport_ambiguous",
+      `对象同时出现在多个可修改请求中：${recorded.join(", ")}。ADT lock 没有给出唯一请求，已拒绝。请先在 SAP 中整理这些请求。本流程不会从中挑选，也不会创建新请求。`,
+      { transports: recorded },
+    )
+  }
+  if (recorded.length === 1) {
+    const only = recorded[0]
+    if (requestedNorm && requestedNorm !== only) {
+      throw new BotGateError(
+        "transport_conflict",
+        `对象已在可修改请求 ${only}。传入的 ${requestedNorm} 与之不同，已拒绝。`,
+        { transports: [only, requestedNorm] },
+      )
+    }
+    return { transport: only, source: "recorded" }
+  }
+  if (!requestedNorm) {
+    throw new BotGateError(
+      "transport_required",
+      "对象不在任何可修改请求中。打开会话时请用 --transport 指定一个已存在且状态为 D 的请求。本流程不会创建或释放请求。",
+    )
+  }
+  await assertModifiable(deps, connectionId, requestedNorm)
+  return { transport: requestedNorm, source: "explicit" }
+}
+
+async function assertModifiable(deps: BotDeps, connectionId: string, transport: string): Promise<void> {
   const status = await deps.runtime.transportStatus(connectionId, transport)
   if (!status.found) throw new BotGateError("transport_not_found", `传输请求 ${transport} 不存在。本流程不会创建请求。`)
   if (status.status !== "D") {
     throw new BotGateError("transport_not_modifiable", `传输请求 ${transport} 的状态是 ${status.status || "未知"}，只有 D（可修改）可以挂接。`)
-  }
-  const existing = await deps.runtime.objectTransports(connectionId, objectName, uri)
-  const conflict = existing.filter((item) => item.status === "D" && item.number.toUpperCase() !== transport.toUpperCase())
-  if (conflict.length) {
-    throw new BotGateError("transport_conflict", `对象已在其他可修改请求中：${conflict.map((item) => item.number).join(", ")}`)
   }
 }
 

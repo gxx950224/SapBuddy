@@ -147,8 +147,10 @@ Every command prints one JSON object to stdout. Exit code 0 means the command fu
 Workflow: **open → read → propose → a person reviews the full diff → apply --diff-hash → activate --diff-hash → a person releases the transport**.
 
 ```bash
-sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
-  --transport DEVK900123 --expect DEV.100/DEVELOPER
+# Object already on one modifiable request: omit --transport. The later write attaches to the ADT lock request
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC --expect DEV.100/DEVELOPER
+# Object not on any modifiable request: name an existing status-D request. This flow does not create one:
+# sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC --transport DEVK900123 --expect DEV.100/DEVELOPER
 sapbuddy session read <SESSION>
 sapbuddy session where-used <SESSION>
 sapbuddy session syntax <SESSION>
@@ -170,7 +172,7 @@ Checks before anything is written:
 | One object | A session locks one object. A command that names another object or type is rejected |
 | System identity | The SID, client, and user read from **that connection** at open are locked. `--expect SID.CLIENT/USER` must match or the session is not created. Later reads and writes check the live identity again |
 | Package allowlist | Default allowlist is `Z*` and `Y*`. `security.allowedPackages` is the ceiling; `--allow-package` can only narrow it. `$TMP` is excluded unless the config ceiling includes it |
-| Transports | This flow cannot create or release a request. A non-`$TMP` object must be opened with an existing modifiable request (`E070` status `D`) |
+| Transports | This flow cannot create or release a request. When the object is already on one modifiable request (`E070` status `D`), omit `--transport`; apply and activate attach to that request. The ADT lock `CORRNR` wins over the candidate list from the transport check. If `E071` shows several status-D requests and the lock does not name exactly one, the command refuses and lists them. `--transport` is required only when the object is not yet on any modifiable request, and it must name an existing status-D request |
 | propose | Accepts a unique snippet replacement, one method replacement, or a full replacement of a single include. It stores a unified diff and its sha256. **Nothing is written to SAP** |
 | apply | `--diff-hash` must equal the stored proposal. The current server source hash must still equal the baseline recorded at open. `readOnly` and the `T000.CCCATEGORY` development-client guard are enforced. Only then: lock → write → unlock |
 | Post-write check | Read the source back, run a syntax check, and list inactive objects. A mismatch, a syntax error, an unlock failure, or an unknown inactive list is a failure |

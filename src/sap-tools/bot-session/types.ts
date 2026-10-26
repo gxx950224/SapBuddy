@@ -49,6 +49,8 @@ export interface BotSession {
   system: SystemIdentity
   object: AbapObjectRef
   transport?: string
+  /** lock = ADT lock 的 CORRNR；recorded = 唯一的 E071 可修改请求；explicit = 打开时传入的 --transport */
+  transportSource?: TransportSource
   packageAllow: string[]
   baselineSha256: string
   proposal?: ProposalRecord
@@ -66,6 +68,14 @@ export interface TransportRef {
   number: string
   status: string
 }
+
+/** 对象当前挂在哪个请求上。lockRequest 来自 ADT lock，优先于 E071。recorded 只含对象真实出现过的请求，不是候选列表。 */
+export interface TransportAssignment {
+  lockRequest: string
+  recorded: TransportRef[]
+}
+
+export type TransportSource = "lock" | "recorded" | "explicit"
 
 export interface WriteOutcome {
   written: boolean
@@ -97,7 +107,7 @@ export interface BotRuntime {
   readTable(connectionId: string, table: string, filter: string | undefined, limit: number): Promise<TableResult>
   readSql(connectionId: string, sql: string, limit: number): Promise<TableResult>
   transportStatus(connectionId: string, transport: string): Promise<{ found: boolean; status: string }>
-  objectTransports(connectionId: string, objectName: string, uri: string): Promise<TransportRef[]>
+  assignedTransport(connectionId: string, objectName: string, sourceUri: string): Promise<TransportAssignment>
   writeSource(connectionId: string, sourceUri: string, source: string, transport?: string): Promise<WriteOutcome>
   activate(connectionId: string, object: AbapObjectRef): Promise<ActivateOutcome>
   inactiveObjects(connectionId: string): Promise<Array<{ type: string; name: string }>>

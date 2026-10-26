@@ -105,8 +105,12 @@ function runtimeFor(state) {
       state.calls.push("transport")
       return state.transport
     },
-    async objectTransports() {
-      return state.objectTransports ?? []
+    async assignedTransport() {
+      state.calls.push("assigned")
+      return {
+        lockRequest: state.lockRequest ?? "",
+        recorded: state.objectTransports ?? [],
+      }
     },
     async writeSource(connectionId, _uri, source, transport) {
       state.calls.push("write")
@@ -284,6 +288,7 @@ test("open 锁定系统、客户端、用户和单一对象，会话文件不含
   assert.equal(opened.system.user, "DEVELOPER")
   assert.equal(opened.object.name, "ZDEMO")
   assert.equal(opened.transport, "DEVK900123")
+  assert.equal(opened.transportSource, "explicit")
   assert.equal(opened.baselineSha256, sourceSha256(SOURCE))
   assert.equal(fx.state.writes.length, 0)
   const saved = readFileSync(join(dir, `${opened.sessionId}.json`), "utf8")
@@ -867,5 +872,120 @@ test("生产运行时只连接会话指定的系统，缺连接时不登录", as
   assert.equal(live.user, "SD_USER")
   assert.deepEqual(logins, ["qa"])
   assert.equal(getConfig().connections.find((item) => item.id === "dev").active, true)
+  await dropAllClients()
+})
+
+test("对象已在 ADT lock 的可修改请求上时省略 --transport，写入挂到该请求", async () => {
+  const fx = fixture({
+    lockRequest: "DS4K940695",
+    objectTransports: [{ number: "DS4K940696", status: "D" }],
+  })
+  const opened = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P", expect: "DEV.100/DEVELOPER",
+  }, fx.deps)
+  assert.equal(opened.ok, true, opened.message)
+  assert.equal(opened.transport, "DS4K940695")
+  assert.equal(opened.transportSource, "lock")
+  const wrong = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DS4K940696",
+  }, fx.deps)
+  assert.equal(wrong.code, "transport_conflict")
+  assert.match(wrong.message, /DS4K940695/)
+  assert.match(wrong.message, /ADT lock/)
+  assert.equal(fx.state.writes.length, 0)
+
+  const proposed = await proposeDefault(fx, opened.sessionId)
+  assert.equal(proposed.ok, true, proposed.message)
+  const applied = await executeBotCommand({
+    command: "apply", sessionId: opened.sessionId, diffHash: proposed.diffHash,
+  }, fx.deps)
+  assert.equal(applied.ok, true, applied.message)
+  assert.equal(applied.transport, "DS4K940695")
+  assert.equal(fx.state.writes.length, 1)
+  assert.equal(fx.state.writes[0].transport, "DS4K940695")
+})
+
+test("多个可修改请求且 ADT lock 不唯一时拒绝并列出，不接受猜测", async () => {
+  const fx = fixture({
+    objectTransports: [
+      { number: "DS4K940695", status: "D" },
+      { number: "DS4K940696", status: "D" },
+      { number: "DEVK900001", status: "R" },
+    ],
+  })
+  const omitted = await executeBotCommand({ command: "open", objectName: "ZDEMO", objectType: "PROG/P" }, fx.deps)
+  assert.equal(omitted.code, "transport_ambiguous")
+  assert.match(omitted.message, /DS4K940695/)
+  assert.match(omitted.message, /DS4K940696/)
+  assert.equal(omitted.message.includes("DEVK900001"), false)
+  const picked = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DS4K940696",
+  }, fx.deps)
+  assert.equal(picked.code, "transport_ambiguous")
+  assert.deepEqual(picked.transports, ["DS4K940695", "DS4K940696"])
+  assert.equal(fx.state.writes.length, 0)
+})
+
+test("唯一的已记录可修改请求可以省略 --transport", async () => {
+  const fx = fixture({ objectTransports: [{ number: "DEVK900123", status: "D" }] })
+  const opened = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P",
+  }, fx.deps)
+  assert.equal(opened.ok, true, opened.message)
+  assert.equal(opened.transport, "DEVK900123")
+  assert.equal(opened.transportSource, "recorded")
+  const releasedOnly = fixture({ objectTransports: [{ number: "DEVK900123", status: "R" }] })
+  const required = await executeBotCommand({ command: "open", objectName: "ZDEMO", objectType: "PROG/P" }, releasedOnly.deps)
+  assert.equal(required.code, "transport_required")
+})
+
+test("生产运行时用 ADT lock 的请求，不用候选列表", async () => {
+  __setConfigForTest(consultantConfig())
+  const seen = []
+  __setClientFactoryForTest(() => ({
+    login: async () => {},
+    username: "DEVELOPER",
+    client: "100",
+    dropSession: async () => {},
+    stateful: "stateless",
+    lock: async (uri) => {
+      seen.push(`lock:${uri}`)
+      return { LOCK_HANDLE: "H1", CORRNR: "DS4K940695" }
+    },
+    unLock: async (_uri, handle) => { seen.push(`unlock:${handle}`) },
+    transportInfo: async () => ({
+      TRANSPORTS: [{ TRKORR: "DS4K940696", TRSTATUS: "D" }],
+      LOCKS: { HEADER: { TRKORR: "DS4K940000" } },
+    }),
+    runQuery: async (sql) => {
+      const text = String(sql)
+      if (text.includes("E071")) return { values: [{ TRKORR: "DS4K940696" }] }
+      if (text.includes("E070")) return { values: [{ TRKORR: "DS4K940696", TRSTATUS: "D" }] }
+      return { values: [] }
+    },
+  }))
+  const assigned = await productionRuntime.assignedTransport("dev", "ZDEMO", "/sap/bc/adt/programs/programs/zdemo/source/main")
+  assert.equal(assigned.lockRequest, "DS4K940695")
+  assert.deepEqual(assigned.recorded, [{ number: "DS4K940696", status: "D" }])
+  assert.deepEqual(seen, ["lock:/sap/bc/adt/programs/programs/zdemo/source/main", "unlock:H1"])
+  await dropAllClients()
+
+  __setClientFactoryForTest(() => ({
+    login: async () => {},
+    username: "DEVELOPER",
+    client: "100",
+    dropSession: async () => {},
+    stateful: "stateless",
+    lock: async () => { throw new Error("editor locked") },
+    unLock: async () => { throw new Error("should not unlock") },
+    transportInfo: async () => ({
+      TRANSPORTS: [{ TRKORR: "DS4K940696", TRSTATUS: "D" }],
+      LOCKS: { HEADER: { TRKORR: "DS4K940695" } },
+    }),
+    runQuery: async () => ({ values: [] }),
+  }))
+  const fallback = await productionRuntime.assignedTransport("dev", "ZDEMO", "/sap/bc/adt/programs/programs/zdemo/source/main")
+  assert.equal(fallback.lockRequest, "DS4K940695")
+  assert.deepEqual(fallback.recorded, [])
   await dropAllClients()
 })

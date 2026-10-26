@@ -7,7 +7,7 @@ import { assertBotWriteAllowed } from "./guard.js"
 import { sidFromCookies, BotGateError, normalizeSource } from "./gates.js"
 import { mergeActivationResults, verifyActivation } from "../tools/activationResult.js"
 import { findObject, getOptimalObjectURI, sanitizeErrMsg } from "../tools/shared.js"
-import type { AbapObjectRef, ActivateOutcome, BotRuntime, SyntaxMessage, TableResult, TransportRef, WriteOutcome } from "./types.js"
+import type { AbapObjectRef, ActivateOutcome, BotRuntime, SyntaxMessage, TableResult, TransportAssignment, TransportRef, WriteOutcome } from "./types.js"
 
 async function bind(connectionId?: string): Promise<{ id: string; client: Awaited<ReturnType<typeof getClient>> }> {
   const conf = requireSessionConnection(connectionId ?? "")
@@ -52,6 +52,65 @@ async function sourceUriOf(client: Awaited<ReturnType<typeof getClient>>, object
       } catch { /* 下面统一报错 */ }
     }
     throw new BotGateError("source_unavailable", `无法读取对象源码：${sanitizeErrMsg(err)}`)
+  }
+}
+
+/** ADT lock().CORRNR 是对象当前所在请求。lock 失败时才退到 transportInfo 的 LOCKS，不用 TRANSPORTS 候选列表。 */
+async function lockRequestOf(client: Awaited<ReturnType<typeof getClient>>, uri: string): Promise<string> {
+  const previous = client.stateful
+  client.stateful = session_types.stateful
+  try {
+    let handle = ""
+    try {
+      const lock = await client.lock(uri)
+      handle = String(lock.LOCK_HANDLE ?? "")
+      return String(lock.CORRNR ?? "").trim().toUpperCase()
+    } catch (lockErr) {
+      try {
+        const info = await client.transportInfo(uri)
+        const fromLocks = String(info?.LOCKS?.HEADER?.TRKORR ?? "").trim().toUpperCase()
+        if (fromLocks) return fromLocks
+      } catch { /* 下面统一报 lock 失败 */ }
+      throw new BotGateError("transport_unknown", `无法从 ADT lock 确认对象所在请求：${sanitizeErrMsg(lockErr)}`)
+    } finally {
+      if (handle) {
+        try {
+          await client.unLock(uri, handle)
+        } catch (err) {
+          throw new BotGateError(
+            "lock_held",
+            `读取 ADT lock 后解锁失败：${sanitizeErrMsg(err)}。对象可能仍被锁住，请在 SAP 中解锁后再打开会话。`,
+          )
+        }
+      }
+    }
+  } finally {
+    client.stateful = previous
+  }
+}
+
+/** E071 里真实出现过的请求。transportchecks 的 TRANSPORTS 是可选请求，不能当成对象已经在其中。 */
+async function recordedTransports(client: Awaited<ReturnType<typeof getClient>>, objectName: string): Promise<TransportRef[]> {
+  const name = objectName.replace(/'/g, "''")
+  let listed: string[]
+  try {
+    const result = await client.runQuery(`SELECT DISTINCT TRKORR FROM E071 WHERE OBJ_NAME = '${name}'`, 50, true)
+    listed = [...new Set((result?.values ?? [])
+      .map((row) => String((row as Record<string, unknown>).TRKORR ?? "").trim().toUpperCase())
+      .filter(Boolean))]
+  } catch (err) {
+    throw new BotGateError("transport_unknown", `无法读取对象 ${objectName} 的传输记录：${sanitizeErrMsg(err)}`)
+  }
+  if (!listed.length) return []
+  try {
+    const statusQuery = `SELECT TRKORR, TRSTATUS FROM E070 WHERE TRKORR IN (${listed.map((number) => `'${number.replace(/'/g, "''")}'`).join(",")})`
+    const status = await client.runQuery(statusQuery, 50, true)
+    return (status?.values ?? []).map((row) => {
+      const record = row as Record<string, unknown>
+      return { number: String(record.TRKORR ?? "").toUpperCase(), status: String(record.TRSTATUS ?? "").toUpperCase() }
+    }).filter((item) => item.number)
+  } catch (err) {
+    throw new BotGateError("transport_unknown", `无法确认对象 ${objectName} 的请求状态：${sanitizeErrMsg(err)}`)
   }
 }
 
@@ -160,26 +219,16 @@ export const productionRuntime: BotRuntime = {
     }
   },
 
-  async objectTransports(connectionId, objectName, uri) {
+  async assignedTransport(connectionId, objectName, sourceUri): Promise<TransportAssignment> {
     const { client } = await bind(connectionId)
+    const lockRequest = await lockRequestOf(client, sourceUri)
     try {
-      const info = await client.transportInfo(uri)
-      const listed: TransportRef[] = (info?.TRANSPORTS ?? []).map((item) => ({
-        number: String(item.TRKORR ?? "").toUpperCase(),
-        status: String(item.TRSTATUS ?? "").toUpperCase(),
-      })).filter((item) => item.number)
-      if (listed.length) return listed
-      const result = await client.runQuery(`SELECT DISTINCT TRKORR FROM E071 WHERE OBJ_NAME = '${objectName}'`, 50, true)
-      const numbers = [...new Set((result?.values ?? []).map((row) => String((row as Record<string, unknown>).TRKORR ?? "").trim().toUpperCase()).filter(Boolean))]
-      if (!numbers.length) return []
-      const statusQuery = `SELECT TRKORR, TRSTATUS FROM E070 WHERE TRKORR IN (${numbers.map((number) => `'${number}'`).join(",")})`
-      const status = await client.runQuery(statusQuery, 50, true)
-      return (status?.values ?? []).map((row) => {
-        const record = row as Record<string, unknown>
-        return { number: String(record.TRKORR ?? "").toUpperCase(), status: String(record.TRSTATUS ?? "").toUpperCase() }
-      }).filter((item) => item.number)
+      return { lockRequest, recorded: await recordedTransports(client, objectName) }
     } catch (err) {
-      throw new BotGateError("transport_unknown", `无法确认对象 ${objectName} 所在的传输请求：${sanitizeErrMsg(err)}`)
+      if (lockRequest) return { lockRequest, recorded: [] }
+      throw err instanceof BotGateError
+        ? err
+        : new BotGateError("transport_unknown", `无法确认对象 ${objectName} 所在的传输请求：${sanitizeErrMsg(err)}`)
     }
   },
 
