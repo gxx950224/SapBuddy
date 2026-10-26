@@ -8,6 +8,7 @@ import { appendAudit, type AuditEntry } from "../auditLog.js"
 import { getConfig } from "../config.js"
 import { scanCodeIssues } from "../code-policy.js"
 import { sanitizeErrMsg } from "../tools/shared.js"
+import { selectConnectionForOpen, requireSessionConnection } from "./connection.js"
 import { assertBotWriteAllowed } from "./guard.js"
 import {
   applyEdit,
@@ -88,10 +89,11 @@ function helpResult(): BotResult {
   return {
     ok: true,
     command: "help",
-    message: "bot session 是独立的 CLI 流程。打开会话后，规则由 CLI 强制执行。本流程不能创建或释放传输请求。",
+    message: "bot session 是独立的 CLI 流程。打开会话后，规则由 CLI 强制执行。本流程不能创建或释放传输请求。每个会话锁定自己的连接，不修改 connections.json 的 active。",
     workflow: ["open", "read", "propose", "human reviews diff", "apply --diff-hash", "activate --diff-hash", "human releases the transport"],
+    connection: "open 用 --connection <id 或 name>，或环境变量 SAPBUDDY_CONNECTION。两者都省略时用 active:true 的连接，没有 active 则用第一个。之后的命令只使用会话文件里的 connectionId，不再读 active，也不再读该环境变量。不同的 connections.json 仍用已有的 ABAP_MCP_CONFIG 指向文件，session 不写该文件。",
     commands: [
-      "session open <OBJECT> [--type CLAS/OC] [--transport DEVK900123] [--expect SID.CLIENT/USER] [--allow-package Z*]",
+      "session open <OBJECT> [--connection ID或名称] [--type CLAS/OC] [--transport DEVK900123] [--expect SID.CLIENT/USER] [--allow-package Z*]",
       "session read <SESSION>",
       "session where-used <SESSION>",
       "session syntax <SESSION>",
@@ -111,11 +113,15 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
   const objectName = assertObjectName(command.objectName)
   const allow = resolvePackageAllow(deps.packageCeiling(), command.allowPackages)
   const expected = command.expect ? parseExpect(command.expect) : undefined
-  const live = await deps.runtime.identity(command.connectionId)
+  const selected = selectConnectionForOpen(command.connectionId)
+  const live = await deps.runtime.identity(selected.id)
+  if (live.connectionId.toLowerCase() !== selected.id.toLowerCase()) {
+    throw new BotGateError("identity_mismatch", "运行时返回的连接与本次选择的连接不一致")
+  }
   if (expected) assertIdentity(live, expected, "expect_mismatch")
-  const resolved = await deps.runtime.resolveObject(live.connectionId, objectName, command.objectType)
-  if (resolved.connectionId.toLowerCase() !== live.connectionId.toLowerCase()) {
-    throw new BotGateError("identity_mismatch", "对象解析使用的连接与当前身份不一致")
+  const resolved = await deps.runtime.resolveObject(selected.id, objectName, command.objectType)
+  if (resolved.connectionId.toLowerCase() !== selected.id.toLowerCase()) {
+    throw new BotGateError("identity_mismatch", "对象解析使用的连接与本次选择的连接不一致")
   }
   const object = resolved.object
   if (object.name.toUpperCase() !== objectName) {
@@ -133,9 +139,9 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
       throw new BotGateError("transport_required", "非本地对象必须在打开会话时指定已存在且可修改的传输请求。本流程不会创建或释放请求。")
     }
     transport = parseTransport(command.transport)
-    await assertTransportOpen(deps, live.connectionId, transport, object.name, object.uri)
+    await assertTransportOpen(deps, selected.id, transport, object.name, object.uri)
   }
-  const source = await deps.runtime.readSource(live.connectionId, object.sourceUri)
+  const source = await deps.runtime.readSource(selected.id, object.sourceUri)
   const now = deps.now().toISOString()
   const session: BotSession = {
     version: 1,
@@ -143,7 +149,8 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
     createdAt: now,
     updatedAt: now,
     status: "open",
-    connectionId: live.connectionId,
+    connectionId: selected.id,
+    connectionSelection: selected.selection,
     system: { sid: live.sid.toUpperCase(), client: live.client, user: live.user.toUpperCase() },
     object,
     transport,
@@ -156,12 +163,16 @@ async function openSession(command: Extract<BotCommand, { command: "open" }>, de
     command: "open",
     sessionId: session.id,
     sessionFile: join(deps.store.dir, `${session.id}.json`),
+    connectionId: session.connectionId,
+    connectionSelection: session.connectionSelection,
     system: session.system,
     object: session.object,
     transport: session.transport ?? null,
     packageAllow: session.packageAllow,
     baselineSha256: session.baselineSha256,
-    message: "会话已锁定当前系统、客户端、用户和这一个对象。尚未写入 SAP。",
+    message: selected.selection === "explicit"
+      ? `会话已锁定连接 ${session.connectionId}、系统、客户端、用户和这一个对象。未修改 connections.json 的 active。尚未写入 SAP。`
+      : `会话已锁定默认连接 ${session.connectionId}（未指定 --connection 或 SAPBUDDY_CONNECTION）、系统、客户端、用户和这一个对象。未修改 connections.json 的 active。尚未写入 SAP。`,
   }
 }
 
@@ -284,7 +295,7 @@ async function propose(command: Extract<BotCommand, { command: "propose" }>, dep
 }
 
 function diff(command: Extract<BotCommand, { command: "diff" }>, deps: BotDeps): BotResult {
-  const session = deps.store.load(command.sessionId)
+  const session = loadLocal(command.sessionId, deps)
   if (session.status === "closed") throw new BotGateError("session_closed", "会话已关闭", { sessionId: session.id })
   if (!session.proposal) throw new BotGateError("no_proposal", "会话还没有提案", { sessionId: session.id })
   return {
@@ -435,12 +446,14 @@ async function activate(command: Extract<BotCommand, { command: "activate" }>, d
 }
 
 function status(command: Extract<BotCommand, { command: "status" }>, deps: BotDeps): BotResult {
-  const session = deps.store.load(command.sessionId)
+  const session = loadLocal(command.sessionId, deps)
   return {
     ok: true,
     command: "status",
     sessionId: session.id,
     status: session.status,
+    connectionId: session.connectionId,
+    connectionSelection: session.connectionSelection ?? null,
     system: session.system,
     object: publicObject(session),
     transport: session.transport ?? null,
@@ -454,7 +467,7 @@ function status(command: Extract<BotCommand, { command: "status" }>, deps: BotDe
 
 async function close(command: Extract<BotCommand, { command: "close" }>, deps: BotDeps): Promise<BotResult> {
   return deps.store.withLock(command.sessionId, async () => {
-    const session = deps.store.load(command.sessionId)
+    const session = loadLocal(command.sessionId, deps)
     session.status = "closed"
     session.updatedAt = deps.now().toISOString()
     deps.store.save(session)
@@ -467,7 +480,7 @@ async function loadBound(
   deps: BotDeps,
   opts?: { reload?: boolean },
 ): Promise<BotSession> {
-  const session = deps.store.load(command.sessionId)
+  const session = loadLocal(command.sessionId, deps)
   if (session.status === "closed") throw new BotGateError("session_closed", "会话已关闭", { sessionId: session.id })
   assertSameObject(session.object.name, session.object.type, command.objectName, command.objectType)
   if (!packageMatches(session.object.packageName, session.packageAllow)) {
@@ -475,10 +488,16 @@ async function loadBound(
   }
   const live = await deps.runtime.identity(session.connectionId)
   if (live.connectionId.toLowerCase() !== session.connectionId.toLowerCase()) {
-    throw new BotGateError("identity_mismatch", "当前启用连接与会话锁定的连接不一致", { sessionId: session.id })
+    throw new BotGateError("identity_mismatch", "运行时使用的连接与会话锁定的连接不一致", { sessionId: session.id })
   }
   assertIdentity(live, session.system, "identity_mismatch")
   return opts?.reload ? deps.store.load(session.id) : session
+}
+
+function loadLocal(sessionId: string, deps: BotDeps): BotSession {
+  const session = deps.store.load(sessionId)
+  requireSessionConnection(session.connectionId)
+  return session
 }
 
 function assertWritableStatus(session: BotSession, allowed: BotSession["status"][]): void {

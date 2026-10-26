@@ -147,7 +147,7 @@ Every command prints one JSON object to stdout. Exit code 0 means the command fu
 Workflow: **open → read → propose → a person reviews the full diff → apply --diff-hash → activate --diff-hash → a person releases the transport**.
 
 ```bash
-sapbuddy session open ZCL_ORDER --type CLAS/OC \
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
   --transport DEVK900123 --expect DEV.100/DEVELOPER
 sapbuddy session read <SESSION>
 sapbuddy session where-used <SESSION>
@@ -166,8 +166,9 @@ Checks before anything is written:
 
 | Gate | Behavior |
 |---|---|
+| Connection | Each session locks one connection. `--connection` accepts a connection id or its display `name`. If the flag is omitted, `SAPBUDDY_CONNECTION` is used. If both are omitted, the connection with `active: true` is used, or the first connection when none is marked. Opening a session **does not change** `active` in `connections.json`. Later commands use only the `connectionId` stored in the session file; they do not re-read the global active flag or `SAPBUDDY_CONNECTION`. If that id is no longer in the config, the command is refused and does not fall back to the current active connection |
 | One object | A session locks one object. A command that names another object or type is rejected |
-| System identity | The SID, client, and user read at open are locked. `--expect SID.CLIENT/USER` must match or the session is not created. Later reads and writes check the live identity again |
+| System identity | The SID, client, and user read from **that connection** at open are locked. `--expect SID.CLIENT/USER` must match or the session is not created. Later reads and writes check the live identity again |
 | Package allowlist | Default allowlist is `Z*` and `Y*`. `security.allowedPackages` is the ceiling; `--allow-package` can only narrow it. `$TMP` is excluded unless the config ceiling includes it |
 | Transports | This flow cannot create or release a request. A non-`$TMP` object must be opened with an existing modifiable request (`E070` status `D`) |
 | propose | Accepts a unique snippet replacement, one method replacement, or a full replacement of a single include. It stores a unified diff and its sha256. **Nothing is written to SAP** |
@@ -178,6 +179,23 @@ Checks before anything is written:
 | Code policy | Same hardcoded-Chinese block as interactive writes. Bare types are warnings |
 
 Session files live in `~/.SapBuddy/bot-sessions/` (`SAPBUDDY_BOT_SESSION_DIR` overrides the directory). They do not contain passwords.
+
+Several consultants can hold sessions at the same time against one `connections.json`. Neither session rewrites the other's active connection:
+
+```bash
+# ABAP consultant. --connection takes an id or a name and does not mark that connection active
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
+  --transport DEVK900123 --expect DEV.100/ABAP_USER
+
+# SD consultant, at the same time, read-only on the test system. active still points at development
+SAPBUDDY_CONNECTION=测试 sapbuddy session open ZSD_LIST --type PROG/P \
+  --transport DEVK900456 --expect QAS.200/SD_USER
+sapbuddy session read <test-session>
+```
+
+A single user can omit the selector. `sapbuddy session open ZCL_ORDER ...` uses the connection marked `active: true` (or the first connection when none is marked) and stores that id in the session. That is the default. Interactive chat, the web UI, and MCP still use only the global active connection; a bot session cannot switch it.
+
+If two people keep separate connection files, point each process at its own file with the existing `ABAP_MCP_CONFIG=/path/to/connections.json`. `session` only reads that file and does not rewrite `active`.
 
 `activate` activates only the locked object. If a program is split across includes and the server requires the other includes first, the command returns that failure and a non-zero exit code. The SID is read from the logon cookie `SAP_SESSIONID_<SID>_<instance>`. If that cookie is missing, the command uses `TMSCSYS` only when the transport domain contains exactly one SAP system; otherwise it refuses to open the session.
 

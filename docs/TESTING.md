@@ -83,7 +83,7 @@ node --test test/botSession.test.mjs
 node cli.mjs session help
 ```
 
-单测覆盖：diff 哈希不一致、服务器源码相对基线已变化、命令点到别的对象、`readOnly`、非开发客户端（`T000.CCCATEGORY=T`）、提案不写 SAP、读回不一致 / 语法错误不算成功、不能创建或释放传输请求。
+单测覆盖：diff 哈希不一致、服务器源码相对基线已变化、命令点到别的对象、`readOnly`、非开发客户端（`T000.CCCATEGORY=T`）、提案不写 SAP、读回不一致 / 语法错误不算成功、不能创建或释放传输请求、两个会话各锁不同连接且不改写 `connections.json` 的 active、会话连接从配置消失后命令拒绝、省略 `--connection` 时仍使用 active。
 
 连真实系统时的人工顺序：`session open` → `read` / `where-used` / `syntax` / `atc` / `table` → `propose` → 人看完整 diff → `apply --diff-hash` → `activate --diff-hash` → 人在 SAP 里释放请求。这条命令不会创建或释放传输。
 

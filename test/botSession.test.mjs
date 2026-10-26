@@ -27,8 +27,11 @@ import {
 import { bindDeps, executeBotCommand } from "../dist/sap-tools/bot-session/service.js"
 import { createSessionStore } from "../dist/sap-tools/bot-session/store.js"
 import { runSessionCli } from "../dist/sap-tools/bot-session/cli.js"
+import { productionRuntime } from "../dist/sap-tools/bot-session/runtime.js"
+import { selectConnectionForOpen } from "../dist/sap-tools/bot-session/connection.js"
 import { assertBotWriteAllowed } from "../dist/sap-tools/bot-session/guard.js"
 import { __setConfigForTest, getConfig, loadConfig } from "../dist/sap-tools/config.js"
+import { resolveConnectionId } from "../dist/sap-tools/tools/shared.js"
 import { __setClientFactoryForTest, dropAllClients } from "../dist/sap-tools/adtManager.js"
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url))
@@ -60,16 +63,25 @@ function sapConfig({ readOnly = false, allowedPackages, category = "C" } = {}) {
 
 function runtimeFor(state) {
   return {
-    async identity() {
-      return { connectionId: "dev", sid: state.sid, client: state.client, user: state.user }
+    async identity(connectionId) {
+      state.used.push(connectionId)
+      const profile = state.profiles?.[connectionId]
+      return {
+        connectionId,
+        sid: profile?.sid ?? state.sid,
+        client: profile?.client ?? state.client,
+        user: profile?.user ?? state.user,
+      }
     },
-    async resolveObject(_connectionId, name) {
+    async resolveObject(connectionId, name) {
       state.calls.push("resolve")
-      return { connectionId: "dev", object: { ...state.object, name } }
+      state.used.push(connectionId)
+      return { connectionId, object: { ...state.object, name } }
     },
-    async readSource() {
+    async readSource(connectionId) {
       state.calls.push("read")
-      return state.source
+      state.used.push(connectionId)
+      return state.sources?.[connectionId] ?? state.source
     },
     async whereUsed() {
       return [{ name: "ZCALLER", type: "PROG/P", usage: "submit" }]
@@ -96,8 +108,9 @@ function runtimeFor(state) {
     async objectTransports() {
       return state.objectTransports ?? []
     },
-    async writeSource(_connectionId, _uri, source, transport) {
+    async writeSource(connectionId, _uri, source, transport) {
       state.calls.push("write")
+      state.used.push(connectionId)
       state.writes.push({ source, transport })
       if (state.onWrite) return state.onWrite(source, transport)
       state.source = source
@@ -132,6 +145,7 @@ function fixture(patch = {}) {
     objectTransports: [],
     calls: [],
     writes: [],
+    used: [],
     ...patch,
     object: { ...{
       name: "ZDEMO",
@@ -647,9 +661,211 @@ test("loadConfig 保留 bot session 的包允许列表", () => {
 })
 
 test("bot session 源码没有创建或释放传输请求的调用", () => {
-  for (const file of ["service.ts", "runtime.ts", "cli.ts"]) {
+  for (const file of ["service.ts", "runtime.ts", "cli.ts", "connection.ts"]) {
     const text = readFileSync(join(ROOT, "src", "sap-tools", "bot-session", file), "utf8")
     assert.equal(text.includes("createTransport"), false, file)
     assert.equal(text.includes("transportRelease"), false, file)
+    assert.equal(text.includes("writeFile"), false, file)
   }
+  const runtime = readFileSync(join(ROOT, "src", "sap-tools", "bot-session", "runtime.ts"), "utf8")
+  assert.equal(runtime.includes("resolveConnectionId"), false)
+})
+
+function consultantConfig() {
+  return {
+    connections: [
+      { id: "dev", name: "开发", active: true, url: "https://dev.fixture.invalid", client: "100", username: "DEVELOPER", password: "secret-dev" },
+      { id: "qa", name: "测试", active: false, url: "https://qa.fixture.invalid", client: "200", username: "SD_USER", password: "secret-qa" },
+    ],
+    security: { readOnly: false, allowedPackages: ["Z*", "Y*"] },
+  }
+}
+
+function withProfiles(fx) {
+  fx.state.profiles = {
+    dev: { sid: "DEV", client: "100", user: "DEVELOPER" },
+    qa: { sid: "QAS", client: "200", user: "SD_USER" },
+  }
+  return fx
+}
+
+test("不指定连接时锁定 active，没有 active 时用第一个", async () => {
+  const fx = fixture()
+  const opened = await openDefault(fx)
+  assert.equal(opened.connectionId, "dev")
+  assert.equal(opened.connectionSelection, "default")
+  assert.match(opened.message, /默认连接 dev/)
+  assert.equal(getConfig().connections[0].active, true)
+
+  __setConfigForTest({
+    connections: [
+      { id: "first", name: "甲", url: "https://fixture.invalid", client: "100", username: "A", password: "p" },
+      { id: "second", name: "乙", url: "https://fixture.invalid", client: "100", username: "B", password: "p" },
+    ],
+    security: { readOnly: true },
+  })
+  assert.deepEqual(selectConnectionForOpen(undefined), { id: "first", selection: "default" })
+  assert.deepEqual(selectConnectionForOpen("乙"), { id: "second", selection: "explicit" })
+  __setConfigForTest({
+    connections: [
+      { id: "a", name: "同名", url: "https://fixture.invalid", client: "100", username: "A", password: "p" },
+      { id: "b", name: "同名", url: "https://fixture.invalid", client: "100", username: "B", password: "p" },
+    ],
+    security: { readOnly: true },
+  })
+  assert.throws(
+    () => selectConnectionForOpen("同名"),
+    (err) => err instanceof BotGateError && err.code === "connection_ambiguous",
+  )
+  assert.deepEqual(selectConnectionForOpen("b"), { id: "b", selection: "explicit" })
+})
+
+test("两个会话各用自己的连接，不改写 active，缺连接时拒绝", async () => {
+  const original = consultantConfig()
+  __setConfigForTest(structuredClone(original))
+  const fx = withProfiles(fixture())
+  const devOpen = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DEVK900123",
+    expect: "DEV.100/DEVELOPER", connectionId: "开发",
+  }, fx.deps)
+  assert.equal(devOpen.ok, true, devOpen.message)
+  assert.equal(devOpen.connectionId, "dev")
+  assert.equal(devOpen.connectionSelection, "explicit")
+  const qaOpen = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DEVK900123",
+    expect: "QAS.200/SD_USER", connectionId: "qa",
+  }, fx.deps)
+  assert.equal(qaOpen.ok, true, qaOpen.message)
+  assert.equal(qaOpen.connectionId, "qa")
+  const wrongSystem = await executeBotCommand({
+    command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DEVK900123",
+    expect: "DEV.100/DEVELOPER", connectionId: "测试",
+  }, fx.deps)
+  assert.equal(wrongSystem.code, "expect_mismatch")
+
+  const beforeQaRead = fx.state.used.length
+  const qaRead = await executeBotCommand({ command: "read", sessionId: qaOpen.sessionId }, fx.deps)
+  assert.equal(qaRead.ok, true, qaRead.message)
+  assert.deepEqual(fx.state.used.slice(beforeQaRead), ["qa", "qa"])
+  const beforeDevRead = fx.state.used.length
+  const devRead = await executeBotCommand({ command: "read", sessionId: devOpen.sessionId }, fx.deps)
+  assert.equal(devRead.ok, true, devRead.message)
+  assert.deepEqual(fx.state.used.slice(beforeDevRead), ["dev", "dev"])
+
+  assert.equal(getConfig().connections.find((item) => item.id === "dev").active, true)
+  assert.equal(getConfig().connections.find((item) => item.id === "qa").active, false)
+  assert.deepEqual(
+    getConfig().connections.map((item) => ({ id: item.id, active: item.active ?? false, name: item.name })),
+    original.connections.map((item) => ({ id: item.id, active: item.active ?? false, name: item.name })),
+  )
+  await assert.rejects(resolveConnectionId("qa"), /连接范围拦截/)
+
+  const usedBeforeMissing = fx.state.used.length
+  __setConfigForTest({
+    connections: [original.connections[0]],
+    security: original.security,
+  })
+  const missing = await executeBotCommand({ command: "read", sessionId: qaOpen.sessionId }, fx.deps)
+  assert.equal(missing.ok, false)
+  assert.equal(missing.code, "connection_missing")
+  assert.match(missing.message, /qa/)
+  assert.equal(fx.state.used.length, usedBeforeMissing)
+  const status = await executeBotCommand({ command: "status", sessionId: qaOpen.sessionId }, fx.deps)
+  assert.equal(status.code, "connection_missing")
+  const devStill = await executeBotCommand({ command: "read", sessionId: devOpen.sessionId }, fx.deps)
+  assert.equal(devStill.ok, true, devStill.message)
+})
+
+test("打开两个会话不改写 connections.json 文件", async () => {
+  const file = join(dir, "connections.json")
+  const body = JSON.stringify({
+    connections: [
+      { id: "Dev", name: "开发", active: true, url: "https://dev.fixture.invalid", client: "100", username: "DEVELOPER", password: "secret-dev" },
+      { id: "QA", name: "测试", url: "https://qa.fixture.invalid", client: "200", username: "SD_USER", password: "secret-qa" },
+    ],
+    security: { readOnly: false, allowedPackages: ["Z*", "Y*"] },
+  }, null, 2)
+  writeFileSync(file, body)
+  const previous = process.env.ABAP_MCP_CONFIG
+  process.env.ABAP_MCP_CONFIG = file
+  __setConfigForTest(null)
+  try {
+    const fx = withProfiles(fixture())
+    const devOpen = await executeBotCommand({
+      command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DEVK900123",
+      expect: "DEV.100/DEVELOPER", connectionId: "开发",
+    }, fx.deps)
+    const qaOpen = await executeBotCommand({
+      command: "open", objectName: "ZDEMO", objectType: "PROG/P", transport: "DEVK900123",
+      expect: "QAS.200/SD_USER", connectionId: "QA",
+    }, fx.deps)
+    assert.equal(devOpen.connectionId, "dev")
+    assert.equal(qaOpen.connectionId, "qa")
+    assert.equal(readFileSync(file, "utf8"), body)
+    const loaded = loadConfig()
+    assert.equal(loaded.connections.find((item) => item.id === "dev").active, true)
+    assert.equal(loaded.connections.find((item) => item.id === "qa").active, undefined)
+  } finally {
+    if (previous === undefined) delete process.env.ABAP_MCP_CONFIG
+    else process.env.ABAP_MCP_CONFIG = previous
+    sapConfig()
+  }
+})
+
+test("CLI 的 --connection 优先于 SAPBUDDY_CONNECTION", async () => {
+  __setConfigForTest(consultantConfig())
+  const fx = withProfiles(fixture())
+  const options = {
+    dir,
+    runtime: runtimeFor(fx.state),
+    packageCeiling: () => ["Z*", "Y*"],
+  }
+  const byName = await runSessionCli([
+    "open", "ZDEMO", "--connection", "测试", "--type", "PROG/P", "--transport", "DEVK900123", "--expect", "QAS.200/SD_USER",
+  ], { ...options, env: { SAPBUDDY_CONNECTION: "dev" } })
+  assert.equal(byName.code, 0, byName.result.message)
+  assert.equal(byName.result.connectionId, "qa")
+  assert.equal(byName.result.connectionSelection, "explicit")
+
+  const byEnv = await runSessionCli([
+    "open", "ZDEMO", "--type", "PROG/P", "--transport", "DEVK900123", "--expect", "DEV.100/DEVELOPER",
+  ], { ...options, env: { SAPBUDDY_CONNECTION: "开发" } })
+  assert.equal(byEnv.code, 0, byEnv.result.message)
+  assert.equal(byEnv.result.connectionId, "dev")
+  assert.equal(byEnv.result.connectionSelection, "explicit")
+
+  const unknown = await runSessionCli([
+    "open", "ZDEMO", "--connection", "missing", "--type", "PROG/P", "--transport", "DEVK900123",
+  ], { ...options, env: {} })
+  assert.equal(unknown.code, 1)
+  assert.equal(unknown.result.code, "connection_missing")
+  assert.equal(fx.state.used.includes("missing"), false)
+})
+
+test("生产运行时只连接会话指定的系统，缺连接时不登录", async () => {
+  __setConfigForTest(consultantConfig())
+  const logins = []
+  __setClientFactoryForTest((conf) => {
+    logins.push(conf.id)
+    return {
+      login: async () => {},
+      username: conf.username,
+      client: conf.client,
+      dropSession: async () => {},
+      httpClient: { ascookies: () => (conf.id === "qa" ? "SAP_SESSIONID_QAS_00=abc" : "SAP_SESSIONID_DEV_00=abc") },
+    }
+  })
+  await assert.rejects(
+    () => productionRuntime.identity("missing"),
+    (err) => err instanceof BotGateError && err.code === "connection_missing",
+  )
+  assert.deepEqual(logins, [])
+  const live = await productionRuntime.identity("qa")
+  assert.equal(live.connectionId, "qa")
+  assert.equal(live.sid, "QAS")
+  assert.equal(live.client, "200")
+  assert.equal(live.user, "SD_USER")
+  assert.deepEqual(logins, ["qa"])
+  assert.equal(getConfig().connections.find((item) => item.id === "dev").active, true)
+  await dropAllClients()
 })

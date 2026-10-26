@@ -84,7 +84,7 @@ node cli.mjs tools   # 工具列表
 | 修改：自动沿用/创建请求、请求描述格式 | `tools/writeTools.ts` replace_string_in_abap_object | 硬强制 |
 | 激活：ABAP 程序/类/接口/函数模块/include 串行语法检查→激活→active 源码比对；失败阶段与未激活对象明确返回，元数据 active 不替代本次结果 | `tools/activationResult.ts` + `tools/writeTools.ts` abap_activate；`register.ts` 失败状态与审计 | 硬强制 |
 | 传输请求：状态码中文、底表 E070/E071、只读放行 | `tools/transportText.ts` manage_transport_requests | 硬强制 |
-| Bot session（`sapbuddy session`）：单对象、包允许列表、`--expect`、已有可修改请求、diff 哈希、基线源码哈希、readOnly、开发客户端、写后读回/语法/未激活清单；禁止创建或释放请求 | `src/sap-tools/bot-session/`（CLI 进程内执行，不经过提示词） | 硬强制，仅该命令；对话/Web/MCP 行为不变 |
+| Bot session（`sapbuddy session`）：单对象、会话自有连接（`--connection` / `SAPBUDDY_CONNECTION`，不改全局 active）、包允许列表、`--expect`、已有可修改请求、diff 哈希、基线源码哈希、readOnly、开发客户端、写后读回/语法/未激活清单；禁止创建或释放请求 | `src/sap-tools/bot-session/`（CLI 进程内执行，不经过提示词） | 硬强制，仅该命令；对话/Web/MCP 行为不变 |
 | 创建/修改流程、避坑记录、请求描述格式（行为层）| `SYSTEM.md` 铁律 6b / 输出约定 | 提示层（AI 执行，工具已兜底）|
 
 **编译产物** `dist/sap-tools/register.js` —— Web（agent-core）与 CLI（pi-extension）加载同一模块，规则两端一致。
@@ -97,7 +97,7 @@ node cli.mjs tools   # 工具列表
 - 配置模板在 `config/*.example.json`
 - **默认只读**：connections.json 未显式设置 `security.readOnly: false` 即视为只读（所有写工具拒绝）；要允许写操作需在 connections.json 显式 `"security": { "readOnly": false }`
 - 写操作另有双层保护：**人工确认**（拦截 → 用户输入"确认"放行）+ **开发客户端守卫**（T000.CCCATEGORY 非 C 类拒绝）
-- **Bot session**（`sapbuddy session`）是附加入口：一个会话锁定 SID + 客户端 + 用户 + 一个对象。`propose` 只落 diff，`apply --diff-hash` 在 CLI 内核对哈希、基线源码、`readOnly` 和开发客户端后才 lock/写/unlock。不能创建或释放传输请求。交互式确认词不适用于这条路径，人工确认体现在核对完整 diff 后交出哈希。详见 README「Bot session」
+- **Bot session**（`sapbuddy session`）是附加入口：一个会话锁定连接 + SID + 客户端 + 用户 + 一个对象。连接在 open 时用 `--connection`（id 或 name）或 `SAPBUDDY_CONNECTION` 选定，省略则用 active（或第一个），并写入会话文件；之后只使用该 id，不改 `connections.json` 的 active。`propose` 只落 diff，`apply --diff-hash` 在 CLI 内核对哈希、基线源码、`readOnly` 和开发客户端后才 lock/写/unlock。不能创建或释放传输请求。交互式确认词不适用于这条路径，人工确认体现在核对完整 diff 后交出哈希。详见 README「Bot session」
 
 ## 提交
 

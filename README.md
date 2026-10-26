@@ -147,7 +147,7 @@ sapbuddy/
 推荐流程：**open → read → propose → 人工看完整 diff → apply --diff-hash → activate --diff-hash → 人工释放传输**。
 
 ```bash
-sapbuddy session open ZCL_ORDER --type CLAS/OC \
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
   --transport DEVK900123 --expect DEV.100/DEVELOPER
 sapbuddy session read <SESSION>
 sapbuddy session where-used <SESSION>
@@ -166,8 +166,9 @@ sapbuddy session activate <SESSION> --diff-hash <同一个 sha256>
 
 | 门禁 | 行为 |
 |---|---|
+| 连接 | 每个会话锁定一个连接。`--connection` 接受连接 id 或显示名 `name`。未写该参数时，可用环境变量 `SAPBUDDY_CONNECTION`。两者都省略时用 `active: true` 的连接，没有标记则用第一个。打开会话**不修改** `connections.json` 里的 `active`。之后的命令只使用会话文件中的 `connectionId`，不再读全局 active，也不再读 `SAPBUDDY_CONNECTION`。配置里找不到这个 id 就拒绝，不会改连到当前 active |
 | 单对象 | 一个会话只锁一个对象。命令带了别的对象名或类型就拒绝 |
-| 系统身份 | 锁定打开时读到的 SID、客户端、用户。`--expect SID.CLIENT/USER` 不一致则连会话都不创建。之后每次读/写都再核对 |
+| 系统身份 | 锁定的是**该连接**打开时读到的 SID、客户端、用户。`--expect SID.CLIENT/USER` 不一致则连会话都不创建。之后每次读/写都再核对 |
 | 包允许列表 | 默认只允许 `Z*`、`Y*`。`security.allowedPackages` 是上限；命令行 `--allow-package` 只能收窄，不能放宽。`$TMP` 默认不在列表里 |
 | 传输 | 没有创建、没有释放。非 `$TMP` 对象必须在 open 时带一个已存在且状态为 D（可修改）的请求号 |
 | propose | 只接受唯一片段替换、单个方法替换，或单个 include 的全文替换。算出统一 diff 和 diff sha256，写入本机会话文件，**不写 SAP** |
@@ -178,6 +179,23 @@ sapbuddy session activate <SESSION> --diff-hash <同一个 sha256>
 | 代码规则 | 与交互式写入相同：硬编码中文拦截。裸类型只提示 |
 
 会话文件在 `~/.SapBuddy/bot-sessions/`（可用 `SAPBUDDY_BOT_SESSION_DIR` 改位置）。里面没有口令。
+
+多位顾问可以同时开会话，共用同一份 `connections.json`，互不改写对方的 active 连接：
+
+```bash
+# 开发顾问。--connection 写 id 或 name 均可，不会把 active 改成这条连接
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
+  --transport DEVK900123 --expect DEV.100/ABAP_USER
+
+# SD 顾问同时在测试系统上只读。active 仍指向原来的开发连接
+SAPBUDDY_CONNECTION=测试 sapbuddy session open ZSD_LIST --type PROG/P \
+  --transport DEVK900456 --expect QAS.200/SD_USER
+sapbuddy session read <测试会话>
+```
+
+单人用法可以不写选择器：`sapbuddy session open ZCL_ORDER ...` 使用当前 `active: true` 的连接（没有则用列表第一个），并把解析出的 id 写入该会话。这是默认行为。交互式对话、Web 和 MCP 仍只使用全局 active，不能借会话去切换系统。
+
+两人若各有一份连接文件，继续用已有的 `ABAP_MCP_CONFIG=/path/to/connections.json`。`session` 只读该文件，不改写其中的 `active`。
 
 `activate` 只激活会话锁定的那一个对象。程序若拆成多个 INCLUDE，服务器要求先激活其他 INCLUDE 时，本命令会把失败如实返回，退出码不是 0。SID 从登录 cookie `SAP_SESSIONID_<SID>_<实例>` 读取；读不到时，仅当传输域里只有一个 SAP 系统才采用该 SID，否则拒绝打开会话。
 

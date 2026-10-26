@@ -1,15 +1,17 @@
-/** 生产环境的 ADT 端口。只读查询与一次 lock/写/unlock，不创建、不释放传输请求。 */
+/** 生产环境的 ADT 端口。只读查询与一次 lock/写/unlock，不创建、不释放传输请求。
+ * 连接只认调用方传入的会话 connectionId，不读、不改全局 active。 */
 import { session_types, type ActivationResult } from "abap-adt-api"
 import { getClient, getConnection } from "../adtManager.js"
+import { requireSessionConnection } from "./connection.js"
 import { assertBotWriteAllowed } from "./guard.js"
 import { sidFromCookies, BotGateError, normalizeSource } from "./gates.js"
 import { mergeActivationResults, verifyActivation } from "../tools/activationResult.js"
-import { findObject, getOptimalObjectURI, resolveConnectionId, sanitizeErrMsg } from "../tools/shared.js"
+import { findObject, getOptimalObjectURI, sanitizeErrMsg } from "../tools/shared.js"
 import type { AbapObjectRef, ActivateOutcome, BotRuntime, SyntaxMessage, TableResult, TransportRef, WriteOutcome } from "./types.js"
 
 async function bind(connectionId?: string): Promise<{ id: string; client: Awaited<ReturnType<typeof getClient>> }> {
-  const id = await resolveConnectionId(connectionId)
-  return { id, client: await getClient(id) }
+  const conf = requireSessionConnection(connectionId ?? "")
+  return { id: conf.id, client: await getClient(conf.id) }
 }
 
 function rowsOf(result: { values?: Array<Record<string, unknown>>; columns?: Array<{ name: string }> } | undefined): TableResult {

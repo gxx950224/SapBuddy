@@ -44,6 +44,8 @@ export interface BotSession {
   updatedAt: string
   status: SessionStatus
   connectionId: string
+  /** explicit = open 时写了 --connection 或 SAPBUDDY_CONNECTION；default = 当时的 active（或第一个） */
+  connectionSelection?: "explicit" | "default"
   system: SystemIdentity
   object: AbapObjectRef
   transport?: string

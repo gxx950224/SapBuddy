@@ -18,6 +18,8 @@ export interface SessionCliOptions {
   packageCeiling?: () => string[] | undefined
   readFile?: (path: string) => string
   stdin?: string
+  /** 测试可注入。缺省用 process.env。只在 open 时读取 SAPBUDDY_CONNECTION。 */
+  env?: NodeJS.ProcessEnv
 }
 
 interface ParsedArgs {
@@ -92,7 +94,7 @@ function objectFlags(parsed: ParsedArgs): { objectName?: string; objectType?: st
   return { objectName: one(parsed, "object"), objectType: one(parsed, "type") }
 }
 
-export function parseSessionArgs(argv: string[], readFile: (path: string) => string, stdin?: string): BotCommand {
+export function parseSessionArgs(argv: string[], readFile: (path: string) => string, stdin?: string, env: NodeJS.ProcessEnv = process.env): BotCommand {
   const parsed = parseArgv(argv)
   const command = (parsed.positionals[0] ?? "help").toLowerCase()
   const target = parsed.positionals[1]
@@ -115,7 +117,7 @@ export function parseSessionArgs(argv: string[], readFile: (path: string) => str
       transport: one(parsed, "transport"),
       expect: one(parsed, "expect"),
       allowPackages: packagesOf(parsed),
-      connectionId: one(parsed, "connection"),
+      connectionId: one(parsed, "connection") ?? envConnection(env),
     }
   }
   if (!target) throw new BotGateError("usage", `${command} 需要会话 ID`)
@@ -147,6 +149,11 @@ export function parseSessionArgs(argv: string[], readFile: (path: string) => str
     return { command, ...bound, diffHash }
   }
   throw new BotGateError("usage", `未知命令 ${command}。可用 open / read / where-used / syntax / atc / table / propose / diff / apply / activate / status / close。`)
+}
+
+function envConnection(env: NodeJS.ProcessEnv): string | undefined {
+  const value = env.SAPBUDDY_CONNECTION?.trim()
+  return value || undefined
 }
 
 function editFrom(parsed: ParsedArgs, readFile: (path: string) => string, stdin?: string): SourceEdit {
@@ -209,7 +216,7 @@ function editFromJson(text: string): SourceEdit {
 
 export async function runSessionCli(argv: string[], options: SessionCliOptions = {}): Promise<{ code: number; result: BotResult }> {
   try {
-    const command = parseSessionArgs(argv, options.readFile ?? ((path) => readFileSync(path, "utf8")), options.stdin)
+    const command = parseSessionArgs(argv, options.readFile ?? ((path) => readFileSync(path, "utf8")), options.stdin, options.env ?? process.env)
     const store = createSessionStore(options.dir ?? defaultSessionDir())
     const result = await executeBotCommand(command, bindDeps({
       store,
