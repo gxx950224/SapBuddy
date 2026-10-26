@@ -2,6 +2,7 @@
   "connections": [
     {
       "id": "AI",
+      "name": "开发",
       "url": "https://your-sap-host:44300",
       "client": "100",
       "username": "YOUR_USER",
@@ -16,5 +17,8 @@
       }
     }
   ],
-  "security": { "readOnly": true }
+  "security": {
+    "readOnly": true,
+    "allowedPackages": ["Z*", "Y*"]
+  }
 }

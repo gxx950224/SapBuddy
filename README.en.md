@@ -99,6 +99,7 @@ sapbuddy chat                      # interactive chat (same as above)
 sapbuddy web                       # web version (http://127.0.0.1:7400)
 sapbuddy "search classes starting with ZCL_*"   # one-off question
 sapbuddy tools                     # list the 41 SAP tools + configured MCP tools
+sapbuddy session help              # one-object session for scripts and bots (see below)
 ```
 
 ## 🧩 Architecture
@@ -117,7 +118,7 @@ User ──CLI / Web──► pi SDK (AgentSession)
 
 ```
 sapbuddy/
-├── cli.mjs                 # CLI entry (chat / one-off / web / tools / doctor)
+├── cli.mjs                 # CLI entry (chat / one-off / web / tools / doctor / session)
 ├── src/
 │   ├── agent-core.mjs      # pi SDK session management + model parsing + runtime init
 │   ├── sap-tools/          # 41 SAP tools (TypeScript, built on abap-adt-api)
@@ -136,6 +137,71 @@ sapbuddy/
 - **Development-client guard (on by default)**: before a write, `T000.CCCATEGORY` is checked; only development-class clients (`C` customizing/customer development) may modify code; test (T) / production (P) / demo (D) / training (E) / SAP reference (S) are **always rejected**; fail-closed when it cannot be confirmed
 - SAP passwords and API keys are never stored in the repo (templates desensitized, excluded via `.gitignore`)
 - Write operations require the user to **review the change first** before execution (enforced by the Agent gate)
+
+## 🤖 Bot session (scripts / bots)
+
+Interactive chat and the web UI stay as they are. `sapbuddy session` is a separate entry point for a bot that can only run shell commands. Once a session is open, the rules below are enforced **inside the CLI process**.
+
+Every command prints one JSON object to stdout. Exit code 0 means the command fully succeeded. A refused gate or a failed post-write check is a non-zero exit. A partial result is never reported as success.
+
+Workflow: **open → read → propose → a person reviews the full diff → apply --diff-hash → activate --diff-hash → a person releases the transport**.
+
+```bash
+# Object already on one modifiable request: omit --transport. The later write attaches to the ADT lock request
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC --expect DEV.100/DEVELOPER
+# Object not on any modifiable request: name an existing status-D request. This flow does not create one:
+# sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC --transport DEVK900123 --expect DEV.100/DEVELOPER
+sapbuddy session read <SESSION>
+sapbuddy session where-used <SESSION>
+sapbuddy session syntax <SESSION>
+sapbuddy session atc <SESSION>
+sapbuddy session table <SESSION> --table T000 --filter "MANDT = '100'"
+sapbuddy session propose <SESSION> --old-file old.abap --new-file new.abap
+# or: --method GET_DATA --source-file method.abap
+# or, only when the locked object itself is an include: --include --source-file include.abap
+sapbuddy session diff <SESSION>
+sapbuddy session apply <SESSION> --diff-hash <sha256 from the proposal>
+sapbuddy session activate <SESSION> --diff-hash <the same sha256>
+```
+
+Checks before anything is written:
+
+| Gate | Behavior |
+|---|---|
+| Connection | Each session locks one connection. `--connection` accepts a connection id or its display `name`. If the flag is omitted, `SAPBUDDY_CONNECTION` is used. If both are omitted, the connection with `active: true` is used, or the first connection when none is marked. Opening a session **does not change** `active` in `connections.json`. Later commands use only the `connectionId` stored in the session file; they do not re-read the global active flag or `SAPBUDDY_CONNECTION`. If that id is no longer in the config, the command is refused and does not fall back to the current active connection |
+| One object | A session locks one object. A command that names another object or type is rejected |
+| System identity | The SID, client, and user read from **that connection** at open are locked. `--expect SID.CLIENT/USER` must match or the session is not created. Later reads and writes check the live identity again |
+| Package allowlist | Default allowlist is `Z*` and `Y*`. `security.allowedPackages` is the ceiling; `--allow-package` can only narrow it. `$TMP` is excluded unless the config ceiling includes it |
+| Transports | This flow cannot create or release a request. When the object is already on one modifiable request (`E070` status `D`), omit `--transport`; apply and activate attach to that request. The ADT lock `CORRNR` wins over the candidate list from the transport check. If `E071` shows several status-D requests and the lock does not name exactly one, the command refuses and lists them. `--transport` is required only when the object is not yet on any modifiable request, and it must name an existing status-D request |
+| propose | Accepts a unique snippet replacement, one method replacement, or a full replacement of a single include. It stores a unified diff and its sha256. **Nothing is written to SAP** |
+| apply | `--diff-hash` must equal the stored proposal. The current server source hash must still equal the baseline recorded at open. `readOnly` and the `T000.CCCATEGORY` development-client guard are enforced. Only then: lock → write → unlock |
+| Post-write check | Read the source back, run a syntax check, and list inactive objects. A mismatch, a syntax error, an unlock failure, or an unknown inactive list is a failure |
+| activate | A separate step, with the same diff hash. Syntax is checked before activation. Afterwards the active source is compared, and the object must not remain on the inactive list |
+| Audit | Every propose / apply / activate, including refusals, is appended to `~/.SapBuddy/logs/audit-YYYY-MM-DD.jsonl` with session id, user, object, and diff hash |
+| Code policy | Same hardcoded-Chinese block as interactive writes. Bare types are warnings |
+
+Session files live in `~/.SapBuddy/bot-sessions/` (`SAPBUDDY_BOT_SESSION_DIR` overrides the directory). They do not contain passwords.
+
+Several consultants can hold sessions at the same time against one `connections.json`. Neither session rewrites the other's active connection:
+
+```bash
+# ABAP consultant. --connection takes an id or a name and does not mark that connection active
+sapbuddy session open ZCL_ORDER --connection 开发 --type CLAS/OC \
+  --transport DEVK900123 --expect DEV.100/ABAP_USER
+
+# SD consultant, at the same time, read-only on the test system. active still points at development
+SAPBUDDY_CONNECTION=测试 sapbuddy session open ZSD_LIST --type PROG/P \
+  --transport DEVK900456 --expect QAS.200/SD_USER
+sapbuddy session read <test-session>
+```
+
+A single user can omit the selector. `sapbuddy session open ZCL_ORDER ...` uses the connection marked `active: true` (or the first connection when none is marked) and stores that id in the session. That is the default. Interactive chat, the web UI, and MCP still use only the global active connection; a bot session cannot switch it.
+
+If two people keep separate connection files, point each process at its own file with the existing `ABAP_MCP_CONFIG=/path/to/connections.json`. `session` only reads that file and does not rewrite `active`.
+
+`activate` activates only the locked object. If a program is split across includes and the server requires the other includes first, the command returns that failure and a non-zero exit code. The SID is read from the logon cookie `SAP_SESSIONID_<SID>_<instance>`. If that cookie is missing, the command uses `TMSCSYS` only when the transport domain contains exactly one SAP system; otherwise it refuses to open the session.
+
+`apply` and `activate` are refused unless `security.readOnly` is explicitly `false`. The development-client guard is the same one used by the existing write tools: by default only `T000.CCCATEGORY=C` is allowed.
 
 ## 🧪 Tests
 

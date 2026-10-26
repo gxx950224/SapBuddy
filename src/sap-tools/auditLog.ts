@@ -9,11 +9,17 @@ try { mkdirSync(LOG_DIR, { recursive: true }) } catch { /* 忽略 */ }
 
 export interface AuditEntry {
   ts: string
-  event: "write_request" | "blocked" | "approved" | "executed" | "failed"
+  event: "write_request" | "blocked" | "approved" | "executed" | "failed" | "proposed" | "applied" | "activated"
   tool: string
   objects: string[]
   connectionId?: string
   reason?: string
+  /** bot session 审计：会话、登录用户、差异哈希。交互式写工具不填这些字段。 */
+  sessionId?: string
+  user?: string
+  diffHash?: string
+  sid?: string
+  client?: string
 }
 
 type AuditInput = Omit<AuditEntry, "ts">

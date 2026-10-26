@@ -704,6 +704,10 @@ test("Web streaming, pagination and message identity in a real browser", { skip:
   const messagesViewport = page.locator("#messages")
   await messagesViewport.evaluate(element => { element.scrollTop = 0 })
   await page.waitForFunction(() => document.querySelector("#messages")?.scrollTop <= 1)
+  // 向上滚轮才会暂停跟随。仅改 scrollTop 时，若布局高度还在变，滚动监听不会暂停，流式更新会跳回底部。
+  await messagesViewport.hover()
+  await page.mouse.wheel(0, -80)
+  await page.waitForFunction(() => document.querySelector("#messages")?.scrollTop <= 1)
   emit({ type: "message_update", message: { ...longMessage, content: [{ type: "text", text: longReply + "追加内容" }] } })
   await page.waitForFunction(length => Array.from(document.querySelectorAll(".reply-text")).at(-1)?.textContent.length === length, longReply.length + 4)
   assert.ok(await messagesViewport.evaluate(element => element.scrollTop < element.clientHeight), "流式更新时应留在消息顶部附近")

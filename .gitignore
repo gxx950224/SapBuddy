@@ -24,6 +24,7 @@ Thumbs.db
 .SapBuddy/settings.json
 .SapBuddy/connections.json
 .SapBuddy/sessions/
+.SapBuddy/bot-sessions/
 .SapBuddy/output/
 .SapBuddy/mcp.json
 .SapBuddy/memory.md

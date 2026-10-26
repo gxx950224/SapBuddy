@@ -60,6 +60,12 @@ export interface ServerSecurity {
    * 当前版本仅实现只读工具，默认 true
    */
   readOnly?: boolean
+  /**
+   * bot session（`sapbuddy session`）允许修改的开发包。
+   * 未配置时会话默认只允许 Z* 与 Y*；显式空数组表示全部拒绝。
+   * 交互式 CLI / Web / MCP 不读取此字段。
+   */
+  allowedPackages?: string[]
 }
 
 export interface ServerConfig {
@@ -126,11 +132,16 @@ export function loadConfig(): ServerConfig {
     throw new Error(`配置文件中有重复的连接 ID: ${[...ids].join(", ")}`)
   }
 
+  const allowedPackages = Array.isArray(raw.security?.allowedPackages)
+    ? raw.security.allowedPackages.filter((p): p is string => typeof p === "string" && p.trim() !== "").map((p) => p.trim())
+    : undefined
+
   return {
     connections,
     security: {
       readOnly: raw.security?.readOnly ?? true,
       apiKey: raw.security?.apiKey !== undefined ? expandEnv(raw.security.apiKey) : undefined,
+      allowedPackages,
     },
   }
 }
