@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{{DOC_TITLE}}</title>
+<style>
+  /* Claude Design System tokens (from open-claude-ui cds-theme) — archive sheet, no logo */
+  :root {
+    --brand: #c6613f;
+    --cds-clay: #d97757;
+    --cds-clay-light: #fbf3ef;
+    --cds-gray-0: #fff;
+    --cds-gray-10: #fcfcfb;
+    --cds-gray-20: #f9f9f7;
+    --cds-gray-40: #f3f3f0;
+    --cds-gray-100: #e1e0d9;
+    --cds-gray-200: #c3c2b7;
+    --cds-gray-500: #6d6b67;
+    --cds-gray-600: #52514e;
+    --cds-gray-850: #151515;
+    --cds-text-primary: #151515;
+    --cds-text-secondary: #525252;
+    --cds-text-muted: #8a8a8a;
+    --cds-border: hsla(0, 0%, 8%, 0.10);
+    --cds-border-strong: hsla(0, 0%, 8%, 0.20);
+    --cds-shadow-sm: 0 1px 2px rgba(0,0,0,.05), 0 2px 8px rgba(0,0,0,.08);
+    --cds-shadow-md: 0 2px 4px rgba(0,0,0,.05), 0 6px 16px rgba(0,0,0,.08);
+    --radius-md: 6px;
+    --radius-lg: 8px;
+    --radius-xl: 12px;
+    --radius-2xl: 16px;
+    --font: "Anthropic Sans", "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    --mono: "Anthropic Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    color: var(--cds-text-primary);
+    background: var(--cds-gray-20);
+    font: 15px/1.65 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet {
+    max-width: 880px;
+    margin: 28px auto 48px;
+    padding: 36px 40px 40px;
+    background: var(--cds-gray-0);
+    border: 1px solid var(--cds-border);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--cds-shadow-md);
+  }
+  .accent-bar {
+    height: 3px;
+    width: 48px;
+    border-radius: 999px;
+    background: var(--cds-clay);
+    margin-bottom: 18px;
+  }
+  h1 {
+    margin: 0 0 10px;
+    font-size: 1.55rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+  }
+  h2 {
+    margin: 32px 0 12px;
+    padding-bottom: 8px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    border-bottom: 1px solid var(--cds-border);
+  }
+  h3 {
+    margin: 20px 0 8px;
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--cds-text-primary);
+  }
+  h4 {
+    margin: 14px 0 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--cds-text-secondary);
+  }
+  p, li { margin: 6px 0; color: var(--cds-text-primary); }
+  .lede { color: var(--cds-text-secondary); font-size: 0.92rem; }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 4px 0 18px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--cds-clay-light);
+    color: var(--brand);
+    border: 1px solid color-mix(in srgb, var(--cds-clay) 28%, transparent);
+    font-size: 0.78rem;
+    font-weight: 500;
+  }
+  .status::before {
+    content: "";
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--cds-clay);
+  }
+  .meta {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: 8px 14px;
+    margin: 0 0 8px;
+    padding: 14px 16px;
+    background: var(--cds-gray-10);
+    border: 1px solid var(--cds-border);
+    border-radius: var(--radius-xl);
+    font-size: 0.88rem;
+  }
+  .meta dt { color: var(--cds-text-muted); font-weight: 500; }
+  .meta dd { margin: 0; color: var(--cds-text-secondary); }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 12px 0 18px;
+    font-size: 0.86rem;
+    border: 1px solid var(--cds-border);
+    border-radius: var(--radius-xl);
+    overflow: hidden;
+    background: var(--cds-gray-0);
+  }
+  th, td {
+    padding: 9px 11px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--cds-border);
+  }
+  tr:last-child td { border-bottom: none; }
+  th {
+    background: var(--cds-gray-40);
+    color: var(--cds-text-secondary);
+    font-weight: 600;
+  }
+  tbody tr:nth-child(even) td { background: var(--cds-gray-10); }
+  .card {
+    margin: 12px 0;
+    padding: 12px 14px;
+    border: 1px solid var(--cds-border);
+    border-radius: var(--radius-xl);
+    background: var(--cds-gray-10);
+    box-shadow: var(--cds-shadow-sm);
+  }
+  .card > :first-child { margin-top: 0; }
+  pre, code { font-family: var(--mono); font-size: 0.8rem; }
+  code {
+    padding: 1px 5px;
+    border-radius: var(--radius-md);
+    background: var(--cds-gray-40);
+    color: var(--cds-gray-850);
+  }
+  .code-block {
+    position: relative;
+    margin: 10px 0 16px;
+  }
+  pre {
+    margin: 10px 0 16px;
+    padding: 14px 16px;
+    background: #1e1e1d;
+    color: #f5f5f5;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--cds-gray-850);
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .code-block pre {
+    margin: 0;
+    padding-top: 40px;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  .copy-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 1;
+    padding: 4px 10px;
+    font: 500 0.72rem/1.4 var(--font);
+    color: var(--cds-gray-600);
+    background: var(--cds-gray-10);
+    border: 1px solid var(--cds-border-strong);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    box-shadow: var(--cds-shadow-sm);
+  }
+  .copy-btn:hover {
+    color: var(--brand);
+    border-color: color-mix(in srgb, var(--cds-clay) 45%, var(--cds-border-strong));
+    background: var(--cds-clay-light);
+  }
+  .copy-btn.copied {
+    color: var(--brand);
+    border-color: color-mix(in srgb, var(--cds-clay) 45%, transparent);
+    background: var(--cds-clay-light);
+  }
+  ul { padding-left: 1.2rem; }
+  footer {
+    margin-top: 36px;
+    padding-top: 14px;
+    border-top: 1px solid var(--cds-border);
+    color: var(--cds-text-muted);
+    font-size: 0.75rem;
+  }
+  /* Explicitly no logo / brand mark images */
+  @media print {
+    body { background: #fff; }
+    .sheet {
+      margin: 0; max-width: none;
+      border: none; box-shadow: none; border-radius: 0; padding: 0;
+    }
+    h2, .card, table, pre { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <article class="sheet">
+    <div class="accent-bar" aria-hidden="true"></div>
+    <header>
+      <h1>{{DOC_TITLE}}</h1>
+      <p class="status">{{STATUS_LINE}}</p>
+      <dl class="meta">
+        <dt>项目 / 模块</dt><dd>{{PROJECT_MODULE}}</dd>
+        <dt>系统与客户端</dt><dd>{{SYSTEM_CLIENT}}</dd>
+        <dt>需求提出人</dt><dd>{{REQUESTER}}</dd>
+        <dt>类型</dt><dd>{{FS_TYPE}}</dd>
+        <dt>更新</dt><dd>{{UPDATED}}</dd>
+      </dl>
+    </header>
+    <div class="body">
+      {{BODY_HTML}}
+    </div>
+    <footer>
+      Generated by SapBuddy
+    </footer>
+  </article>
+  <script>
+  (function () {
+    function getCodeText(pre) {
+      var code = pre.querySelector("code");
+      return (code || pre).textContent;
+    }
+    function wrapPre(pre) {
+      if (pre.closest(".code-block")) return;
+      var wrap = document.createElement("div");
+      wrap.className = "code-block";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-btn";
+      btn.setAttribute("aria-label", "复制代码");
+      btn.textContent = "复制";
+      btn.addEventListener("click", function () {
+        var text = getCodeText(pre);
+        function ok() {
+          btn.textContent = "已复制";
+          btn.classList.add("copied");
+          setTimeout(function () {
+            btn.textContent = "复制";
+            btn.classList.remove("copied");
+          }, 1500);
+        }
+        function fail() {
+          btn.textContent = "失败";
+          setTimeout(function () { btn.textContent = "复制"; }, 1500);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(ok).catch(function () {
+            try {
+              var ta = document.createElement("textarea");
+              ta.value = text;
+              ta.setAttribute("readonly", "");
+              ta.style.position = "fixed";
+              ta.style.left = "-9999px";
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand("copy");
+              document.body.removeChild(ta);
+              ok();
+            } catch (e) { fail(); }
+          });
+        } else {
+          try {
+            var ta2 = document.createElement("textarea");
+            ta2.value = text;
+            ta2.setAttribute("readonly", "");
+            ta2.style.position = "fixed";
+            ta2.style.left = "-9999px";
+            document.body.appendChild(ta2);
+            ta2.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta2);
+            ok();
+          } catch (e2) { fail(); }
+        }
+      });
+      wrap.appendChild(btn);
+    }
+    function init() {
+      document.querySelectorAll("pre").forEach(wrapPre);
+    }
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", init);
+    } else {
+      init();
+    }
+  })();
+  </script>
+</body>
+</html>

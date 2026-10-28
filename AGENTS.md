@@ -86,6 +86,7 @@ node cli.mjs tools   # 工具列表
 | 传输请求：状态码中文、底表 E070/E071、只读放行 | `tools/transportText.ts` manage_transport_requests | 硬强制 |
 | Bot session（`sapbuddy session`）：单对象、会话自有连接（`--connection` / `SAPBUDDY_CONNECTION`，不改全局 active）、包允许列表、`--expect`、已有可修改请求（对象已在唯一 D 请求上时不必传 `--transport`，以 ADT lock 为准；多个 D 且 lock 不唯一则拒绝）、diff 哈希、基线源码哈希、readOnly、开发客户端、写后读回/语法/未激活清单；禁止创建或释放请求 | `src/sap-tools/bot-session/`（CLI 进程内执行，不经过提示词） | 硬强制，仅该命令；对话/Web/MCP 行为不变 |
 | 创建/修改流程、避坑记录、请求描述格式（行为层）| `SYSTEM.md` 铁律 6b / 输出约定 | 提示层（AI 执行，工具已兜底）|
+| FS 意图门禁（仅明确要 FS 交付物才执行 sap-fs；意图不明先问；日常问答 / 审查 / 写 ABAP 不触发）| `SYSTEM.md` 铁律 8 钩子与铁律 9；技能 `defaults/skills/sap-fs`、`defaults/skills/grilling`（运行时拷到 `~/.SapBuddy/skills`）| 提示层 |
 
 **编译产物** `dist/sap-tools/register.js` —— Web（agent-core）与 CLI（pi-extension）加载同一模块，规则两端一致。
 
