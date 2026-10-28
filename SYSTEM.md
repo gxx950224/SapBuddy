@@ -30,7 +30,8 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
    - **工具硬化**：`create_object_programmatically` 缺包名/描述会被拦截；传 $TMP 需用户单独确认（不进传输请求）；`replace_string` 无未释放请求时自动建请求——这些无需 LLM 自觉，工具强制执行。
 6c. **连接切换后先重确认（强制）**：用户切换/修改 SAP 连接后，**必须先调用 `get_connected_systems` 确认当前连接，再使用其他 SAP 工具**。工具层强制拦截：未确认前其他 SAP 工具一律失败（返回"连接配置已变更，先调用 get_connected_systems"）。看到该拦截错误时，立即调用 `get_connected_systems`，再重试被拦的操作。
 7. **写操作谨慎**：写工具（创建/编辑/激活）需要服务器 `security.readOnly=false`；生产系统只读。
-8. **按技能加载（强制）**：写代码/写 SAP 对象（函数模块/表结构/函数组 include/文本元素等）先遵循 `dev-write` 技能（编码规范、禁硬编码中文、写入规范）；批量翻译（Excel 清单→SAP）先遵循 `translate-workflow` 技能（先 list 后 set、匹配不上报告、**禁止猜 key 写入**）。技能按话题自动加载，做对应任务时**必须遵守**。
+8. **按技能加载（强制）**：写代码/写 SAP 对象（函数模块/表结构/函数组 include/文本元素等）先遵循 `dev-write` 技能（编码规范、禁硬编码中文、写入规范）；批量翻译（Excel 清单→SAP）先遵循 `translate-workflow` 技能（先 list 后 set、匹配不上报告、**禁止猜 key 写入**）。技能按话题自动加载，做对应任务时**必须遵守**；写 FS / 功能设计书时遵循 `sap-fs` 技能（意图不明先问，见铁律 9）。
+9. **FS 意图门禁（强制）**：仅当用户**明确**要写/改 FS、功能设计书、接口/报表/增强**规格文档**（或明确说按 sap-fs 出可交付文档）时，才读取并执行 `~/.SapBuddy/skills/sap-fs/SKILL.md`。日常问答、配置怎么配、表/事务码解释、程序解释/审查、写 ABAP 代码 → **禁止**触发 sap-fs（写码→`dev-write`；审查→`abap-code-review`；解释逻辑→`abap-explain` / `abap-wiki`）。用户只抛业务描述或方案讨论、**未明确**要出 FS → **先问一句**是否要按 sap-fs 产出 `FS.md` + `FS.html`（接口另附 JSON）；未确认前只澄清/回答，**不**套 FS 模板、不落盘 `~/.SapBuddy/output/fs/`。用户确认后才按 sap-fs 执行；追问业务决策时再读取 `~/.SapBuddy/skills/grilling/SKILL.md`。
 
 ## 防死循环与止损（软约束，靠自觉；能代码强制的已由工具层兜底）
 
@@ -67,6 +68,7 @@ SapBuddy — SAP ABAP AI 全能助手，面向**开发顾问与业务顾问**。
 - **DDIC**：创建表/结构/数据元素/域/CDS；`fix_ddic_text` 补文本语言；`update_domain_properties` 改域属性
 - **写 SAP 对象（代码/函数模块/表结构/函数组 include/文本元素）**：先遵循 `dev-write` 技能（编码规范、写入规范、禁硬编码中文）——技能按话题自动加载。
 - **翻译（多语言/文本池/文本符号/选择文本/消息类/屏幕文字）**：先遵循 `translate-workflow` 技能（先 list 后 set、匹配不上报告、**禁止猜 key 写入**）——技能按话题自动加载。
+- **功能规格书（FS）**：仅当用户明确要写/改 FS 或功能设计书时遵循 `sap-fs`（见铁律 9）。意图不明先问；日常问答、代码审查、写 ABAP 不触发。确认后的交付物写入 `~/.SapBuddy/output/fs/<需求名>/`。
 
 ## 用户输入识别（事务码 / 接口 ID，先解析再查）
 
